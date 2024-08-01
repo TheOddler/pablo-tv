@@ -1,0 +1,46 @@
+cabal-version:      3.0
+name:               haskell-tv
+version:            0.1.0.0
+synopsis: An attempt at making some kind of smart tv app
+-- description:
+license:            NONE
+author:             Pablo Bollansee
+build-type:         Simple
+-- extra-doc-files:    README.md
+-- extra-source-files:
+
+common defaults
+    default-language: GHC2021
+    build-depends: base >=4.18.2.1 && <5
+    ghc-options:
+        -Wall -Wcompat -Wincomplete-record-updates -Wredundant-constraints -Wunused-packages -threaded -rtsopts -with-rtsopts=-N -freverse-errors
+    default-extensions:
+        LambdaCase
+        OverloadedRecordDot
+        OverloadedStrings
+        StrictData
+
+library
+    import:           defaults
+    hs-source-dirs:   src
+    exposed-modules:  MyLib
+    -- other-modules:
+    build-depends:
+
+executable haskell-tv
+    import:           defaults
+    hs-source-dirs:   exe
+    main-is:          Main.hs
+    -- other-modules:
+    build-depends:
+        haskell-tv
+
+test-suite haskell-tv-test
+    import:           defaults
+    hs-source-dirs:   test
+    main-is:          Spec.hs
+    type:             exitcode-stdio-1.0
+    -- other-modules:
+    build-depends:
+        haskell-tv
+      , sydtest

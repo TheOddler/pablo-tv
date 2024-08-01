@@ -1,0 +1,5 @@
+.direnv/
+.pre-commit-config.yaml
+.vscode/
+result
+dist-newstyle/
