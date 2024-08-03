@@ -39,8 +39,7 @@ networkInterfacesShortList :: [NetworkInterface] -> [NetworkInterface]
 networkInterfacesShortList = filter onShortList
   where
     onShortList :: NetworkInterface -> Bool
-    onShortList i = i `startsWith` "en" || i `startsWith` "eth" || i `startsWith` "wl"
-    startsWith = flip isPrefixOf . name
+    onShortList NetworkInterface {name} = any (`isPrefixOf` name) ["en", "eth", "wl"]
 
 prettyShowNetworkInterface :: NetworkInterface -> String
 prettyShowNetworkInterface i =
