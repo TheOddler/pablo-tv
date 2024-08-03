@@ -1,5 +1,5 @@
 cabal-version:      3.0
-name:               haskell-tv
+name:               pablo-tv
 version:            0.1.0.0
 synopsis: An attempt at making some kind of smart tv app
 -- description:
@@ -29,20 +29,20 @@ library
         network-info
       , yesod
 
-executable haskell-tv
+executable pablo-tv
     import:           defaults
     hs-source-dirs:   app
     main-is:          Main.hs
     -- other-modules:
     build-depends:
-        haskell-tv
+        pablo-tv
 
-test-suite haskell-tv-test
+test-suite pablo-tv-test
     import:           defaults
     hs-source-dirs:   test
     main-is:          Spec.hs
     type:             exitcode-stdio-1.0
     -- other-modules:
     build-depends:
-        haskell-tv
+        pablo-tv
       , sydtest

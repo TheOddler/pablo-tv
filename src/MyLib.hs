@@ -25,7 +25,7 @@ instance Yesod App
 
 addHead :: (MonadWidget m) => Html -> m ()
 addHead suffix = do
-  setTitle $ "Haskell TV - " <> suffix
+  setTitle $ "Pablo TV - " <> suffix
   addScriptRemote "https://livejs.com/live.js" -- Maybe some day only include this in dev mode
 
 getHomeR :: Handler Html
