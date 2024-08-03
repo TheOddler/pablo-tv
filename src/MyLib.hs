@@ -18,21 +18,47 @@ mkYesod
   "App"
   [parseRoutes|
 / HomeR GET
+/ips AllIPs GET
 |]
 
 instance Yesod App
+
+addHead :: (MonadWidget m) => Html -> m ()
+addHead suffix = do
+  setTitle $ "Haskell TV - " <> suffix
+  addScriptRemote "https://livejs.com/live.js" -- Maybe some day only include this in dev mode
 
 getHomeR :: Handler Html
 getHomeR = do
   networkInterfaces <- networkInterfacesShortList <$> getsYesod appNetworkInterfaces
   defaultLayout $ do
-    setTitle "Haskell TV"
-    addScriptRemote "https://livejs.com/live.js" -- Maybe some day only include this in dev mode
+    addHead "Home"
     [whamlet|
       <p>IPs:
       <ul>
           $forall networkInterface <- networkInterfaces
             <li>#{prettyShowNetworkInterface networkInterface}
+    |]
+
+getAllIPs :: Handler Html
+getAllIPs = do
+  networkInterfaces <- getsYesod appNetworkInterfaces
+  defaultLayout $ do
+    addHead "IPs"
+    [whamlet|
+      <p>IPs:
+      <table>
+        <thead>
+          <tr>
+              <th>Name
+              <th>IPv4
+              <th>IPv6
+        <tbody>
+          $forall networkInterface <- networkInterfaces
+            <tr>
+                <td>#{name networkInterface}
+                <td>#{show $ ipv4 networkInterface}
+                <td>#{show $ ipv6 networkInterface}
     |]
 
 networkInterfacesShortList :: [NetworkInterface] -> [NetworkInterface]
