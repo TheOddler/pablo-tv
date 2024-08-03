@@ -31,22 +31,25 @@ addHead suffix = do
 getHomeR :: Handler Html
 getHomeR = do
   networkInterfaces <- networkInterfacesShortList <$> getsYesod appNetworkInterfaces
+  port <- getsYesod appPort
   defaultLayout $ do
     addHead "Home"
     [whamlet|
       <p>IPs:
       <ul>
           $forall networkInterface <- networkInterfaces
-            <li>#{prettyShowNetworkInterface networkInterface}
+            <li>#{ipV4OrV6WithPort port networkInterface}
+          <li><a href=@{AllIPs}>View all...
     |]
 
 getAllIPs :: Handler Html
 getAllIPs = do
   networkInterfaces <- getsYesod appNetworkInterfaces
+  port <- getsYesod appPort
   defaultLayout $ do
     addHead "IPs"
     [whamlet|
-      <p>IPs:
+      <p>Port: #{port}
       <table>
         <thead>
           <tr>
@@ -56,9 +59,9 @@ getAllIPs = do
         <tbody>
           $forall networkInterface <- networkInterfaces
             <tr>
-                <td>#{name networkInterface}
                 <td>#{show $ ipv4 networkInterface}
                 <td>#{show $ ipv6 networkInterface}
+                <td>#{name networkInterface}
     |]
 
 networkInterfacesShortList :: [NetworkInterface] -> [NetworkInterface]
@@ -67,13 +70,14 @@ networkInterfacesShortList = filter onShortList
     onShortList :: NetworkInterface -> Bool
     onShortList NetworkInterface {name} = any (`isPrefixOf` name) ["en", "eth", "wl"]
 
-prettyShowNetworkInterface :: NetworkInterface -> String
-prettyShowNetworkInterface i =
-  name i
-    ++ ": "
-    ++ if ipv4 i == IPv4 0
+ipV4OrV6WithPort :: Int -> NetworkInterface -> String
+ipV4OrV6WithPort port i =
+  ( if ipv4 i == IPv4 0
       then show $ ipv6 i
       else show $ ipv4 i
+  )
+    ++ ":"
+    ++ show port
 
 main :: IO ()
 main = do
