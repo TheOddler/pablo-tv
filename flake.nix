@@ -13,8 +13,10 @@
         pkgs = nixpkgs.legacyPackages.${system};
 
         devPackages = with pkgs; [
+          cabal-install
           haskell-language-server
           hlint
+          watchexec
         ];
       in
       {

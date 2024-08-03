@@ -4,5 +4,5 @@ import MyLib qualified
 
 main :: IO ()
 main = do
-  putStrLn "Hello, Haskell!"
-  MyLib.someFunc
+  putStrLn "Running server:"
+  MyLib.main

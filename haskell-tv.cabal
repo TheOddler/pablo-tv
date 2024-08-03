@@ -26,10 +26,12 @@ library
     exposed-modules:  MyLib
     -- other-modules:
     build-depends:
+        network-info
+      , yesod
 
 executable haskell-tv
     import:           defaults
-    hs-source-dirs:   exe
+    hs-source-dirs:   app
     main-is:          Main.hs
     -- other-modules:
     build-depends:
