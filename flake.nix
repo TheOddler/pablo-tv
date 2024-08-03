@@ -17,6 +17,7 @@
           haskell-language-server
           hlint
           watchexec
+          ydotool
         ];
       in
       {

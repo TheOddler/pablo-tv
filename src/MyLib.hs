@@ -2,11 +2,14 @@
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE ViewPatterns #-}
 
 module MyLib where
 
+import Control.Concurrent.Async (race_)
 import Data.List (isPrefixOf)
 import Network.Info (IPv4 (..), NetworkInterface (..), getNetworkInterfaces)
+import System.Process (callProcess)
 import Yesod
 
 data App = App
@@ -19,6 +22,7 @@ mkYesod
   [parseRoutes|
 / HomeR GET
 /ips AllIPs GET
+/mouse/relative MoveMouseR POST
 |]
 
 instance Yesod App
@@ -27,6 +31,8 @@ addHead :: (MonadWidget m) => Html -> m ()
 addHead suffix = do
   setTitle $ "Pablo TV - " <> suffix
   addScriptRemote "https://livejs.com/live.js" -- Maybe some day only include this in dev mode
+  toWidgetHead [hamlet|<meta content="text/html; charset=utf-8" http-equiv="Content-Type">|]
+  toWidgetHead [hamlet|<meta content="width=device-width, initial-scale=1.0" name="viewport">|]
 
 getHomeR :: Handler Html
 getHomeR = do
@@ -34,12 +40,30 @@ getHomeR = do
   port <- getsYesod appPort
   defaultLayout $ do
     addHead "Home"
+    toWidgetBody
+      [julius|
+        function moveMouse(x, y) {
+          fetch("@{MoveMouseR}", {
+            method: "POST",
+            body: JSON.stringify([x, y]),
+            headers: {
+              "Content-type": "application/json; charset=UTF-8"
+            }
+          });
+        }
+      |]
     [whamlet|
       <p>IPs:
       <ul>
           $forall networkInterface <- networkInterfaces
             <li>#{ipV4OrV6WithPort port networkInterface}
-          <li><a href=@{AllIPs}>View all...
+          <li>
+            <a href=@{AllIPs}>View all...
+      
+      <button onclick="moveMouse(0, -100);">Move mouse up
+      <button onclick="moveMouse(0, 100);">Move mouse down
+      <button onclick="moveMouse(-100, 0);">Move mouse left
+      <button onclick="moveMouse(100, 0);">Move mouse right
     |]
 
 getAllIPs :: Handler Html
@@ -64,6 +88,14 @@ getAllIPs = do
                 <td>#{name networkInterface}
     |]
 
+postMoveMouseR :: Handler ()
+postMoveMouseR = do
+  (x :: Int, y :: Int) <- requireCheckJsonBody
+  liftIO $ do
+    print $ "Moving: " ++ show x ++ " " ++ show y
+    callProcess "ydotool" ["mousemove", "-x", show x, "-y", show y]
+  pure ()
+
 networkInterfacesShortList :: [NetworkInterface] -> [NetworkInterface]
 networkInterfacesShortList = filter onShortList
   where
@@ -81,11 +113,15 @@ ipV4OrV6WithPort port i =
 
 main :: IO ()
 main = do
-  ips <- getNetworkInterfaces
-  let port = 8080
-  putStrLn "Running on port 8080 - http://localhost:8080/"
-  warp port $
-    App
-      { appNetworkInterfaces = ips,
-        appPort = port
-      }
+  race_ yDoToolDaemon server
+  where
+    yDoToolDaemon = callProcess "ydotoold" []
+    server = do
+      ips <- getNetworkInterfaces
+      let port = 8080
+      putStrLn "Running on port 8080 - http://localhost:8080/"
+      warp port $
+        App
+          { appNetworkInterfaces = ips,
+            appPort = port
+          }
