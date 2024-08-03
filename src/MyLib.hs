@@ -23,6 +23,7 @@ mkYesod
 / HomeR GET
 /ips AllIPs GET
 /mouse/relative MoveMouseR POST
+/mouse/click ClickMouseR POST
 |]
 
 instance Yesod App
@@ -63,6 +64,12 @@ getHomeR = do
           });
         }
 
+        function clickMouse() {
+          fetch("@{ClickMouseR}", {
+            method: "POST"
+          });
+        }
+
         let previousTouch;
         function handleTouchMove(event) {
           const touch = event.touches[0];
@@ -78,6 +85,7 @@ getHomeR = do
 
         document.addEventListener("touchstart", e => previousTouch = e.touches[0]);
         document.addEventListener("touchmove", throttle(handleTouchMove));
+        document.addEventListener("click", clickMouse);
       |]
     [whamlet|
       <p>IPs:
@@ -119,9 +127,14 @@ postMoveMouseR :: Handler ()
 postMoveMouseR = do
   (x :: Int, y :: Int) <- requireCheckJsonBody
   liftIO $ do
-    print $ "Moving: " ++ show x ++ " " ++ show y
+    putStrLn $ "Moving: " ++ show x ++ " " ++ show y
     callProcess "ydotool" ["mousemove", "-x", show x, "-y", show y]
   pure ()
+
+postClickMouseR :: Handler ()
+postClickMouseR = liftIO $ do
+  putStrLn "Clicking"
+  callProcess "ydotool" ["click", "0xC0"]
 
 networkInterfacesShortList :: [NetworkInterface] -> [NetworkInterface]
 networkInterfacesShortList = filter onShortList
