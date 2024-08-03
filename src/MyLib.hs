@@ -42,6 +42,17 @@ getHomeR = do
     addHead "Home"
     toWidgetBody
       [julius|
+        function throttle(func, timeout = 50){
+          let timer;
+          let latestFunc;
+          return (...args) => {
+            latestFunc = func;
+            if (!timer) {
+              timer = setTimeout(() => { latestFunc.apply(this, args); timer = null; }, timeout);
+            }
+          };
+        }
+
         function moveMouse(x, y) {
           fetch("@{MoveMouseR}", {
             method: "POST",
@@ -51,6 +62,22 @@ getHomeR = do
             }
           });
         }
+
+        let previousTouch;
+        function handleTouchMove(event) {
+          const touch = event.touches[0];
+
+          if (previousTouch) {
+              const x = touch.pageX - previousTouch.pageX;
+              const y = touch.pageY - previousTouch.pageY;
+              moveMouse(x, y);
+          };
+          
+          previousTouch = touch;
+        }
+
+        document.addEventListener("touchstart", e => previousTouch = e.touches[0]);
+        document.addEventListener("touchmove", throttle(handleTouchMove));
       |]
     [whamlet|
       <p>IPs:
