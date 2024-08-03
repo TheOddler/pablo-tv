@@ -28,19 +28,21 @@
           pre-commit-check = pre-commit-hooks.lib.${system}.run {
             src = ./.;
             hooks = {
-              hlint.enable = true;
-              ormolu.enable = true;
               nixpkgs-fmt.enable = true;
-            };
-            settings = {
-              hlint.hintFile = ./.hlint.yaml;
-              ormolu.defaultExtensions = [
-                "GHC2021" # Let Ormolu know we're using GHC2021
-                "LambdaCase"
-                "OverloadedRecordDot"
-                "OverloadedStrings"
-                "StrictData"
-              ];
+              hlint = {
+                enable = true;
+                settings.hintFile = ./.hlint.yaml;
+              };
+              ormolu = {
+                enable = true;
+                settings.defaultExtensions = [
+                  "GHC2021" # Let Ormolu know we're using GHC2021
+                  "LambdaCase"
+                  "OverloadedRecordDot"
+                  "OverloadedStrings"
+                  "StrictData"
+                ];
+              };
             };
           };
           app = self.packages.${system}.default;
