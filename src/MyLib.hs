@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE TemplateHaskell #-}
@@ -7,9 +8,12 @@
 module MyLib where
 
 import Control.Concurrent.Async (race_)
+import Control.Monad (when)
 import Data.List (isPrefixOf)
 import Network.Info (IPv4 (..), NetworkInterface (..), getNetworkInterfaces)
 import System.Process (callProcess)
+import Text.Hamlet (hamletFile)
+import Util (isDevelopment, widgetFile)
 import Yesod
 
 data App = App
@@ -26,102 +30,31 @@ mkYesod
 /mouse/click ClickMouseR POST
 |]
 
-instance Yesod App
-
-addHead :: (MonadWidget m) => Html -> m ()
-addHead suffix = do
-  setTitle $ "Pablo TV - " <> suffix
-  addScriptRemote "https://livejs.com/live.js" -- Maybe some day only include this in dev mode
-  toWidgetHead [hamlet|<meta content="text/html; charset=utf-8" http-equiv="Content-Type">|]
-  toWidgetHead [hamlet|<meta content="width=device-width, initial-scale=1.0" name="viewport">|]
+instance Yesod App where
+  defaultLayout :: Widget -> Handler Html
+  defaultLayout widget = do
+    -- We break up the default layout into two components:
+    -- default-layout is the contents of the body tag, and
+    -- default-layout-wrapper is the entire page. Since the final
+    -- value passed to hamletToRepHtml cannot be a widget, this allows
+    -- you to use normal widget features in default-layout.
+    pc <- widgetToPageContent $ do
+      when isDevelopment $ addScriptRemote "https://livejs.com/live.js" -- Maybe some day only include this in dev mode
+      $(widgetFile "default-layout")
+    withUrlRenderer $
+      $(hamletFile "templates/default-layout-wrapper.hamlet")
 
 getHomeR :: Handler Html
 getHomeR = do
   networkInterfaces <- networkInterfacesShortList <$> getsYesod appNetworkInterfaces
   port <- getsYesod appPort
-  defaultLayout $ do
-    addHead "Home"
-    toWidgetBody
-      [julius|
-        function throttle(func, timeout = 50){
-          let timer;
-          let latestFunc;
-          return (...args) => {
-            latestFunc = func;
-            if (!timer) {
-              timer = setTimeout(() => { latestFunc.apply(this, args); timer = null; }, timeout);
-            }
-          };
-        }
-
-        function moveMouse(x, y) {
-          fetch("@{MoveMouseR}", {
-            method: "POST",
-            body: JSON.stringify([x, y]),
-            headers: {
-              "Content-type": "application/json; charset=UTF-8"
-            }
-          });
-        }
-
-        function clickMouse() {
-          fetch("@{ClickMouseR}", {
-            method: "POST"
-          });
-        }
-
-        let previousTouch;
-        function handleTouchMove(event) {
-          const touch = event.touches[0];
-
-          if (previousTouch) {
-              const x = touch.pageX - previousTouch.pageX;
-              const y = touch.pageY - previousTouch.pageY;
-              moveMouse(x, y);
-          };
-          
-          previousTouch = touch;
-        }
-
-        document.addEventListener("touchstart", e => previousTouch = e.touches[0]);
-        document.addEventListener("touchmove", throttle(handleTouchMove));
-        document.addEventListener("click", clickMouse);
-      |]
-    [whamlet|
-      <p>IPs:
-      <ul>
-          $forall networkInterface <- networkInterfaces
-            <li>#{ipV4OrV6WithPort port networkInterface}
-          <li>
-            <a href=@{AllIPs}>View all...
-      
-      <button onclick="moveMouse(0, -100);">Move mouse up
-      <button onclick="moveMouse(0, 100);">Move mouse down
-      <button onclick="moveMouse(-100, 0);">Move mouse left
-      <button onclick="moveMouse(100, 0);">Move mouse right
-    |]
+  defaultLayout $(widgetFile "home")
 
 getAllIPs :: Handler Html
 getAllIPs = do
   networkInterfaces <- getsYesod appNetworkInterfaces
   port <- getsYesod appPort
-  defaultLayout $ do
-    addHead "IPs"
-    [whamlet|
-      <p>Port: #{port}
-      <table>
-        <thead>
-          <tr>
-              <th>Name
-              <th>IPv4
-              <th>IPv6
-        <tbody>
-          $forall networkInterface <- networkInterfaces
-            <tr>
-                <td>#{show $ ipv4 networkInterface}
-                <td>#{show $ ipv6 networkInterface}
-                <td>#{name networkInterface}
-    |]
+  defaultLayout $(widgetFile "ips")
 
 postMoveMouseR :: Handler ()
 postMoveMouseR = do
@@ -160,6 +93,7 @@ main = do
       ips <- getNetworkInterfaces
       let port = 8080
       putStrLn "Running on port 8080 - http://localhost:8080/"
+      putStrLn $ "Development mode: " ++ show isDevelopment
       warp port $
         App
           { appNetworkInterfaces = ips,

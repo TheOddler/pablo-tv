@@ -1,0 +1,13 @@
+<p>IPs:
+<ul>
+    $forall networkInterface <- networkInterfaces
+      <li>#{ipV4OrV6WithPort port networkInterface}
+    <li>
+      <a href=@{AllIPs}>View all...
+
+<button onclick="moveMouse(0, -100);">Move mouse up
+<button onclick="moveMouse(0, 100);">Move mouse down
+<button onclick="moveMouse(-100, 0);">Move mouse left
+<button onclick="moveMouse(100, 0);">Move mouse right
+
+HUPLAKE :P!

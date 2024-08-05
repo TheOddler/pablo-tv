@@ -1,0 +1,13 @@
+<p>Port: #{port}
+<table>
+  <thead>
+    <tr>
+        <th>Name
+        <th>IPv4
+        <th>IPv6
+  <tbody>
+    $forall networkInterface <- networkInterfaces
+      <tr>
+          <td>#{show $ ipv4 networkInterface}
+          <td>#{show $ ipv6 networkInterface}
+          <td>#{name networkInterface}

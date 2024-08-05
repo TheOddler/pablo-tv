@@ -1,6 +1,5 @@
 .direnv/
 .pre-commit-config.yaml
-.vscode/
 result
 dist-newstyle/
 client_session_key.aes

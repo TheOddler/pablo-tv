@@ -7,7 +7,15 @@ license:            NONE
 author:             Pablo Bollansee
 build-type:         Simple
 -- extra-doc-files:    README.md
--- extra-source-files:
+extra-source-files:
+    templates/**/*.hamlet
+    templates/**/*.julius
+    templates/**/*.cassius
+    templates/**/*.lucius
+
+Flag development
+  Description:   Turn on development build
+  Default:       False
 
 common defaults
     default-language: GHC2021
@@ -24,11 +32,17 @@ library
     import:           defaults
     hs-source-dirs:   src
     exposed-modules:  MyLib
-    -- other-modules:
+    if flag(development)
+        cpp-options: -DDEVELOPMENT
+    other-modules:
+        Util
     build-depends:
         async
+      , data-default
       , network-info
       , process
+      , shakespeare
+      , template-haskell
       , yesod
 
 executable pablo-tv
