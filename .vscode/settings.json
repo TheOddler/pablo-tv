@@ -1,5 +1,6 @@
 {
   "files.associations": {
-    "*.julius": "javascript"
+    "*.julius": "javascript",
+    "*.lucius": "scss",
   }
 }
