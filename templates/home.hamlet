@@ -9,5 +9,3 @@
 <button onclick="moveMouse(0, 100);">Move mouse down
 <button onclick="moveMouse(-100, 0);">Move mouse left
 <button onclick="moveMouse(100, 0);">Move mouse right
-
-HUPLAKE :P!
