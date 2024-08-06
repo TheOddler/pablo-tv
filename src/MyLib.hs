@@ -24,8 +24,12 @@ data App = App
 mkYesod
   "App"
   [parseRoutes|
+-- Pages:
 / HomeR GET
-/ips AllIPs GET
+/ips AllIPsR GET
+/trackpad TrackpadR GET
+
+-- Functions:
 /mouse/relative MoveMouseR POST
 /mouse/click ClickMouseR POST
 |]
@@ -50,11 +54,15 @@ getHomeR = do
   port <- getsYesod appPort
   defaultLayout $(widgetFile "home")
 
-getAllIPs :: Handler Html
-getAllIPs = do
+getAllIPsR :: Handler Html
+getAllIPsR = do
   networkInterfaces <- getsYesod appNetworkInterfaces
   port <- getsYesod appPort
   defaultLayout $(widgetFile "ips")
+
+getTrackpadR :: Handler Html
+getTrackpadR =
+  defaultLayout $(widgetFile "trackpad")
 
 postMoveMouseR :: Handler ()
 postMoveMouseR = do
