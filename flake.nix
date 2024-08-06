@@ -8,7 +8,7 @@
   };
 
   outputs = { self, nixpkgs, pre-commit-hooks, flake-utils }:
-    flake-utils.lib.eachSystem [ flake-utils.lib.system.x86_64-linux ] (system:
+    flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = nixpkgs.legacyPackages.${system};
 
