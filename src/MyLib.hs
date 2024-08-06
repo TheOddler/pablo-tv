@@ -39,7 +39,7 @@ instance Yesod App where
     -- value passed to hamletToRepHtml cannot be a widget, this allows
     -- you to use normal widget features in default-layout.
     pc <- widgetToPageContent $ do
-      when isDevelopment $ addScriptRemote "https://pabloproductions.be/LiveJS/livejs.js"
+      when isDevelopment $ addScriptRemote "https://pabloproductions.be/LiveJS/live.js"
       $(widgetFile "default-layout")
     withUrlRenderer $
       $(hamletFile "templates/default-layout-wrapper.hamlet")
