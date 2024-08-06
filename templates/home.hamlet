@@ -7,8 +7,8 @@
 
 <div class="tools-list">
   <a href=@{TrackpadR}>🖱️
+  <a href=@{MousePointerR}>🔫
   <!-- Additional ones just for testing: -->
-  <a href=@{TrackpadR}>🔫
   <a href=@{TrackpadR}>🖱️
   <a href=@{TrackpadR}>🖱️
   <a href=@{TrackpadR}>🖱️

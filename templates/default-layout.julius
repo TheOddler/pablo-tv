@@ -19,6 +19,16 @@ function moveMouse(x, y) {
   });
 }
 
+function pointMouse(leftRight, upDown) {
+  fetch("@{MousePointR}", {
+    method: "POST",
+    body: JSON.stringify([leftRight, upDown]),
+    headers: {
+      "Content-type": "application/json; charset=UTF-8"
+    }
+  });
+}
+
 function clickMouse() {
   fetch("@{ClickMouseR}", {
     method: "POST"

@@ -28,9 +28,11 @@ mkYesod
 / HomeR GET
 /ips AllIPsR GET
 /trackpad TrackpadR GET
+/pointer MousePointerR GET
 
 -- Functions:
 /mouse/relative MoveMouseR POST
+/mouse/point MousePointR POST
 /mouse/click ClickMouseR POST
 |]
 
@@ -43,7 +45,7 @@ instance Yesod App where
     -- value passed to hamletToRepHtml cannot be a widget, this allows
     -- you to use normal widget features in default-layout.
     pc <- widgetToPageContent $ do
-      when isDevelopment $ addScriptRemote "https://pabloproductions.be/LiveJS/live.js"
+      -- when isDevelopment $ addScriptRemote "https://pabloproductions.be/LiveJS/live.js"
       $(widgetFile "default-layout")
     withUrlRenderer $
       $(hamletFile "templates/default-layout-wrapper.hamlet")
@@ -64,12 +66,40 @@ getTrackpadR :: Handler Html
 getTrackpadR =
   defaultLayout $(widgetFile "trackpad")
 
+getMousePointerR :: Handler Html
+getMousePointerR =
+  defaultLayout $(widgetFile "mouse-pointer")
+
 postMoveMouseR :: Handler ()
 postMoveMouseR = do
   (x :: Int, y :: Int) <- requireCheckJsonBody
   liftIO $ do
     putStrLn $ "Moving: " ++ show x ++ " " ++ show y
     callProcess "ydotool" ["mousemove", "-x", show x, "-y", show y]
+  pure ()
+
+-- | Point the mouse relative to the center of the screen
+-- So (0,0) is the center of the screen
+-- Then, assuming the screen is wider then high, (0, 1) means middle top
+-- and (1, 0) means equally far to right right as the top is from the center,
+-- so something like (1.6, 0) would be center outer right
+-- Does that make sense?
+-- It's meant to be used with the mouse pointer app.
+postMousePointR :: Handler ()
+postMousePointR = do
+  (x :: Float, y :: Float) <- requireCheckJsonBody
+
+  let screenHalfSize = 690 / 2 -- For some reason ydotool thinks the screen is 690 high...
+      centerX = 1100 / 2 -- For some reason ydotool thinks the screen is 1100 wide?
+      centerY = 690 / 2 -- For some reason ydotool thinks the screen is 690 high...
+      pointerX :: Int
+      pointerX = round $ centerX + x * screenHalfSize
+      pointerY :: Int
+      pointerY = round $ centerY + y * screenHalfSize
+
+  liftIO $ do
+    putStrLn $ "Pointing: " ++ show pointerX ++ " " ++ show pointerY
+    callProcess "ydotool" ["mousemove", "--absolute", "-x", show pointerX, "-y", show pointerY]
   pure ()
 
 postClickMouseR :: Handler ()
