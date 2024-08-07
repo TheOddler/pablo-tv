@@ -8,45 +8,13 @@
   };
 
   outputs = { self, nixpkgs, pre-commit-hooks, flake-utils }:
-    let
-      pkgsFor = system: import nixpkgs {
-        inherit system;
-        overlays = [ self.overlays.default ];
-      };
-    in
-    {
-      overlays.default = final: prev: {
-        pablo-tv = prev.haskell.lib.justStaticExecutables (
-          final.haskellPackages.pablo-tv.overrideAttrs (oldAttrs: {
-            configureFlags = oldAttrs.configureFlags ++ [ "--ghc-option=-O2" ];
-          })
-        );
-        haskellPackages = prev.haskellPackages.override (old: {
-          overrides =
-            final.lib.composeExtensions
-              (old.overrides or (_: _: { }))
-              (self: super: {
-                pablo-tv =
-                  (self.callCabal2nix "pablo-tv" ./. { }).overrideAttrs
-                    (oldAttrs: {
-                      nativeBuildInputs = oldAttrs.nativeBuildInputs ++ [ final.makeWrapper final.ydotool ];
-                      postInstall =
-                        (oldAttrs.postInstall or "")
-                        + ''
-                          wrapProgram $out/bin/pablo-tv \
-                            --suffix PATH : ${final.lib.makeBinPath [final.ydotool]}
-                        '';
-                    });
-              });
-        });
-      };
-    } // flake-utils.lib.eachDefaultSystem (system:
-      let pkgs = pkgsFor system; in
-      rec {
-        packages.default = pkgs.pablo-tv;
-
+    flake-utils.lib.eachDefaultSystem (system:
+      let
+        pkgs = nixpkgs.legacyPackages.${system};
+      in
+      {
         devShells.default = pkgs.haskellPackages.shellFor {
-          packages = p: [ packages.default ];
+          packages = p: [ self.packages.${system}.default ];
           buildInputs = with pkgs; [
             cabal-install
             haskell-language-server
@@ -79,6 +47,23 @@
               };
             };
           };
+          app = self.packages.${system}.default;
+        };
+
+        packages.default = pkgs.haskellPackages.developPackage {
+          root = ./.;
+          modifier = drv:
+            drv.overrideAttrs
+              (oldAttrs: {
+                nativeBuildInputs = oldAttrs.nativeBuildInputs ++ [ pkgs.makeWrapper pkgs.ydotool ];
+                configureFlags = oldAttrs.configureFlags ++ [ "--ghc-option=-O2" ];
+                postInstall =
+                  (oldAttrs.postInstall or "")
+                  + ''
+                    wrapProgram $out/bin/pablo-tv \
+                      --suffix PATH : ${pkgs.lib.makeBinPath [pkgs.ydotool]}
+                  '';
+              });
         };
       }
     );
