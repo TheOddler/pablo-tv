@@ -7,5 +7,8 @@
 <p>
   <input type="range" min="1" max="11" id="scaling-factor-slider">Speed
 
+<p>
+  <button onclick="clickMouse()">Click
+
 <h1>Debug:
 <div id="debug">
