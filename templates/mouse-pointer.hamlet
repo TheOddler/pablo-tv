@@ -4,4 +4,4 @@
 <button onclick="resetCenter()">Reset Center
 
 <h1>Debug:
-<div id="debug"></div>
+<div id="debug">
