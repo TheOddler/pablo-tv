@@ -4,7 +4,7 @@ let orientation;
 let centerOrientation;
 let leftRight;
 let upDown;
-let scalingFactor = 1 / 22.5;
+let scalingFactor = 5;
 let jitterReduction = 10;
 
 function diffAngle(a, b) {
@@ -28,10 +28,12 @@ function handleOrientation(event) {
   if (!leftRight) leftRight = orientation.leftRight;
   if (!upDown) upDown = orientation.upDown;
 
-  const newLeftRight = diffAngle(orientation.leftRight, centerOrientation.leftRight);
-  const newUpDown = diffAngle(orientation.upDown, centerOrientation.upDown);
-  leftRight = slowMove(leftRight, newLeftRight);
-  upDown = slowMove(upDown, newUpDown);
+  const angleLR = diffAngle(orientation.leftRight, centerOrientation.leftRight);
+  const angleUD = diffAngle(orientation.upDown, centerOrientation.upDown);
+  const newLR = Math.tan(angleLR * Math.PI / 180);
+  const newUD = Math.tan(angleUD * Math.PI / 180);
+  leftRight = slowMove(leftRight, newLR);
+  upDown = slowMove(upDown, newUD);
 
   debugEl.innerHTML = `
     <p>center: ${centerOrientation.leftRight.toFixed(2)}, ${centerOrientation.upDown.toFixed(2)}</p>
