@@ -1,7 +1,11 @@
 <p>Use your phone as a pointer to move the mouse around.
 <p>Similar to how a wii remote or a laser-pointer works.
 
-<button onclick="resetCenter()">Reset Center
+<p>
+  <button onclick="resetCenter()">Reset Center
+
+<p>
+  <input type="range" min="1" max="11" id="scaling-factor-slider">Speed
 
 <h1>Debug:
 <div id="debug">

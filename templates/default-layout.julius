@@ -43,7 +43,7 @@ connectWebSocket();
 
 function sendWebSocketMessage(message) {
   if (webSocket.readyState === WebSocket.OPEN) {
-    console.log('Sending message:', message);
+    // console.log('Sending message:', message);
     webSocket.send(JSON.stringify(message));
   }
   else {

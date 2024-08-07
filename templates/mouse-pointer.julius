@@ -1,4 +1,5 @@
 const debugEl = document.getElementById("debug");
+const scalingFactorSlider = document.getElementById("scaling-factor-slider");
 
 let orientation;
 let centerOrientation;
@@ -58,4 +59,10 @@ function resetCenter() {
   centerOrientation = orientation;
 }
 
+function onScalingFectorSliderChange(value) {
+  scalingFactor = value;
+}
+
 window.addEventListener("deviceorientation", handleOrientation, true);
+scalingFactorSlider.addEventListener("input", (e) => onScalingFectorSliderChange(e.target.value));
+scalingFactorSlider.value = scalingFactor;
