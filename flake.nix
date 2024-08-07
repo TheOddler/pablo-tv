@@ -68,9 +68,11 @@
                     '';
                 });
           };
-          pablo-tv = packages.pablo-tv-base.overrideAttrs (oldAttrs: {
-            configureFlags = oldAttrs.configureFlags ++ [ "--ghc-option=-O2" ];
-          });
+          pablo-tv = pkgs.haskell.lib.justStaticExecutables (
+            packages.pablo-tv-base.overrideAttrs (oldAttrs: {
+              configureFlags = oldAttrs.configureFlags ++ [ "--ghc-option=-O2" ];
+            })
+          );
           default = packages.pablo-tv;
         };
       }
