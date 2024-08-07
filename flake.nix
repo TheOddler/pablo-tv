@@ -8,22 +8,53 @@
   };
 
   outputs = { self, nixpkgs, pre-commit-hooks, flake-utils }:
-    flake-utils.lib.eachDefaultSystem (system:
-      let
-        pkgs = nixpkgs.legacyPackages.${system};
+    let
+      pkgsFor = system: import nixpkgs {
+        inherit system;
+        overlays = [ self.overlays.default ];
+      };
+    in
+    {
+      overlays.default = final: prev: {
+        pablo-tv = prev.haskell.lib.justStaticExecutables (
+          final.haskellPackages.pablo-tv.overrideAttrs (oldAttrs: {
+            configureFlags = oldAttrs.configureFlags ++ [ "--ghc-option=-O2" ];
+          })
+        );
+        haskellPackages = prev.haskellPackages.override (old: {
+          overrides =
+            final.lib.composeExtensions
+              (old.overrides or (_: _: { }))
+              (self: super: {
+                pablo-tv =
+                  (self.callCabal2nix "pablo-tv" ./. { }).overrideAttrs
+                    (oldAttrs: {
+                      nativeBuildInputs = oldAttrs.nativeBuildInputs ++ [ final.makeWrapper final.ydotool ];
+                      postInstall =
+                        (oldAttrs.postInstall or "")
+                        + ''
+                          wrapProgram $out/bin/pablo-tv \
+                            --suffix PATH : ${final.lib.makeBinPath [final.ydotool]}
+                        '';
+                    });
+              });
+        });
+      };
+    } // flake-utils.lib.eachDefaultSystem (system:
+      let pkgs = pkgsFor system; in
+      rec {
+        packages.default = pkgs.pablo-tv;
 
-        devPackages = with pkgs; [
-          cabal-install
-          haskell-language-server
-          hlint
-          watchexec
-          ydotool
-        ];
-      in
-      {
         devShells.default = pkgs.haskellPackages.shellFor {
-          packages = p: [ self.packages.${system}.default ];
-          buildInputs = devPackages;
+          packages = p: [ packages.default ];
+          buildInputs = with pkgs; [
+            cabal-install
+            haskell-language-server
+            hlint
+            watchexec
+            ydotool
+            nil
+          ];
           inherit (self.checks.${system}.pre-commit-check) shellHook;
         };
 
@@ -48,15 +79,6 @@
               };
             };
           };
-          app = self.packages.${system}.default;
-        };
-
-        packages.default = pkgs.haskellPackages.developPackage {
-          root = ./.;
-          modifier = drv:
-            pkgs.haskell.lib.addBuildTools drv (with pkgs; [
-              haskellPackages.sydtest-discover
-            ]);
         };
       }
     );
