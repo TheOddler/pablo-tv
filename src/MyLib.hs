@@ -7,7 +7,7 @@
 
 module MyLib where
 
-import Actions (Action (..), actionsWebSocket, performAction)
+import Actions (actionsWebSocket)
 import Control.Concurrent.Async (race_)
 import Control.Monad (when)
 import Data.List (isPrefixOf)
