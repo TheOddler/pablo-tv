@@ -8,7 +8,6 @@
 module MyLib where
 
 import Control.Concurrent.Async (race_)
-import Control.Monad (when)
 import Data.List (isPrefixOf)
 import Network.Info (IPv4 (..), NetworkInterface (..), getNetworkInterfaces)
 import System.Process (callProcess)
