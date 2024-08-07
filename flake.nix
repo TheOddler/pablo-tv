@@ -12,9 +12,12 @@
       let
         pkgs = nixpkgs.legacyPackages.${system};
       in
-      {
+      rec {
         devShells.default = pkgs.haskellPackages.shellFor {
-          packages = p: [ self.packages.${system}.default ];
+          packages = p: [
+            # Use the base version because it doesn't have optimisations enabled
+            packages.pablo-tv-base
+          ];
           buildInputs = with pkgs; [
             cabal-install
             haskell-language-server
@@ -23,7 +26,7 @@
             ydotool
             nil
           ];
-          inherit (self.checks.${system}.pre-commit-check) shellHook;
+          inherit (checks.pre-commit-check) shellHook;
         };
 
         checks = {
@@ -47,23 +50,28 @@
               };
             };
           };
-          app = self.packages.${system}.default;
+          app = packages.default;
         };
 
-        packages.default = pkgs.haskellPackages.developPackage {
-          root = ./.;
-          modifier = drv:
-            drv.overrideAttrs
-              (oldAttrs: {
-                nativeBuildInputs = oldAttrs.nativeBuildInputs ++ [ pkgs.makeWrapper pkgs.ydotool ];
-                configureFlags = oldAttrs.configureFlags ++ [ "--ghc-option=-O2" ];
-                postInstall =
-                  (oldAttrs.postInstall or "")
-                  + ''
-                    wrapProgram $out/bin/pablo-tv \
-                      --suffix PATH : ${pkgs.lib.makeBinPath [pkgs.ydotool]}
-                  '';
-              });
+        packages = {
+          pablo-tv-base = pkgs.haskellPackages.developPackage {
+            root = ./.;
+            modifier = drv:
+              drv.overrideAttrs
+                (oldAttrs: {
+                  nativeBuildInputs = oldAttrs.nativeBuildInputs ++ [ pkgs.makeWrapper pkgs.ydotool ];
+                  postInstall =
+                    (oldAttrs.postInstall or "")
+                    + ''
+                      wrapProgram $out/bin/pablo-tv \
+                        --suffix PATH : ${pkgs.lib.makeBinPath [pkgs.ydotool]}
+                    '';
+                });
+          };
+          pablo-tv = packages.pablo-tv-base.overrideAttrs (oldAttrs: {
+            configureFlags = oldAttrs.configureFlags ++ [ "--ghc-option=-O2" ];
+          });
+          default = packages.pablo-tv;
         };
       }
     );
