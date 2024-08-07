@@ -62,3 +62,4 @@ test-suite pablo-tv-test
     build-depends:
         pablo-tv
       , sydtest
+      , sydtest-discover
