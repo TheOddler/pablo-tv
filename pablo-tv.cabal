@@ -35,15 +35,19 @@ library
     if flag(development)
         cpp-options: -DDEVELOPMENT
     other-modules:
+        Actions
         Util
     build-depends:
-        async
+        aeson
+      , async
+      , bytestring
       , data-default
       , network-info
       , process
       , shakespeare
       , template-haskell
       , yesod
+      , yesod-websockets
 
 executable pablo-tv
     import:           defaults

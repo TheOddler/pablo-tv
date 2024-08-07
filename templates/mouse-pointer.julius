@@ -1,11 +1,11 @@
-window.addEventListener("deviceorientation", handleOrientation, true);
-
 const debugEl = document.getElementById("debug");
 
 let orientation;
 let centerOrientation;
+let leftRight;
+let upDown;
 let scalingFactor = 1 / 22.5;
-let jitterReduction = 20;
+let jitterReduction = 10;
 
 function diffAngle(a, b) {
   let diff = (a - b + 720) % 360;
@@ -13,37 +13,45 @@ function diffAngle(a, b) {
   return diff;
 }
 
-function handleOrientation(event) {
-  // If this is the first time we get orientation, do some setup
-  if (!orientation) {
-    orientation = {
-      leftRight: event.alpha,
-      upDown: event.beta,
-    };
-    resetCenter();
-  }
-
-  // Slowly move orientation to prevent jittering
-  orientation = {
-    leftRight: orientation.leftRight + (event.alpha - orientation.leftRight) / jitterReduction,
-    upDown: orientation.upDown + (event.beta - orientation.upDown) / jitterReduction,
-  };
-  
-  // orientation = {
-  //   leftRight: event.alpha, // [0, 360[
-  //   upDown: event.beta, // [-180, 180]
-  // };
-
-  sendOrientation();
+function slowMove(from, to) {
+  return from + (to - from) / jitterReduction;
 }
 
-const sendOrientation = throttle(() => {
-  const leftRight = diffAngle(orientation.leftRight, centerOrientation.leftRight);
-  const upDown = diffAngle(orientation.upDown, centerOrientation.upDown);
+function handleOrientation(event) {
+  orientation = {
+    leftRight: event.alpha, // [0, 360[
+    upDown: event.beta, // [-180, 180]
+  };
 
-  pointMouse(-leftRight * scalingFactor, -upDown * scalingFactor);
-}, 100);
+  // If this is the first time we get orientation, do some setup
+  if (!centerOrientation) resetCenter();
+
+  if (!leftRight) leftRight = orientation.leftRight;
+  if (!upDown) upDown = orientation.upDown;
+  leftRight = slowMove(leftRight, diffAngle(orientation.leftRight, centerOrientation.leftRight));
+  upDown = slowMove(upDown, diffAngle(orientation.upDown, centerOrientation.upDown));
+
+  debugEl.innerHtml = `
+    <p>center: ${centerOrientation.leftRight.toFixed(2)}, ${centerOrientation.upDown.toFixed(2)}</p>
+    <p>orientation: ${orientation.leftRight.toFixed(2)}, ${orientation.upDown.toFixed(2)}</p>
+
+    <p>leftRight: ${leftRight.toFixed(2)}</p>
+    <p>upDown: ${upDown.toFixed(2)}</p>
+  `;
+
+  sendOrientation();
+};
+
+const sendOrientation = throttle(() => {
+  sendWebSocketMessage({ 
+    tag: "PointMouse",
+    leftRight: -leftRight * scalingFactor,
+    upDown: -upDown * scalingFactor,
+  });
+});
 
 function resetCenter() {
   centerOrientation = orientation;
 }
+
+window.addEventListener("deviceorientation", handleOrientation, true);

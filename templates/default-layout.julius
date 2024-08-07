@@ -1,3 +1,4 @@
+// Helpers
 function throttle(func, timeout = 50) {
   let timer;
   let latestFunc;
@@ -9,28 +10,43 @@ function throttle(func, timeout = 50) {
   };
 }
 
-function moveMouse(x, y) {
-  fetch("@{MoveMouseR}", {
-    method: "POST",
-    body: JSON.stringify([x, y]),
-    headers: {
-      "Content-type": "application/json; charset=UTF-8"
-    }
-  });
-}
-
-function pointMouse(leftRight, upDown) {
-  fetch("@{MousePointR}", {
-    method: "POST",
-    body: JSON.stringify([leftRight, upDown]),
-    headers: {
-      "Content-type": "application/json; charset=UTF-8"
-    }
-  });
-}
-
 function clickMouse() {
-  fetch("@{ClickMouseR}", {
-    method: "POST"
-  });
+  sendWebSocketMessage({ tag: "ClickMouse" });
+}
+
+// Websocket stuff
+let webSocket;
+function connectWebSocket() {
+  webSocket = new WebSocket('ws://' + window.location.host);
+  webSocket.onopen = function() {
+    console.log('WebSocket is connected');
+  };
+
+  // For now we only send stuff to the server, so no need to read
+  // webSocket.onmessage = function(e) {
+  //   console.log('Message:', e.data);
+  // };
+
+  webSocket.onclose = function(e) {
+    console.log('Socket is closed. Reconnect will be attempted in 1 second.', e.reason);
+    setTimeout(function() {
+      connectWebSocket();
+    }, 1000);
+  };
+
+  webSocket.onerror = function(err) {
+    console.error('Socket encountered error: ', err.message, 'Closing socket');
+    webSocket.close();
+  };
+}
+connectWebSocket();
+
+function sendWebSocketMessage(message) {
+  if (webSocket.readyState === WebSocket.OPEN) {
+    console.log('Sending message:', message);
+    webSocket.send(JSON.stringify(message));
+  }
+  else {
+    console.log('WebSocket is not open. Message not sent:', message);
+  }
 }

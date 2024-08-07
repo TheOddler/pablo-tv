@@ -1,16 +1,18 @@
 let previousTouch;
-function handleTouchMove(event) {
+
+const handleTouchMove = throttle((event) => {
   const touch = event.touches[0];
 
-  if (previousTouch) {
+  if(previousTouch)
+  {
     const x = touch.pageX - previousTouch.pageX;
     const y = touch.pageY - previousTouch.pageY;
-    moveMouse(x, y);
-  };
+    sendWebSocketMessage({ tag: "MoveMouse", x, y });
+  }
 
   previousTouch = touch;
-}
+});
 
 document.addEventListener("touchstart", e => previousTouch = e.touches[0]);
-document.addEventListener("touchmove", throttle(handleTouchMove));
+document.addEventListener("touchmove", handleTouchMove);
 document.addEventListener("click", clickMouse);
