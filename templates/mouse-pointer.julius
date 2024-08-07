@@ -23,15 +23,17 @@ function handleOrientation(event) {
     upDown: event.beta, // [-180, 180]
   };
 
-  // If this is the first time we get orientation, do some setup
+  // If this is the first time this is called, do some setup
   if (!centerOrientation) resetCenter();
-
   if (!leftRight) leftRight = orientation.leftRight;
   if (!upDown) upDown = orientation.upDown;
-  leftRight = slowMove(leftRight, diffAngle(orientation.leftRight, centerOrientation.leftRight));
-  upDown = slowMove(upDown, diffAngle(orientation.upDown, centerOrientation.upDown));
 
-  debugEl.innerHtml = `
+  const newLeftRight = diffAngle(orientation.leftRight, centerOrientation.leftRight);
+  const newUpDown = diffAngle(orientation.upDown, centerOrientation.upDown);
+  leftRight = slowMove(leftRight, newLeftRight);
+  upDown = slowMove(upDown, newUpDown);
+
+  debugEl.innerHTML = `
     <p>center: ${centerOrientation.leftRight.toFixed(2)}, ${centerOrientation.upDown.toFixed(2)}</p>
     <p>orientation: ${orientation.leftRight.toFixed(2)}, ${orientation.upDown.toFixed(2)}</p>
 
