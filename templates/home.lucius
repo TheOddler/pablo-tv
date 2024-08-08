@@ -1,11 +1,23 @@
 .tools-list {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-evenly;
-  align-items: center;
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
 
-  >a {
-    font-size: 800%;
-    text-decoration: none;
+  column-gap: 18pt;
+  row-gap: 18pt;
+  padding: 10pt;
+
+  >button {
+    aspect-ratio: 1;
+    font-size: 15vw;
+    box-sizing: content-box;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    svg {
+      width: 60%;
+      height: 60%;
+    }
   }
 }
