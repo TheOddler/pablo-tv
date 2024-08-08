@@ -2,14 +2,14 @@
   display: grid;
   grid-template-columns: 1fr 1fr 1fr;
 
-  column-gap: 18pt;
-  row-gap: 18pt;
-  padding: 10pt;
+  font-size: 15vw;
+  column-gap: 0.3em;
+  row-gap: 0.3em;
+  padding: 0.15em;
 
   >button {
     aspect-ratio: 1;
     font-size: 15vw;
-    box-sizing: content-box;
 
     display: flex;
     align-items: center;
