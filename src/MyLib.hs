@@ -7,10 +7,11 @@
 
 module MyLib where
 
-import Actions (actionsWebSocket)
+import Actions (actionsWebSocket, mkVirtualMouse)
 import Control.Concurrent.Async (race_)
 import Control.Monad (when)
 import Data.List (isPrefixOf)
+import Evdev.Uinput (Device)
 import Network.Info (IPv4 (..), NetworkInterface (..), getNetworkInterfaces)
 import System.Process (callProcess)
 import Text.Hamlet (hamletFile)
@@ -20,7 +21,8 @@ import Yesod.WebSockets (webSockets)
 
 data App = App
   { appNetworkInterfaces :: [NetworkInterface],
-    appPort :: Int
+    appPort :: Int,
+    appMouse :: Device
   }
 
 mkYesod
@@ -56,7 +58,8 @@ instance Yesod App where
 
 getHomeR :: Handler Html
 getHomeR = do
-  webSockets actionsWebSocket
+  mouse <- getsYesod appMouse
+  webSockets $ actionsWebSocket mouse
   networkInterfaces <- networkInterfacesShortList <$> getsYesod appNetworkInterfaces
   port <- getsYesod appPort
   defaultLayout $(widgetFile "home")
@@ -96,6 +99,7 @@ main = do
   where
     yDoToolDaemon = callProcess "ydotoold" []
     server = do
+      mouse <- mkVirtualMouse
       ips <- getNetworkInterfaces
       let port = 8080
       putStrLn "Running on port 8080 - http://localhost:8080/"
@@ -103,5 +107,6 @@ main = do
       warp port $
         App
           { appNetworkInterfaces = ips,
-            appPort = port
+            appPort = port,
+            appMouse = mouse
           }

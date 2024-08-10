@@ -42,6 +42,7 @@ library
       , async
       , bytestring
       , data-default
+      , evdev
       , network-info
       , process
       , shakespeare

@@ -24,6 +24,7 @@
             hlint
             watchexec
             ydotool
+            libevdev
             nil
           ];
           inherit (checks.pre-commit-check) shellHook;
@@ -59,12 +60,12 @@
             modifier = drv:
               drv.overrideAttrs
                 (oldAttrs: {
-                  nativeBuildInputs = oldAttrs.nativeBuildInputs ++ [ pkgs.makeWrapper pkgs.ydotool ];
+                  nativeBuildInputs = oldAttrs.nativeBuildInputs ++ [ pkgs.makeWrapper pkgs.ydotool pkgs.libevdev ];
                   postInstall =
                     (oldAttrs.postInstall or "")
                     + ''
                       wrapProgram $out/bin/pablo-tv \
-                        --suffix PATH : ${pkgs.lib.makeBinPath [pkgs.ydotool]}
+                        --suffix PATH : ${pkgs.lib.makeBinPath [pkgs.ydotool pkgs.libevdev]}
                     '';
                 });
           };
