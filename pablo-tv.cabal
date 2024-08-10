@@ -36,6 +36,7 @@ library
         cpp-options: -DDEVELOPMENT
     other-modules:
         Actions
+        SafeMaths
         Util
     build-depends:
         aeson

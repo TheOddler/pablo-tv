@@ -6,8 +6,9 @@ import Data.ByteString.Lazy (ByteString)
 import Data.Int (Int32)
 import Evdev.Codes
 import Evdev.Uinput
+import GHC.Float (int2Float)
 import GHC.Generics (Generic)
-import System.Process (callProcess)
+import SafeMaths (int32ToInt)
 import Yesod (MonadHandler, liftIO)
 import Yesod.WebSockets (WebSocketsT, receiveData)
 
@@ -38,31 +39,39 @@ decodeAndPerformAction mouse websocketData = case JSON.eitherDecode websocketDat
 
 performAction :: Device -> Action -> IO ()
 performAction mouse = \case
-  ClickMouse -> callProcess "ydotool" ["click", "0xC0"]
-  MoveMouse x y -> do
+  ClickMouse ->
+    writeBatch
+      mouse
+      [ KeyEvent BtnLeft Pressed,
+        SyncEvent SynReport,
+        KeyEvent BtnLeft Released
+        -- Batch automatically adds a sync at the end too
+      ]
+  MoveMouse x y ->
     writeBatch
       mouse
       [ RelativeEvent RelX $ EventValue x,
         RelativeEvent RelY $ EventValue y
       ]
   PointMouse lr ud -> do
-    let -- I currently just hard-code the screen size because I don't have a nice way of detecting it yet
-        screenHalfSize = 690 / 2 -- For some reason ydotool thinks the screen is 690 high...
-        centerX = 1100 / 2 -- For some reason ydotool thinks the screen is 1100 wide?
-        centerY = 690 / 2 -- For some reason ydotool thinks the screen is 690 high...
-        pointerX :: Int
+    let -- I assume the screen is in landscape mode
+        int32ToFloat = int2Float . int32ToInt
+        screenHalfSize = int32ToFloat screenHeight / 2
+        centerX = int32ToFloat screenWidth / 2
+        centerY = int32ToFloat screenHeight / 2
         pointerX = floor $ centerX + lr * screenHalfSize
-        pointerY :: Int
         pointerY = floor $ centerY + ud * screenHalfSize
-    callProcess
-      "ydotool"
-      [ "mousemove",
-        "--absolute",
-        "-x",
-        show pointerX,
-        "-y",
-        show pointerY
+    writeBatch
+      mouse
+      [ AbsoluteEvent AbsX $ EventValue pointerX,
+        AbsoluteEvent AbsY $ EventValue pointerY
       ]
+
+screenWidth :: Int32
+screenWidth = 1920
+
+screenHeight :: Int32
+screenHeight = 1080
 
 mkVirtualMouse :: IO Device
 mkVirtualMouse =
@@ -82,7 +91,7 @@ mkVirtualMouse =
               AbsInfo
                 { absValue = 0,
                   absMinimum = 0,
-                  absMaximum = 1920,
+                  absMaximum = screenWidth,
                   absFuzz = 0,
                   absFlat = 0,
                   absResolution = 0
@@ -92,7 +101,7 @@ mkVirtualMouse =
               AbsInfo
                 { absValue = 0,
                   absMinimum = 0,
-                  absMaximum = 1080,
+                  absMaximum = screenHeight,
                   absFuzz = 0,
                   absFlat = 0,
                   absResolution = 0

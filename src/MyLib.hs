@@ -8,12 +8,10 @@
 module MyLib where
 
 import Actions (actionsWebSocket, mkVirtualMouse)
-import Control.Concurrent.Async (race_)
 import Control.Monad (when)
 import Data.List (isPrefixOf)
 import Evdev.Uinput (Device)
 import Network.Info (IPv4 (..), NetworkInterface (..), getNetworkInterfaces)
-import System.Process (callProcess)
 import Text.Hamlet (hamletFile)
 import Util (isDevelopment, widgetFile)
 import Yesod
@@ -95,18 +93,14 @@ ipV4OrV6WithPort port i =
 
 main :: IO ()
 main = do
-  race_ yDoToolDaemon server
-  where
-    yDoToolDaemon = callProcess "ydotoold" []
-    server = do
-      mouse <- mkVirtualMouse
-      ips <- getNetworkInterfaces
-      let port = 8080
-      putStrLn "Running on port 8080 - http://localhost:8080/"
-      putStrLn $ "Development mode: " ++ show isDevelopment
-      warp port $
-        App
-          { appNetworkInterfaces = ips,
-            appPort = port,
-            appMouse = mouse
-          }
+  mouse <- mkVirtualMouse
+  ips <- getNetworkInterfaces
+  let port = 8080
+  putStrLn "Running on port 8080 - http://localhost:8080/"
+  putStrLn $ "Development mode: " ++ show isDevelopment
+  warp port $
+    App
+      { appNetworkInterfaces = ips,
+        appPort = port,
+        appMouse = mouse
+      }

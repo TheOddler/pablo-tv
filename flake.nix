@@ -23,7 +23,6 @@
             haskell-language-server
             hlint
             watchexec
-            ydotool
             libevdev
             nil
           ];
@@ -60,12 +59,12 @@
             modifier = drv:
               drv.overrideAttrs
                 (oldAttrs: {
-                  nativeBuildInputs = oldAttrs.nativeBuildInputs ++ [ pkgs.makeWrapper pkgs.ydotool pkgs.libevdev ];
+                  nativeBuildInputs = oldAttrs.nativeBuildInputs ++ [ pkgs.makeWrapper pkgs.libevdev ];
                   postInstall =
                     (oldAttrs.postInstall or "")
                     + ''
                       wrapProgram $out/bin/pablo-tv \
-                        --suffix PATH : ${pkgs.lib.makeBinPath [pkgs.ydotool pkgs.libevdev]}
+                        --suffix PATH : ${pkgs.lib.makeBinPath [pkgs.libevdev]}
                     '';
                 });
           };
