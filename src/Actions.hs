@@ -163,7 +163,10 @@ charToKey = \case
   '"' -> [KeyLeftshift, KeyApostrophe]
   '\\' -> [KeyBackslash]
   '\n' -> [KeyEnter]
-  _ -> []
+  -- Replace unknown characters with space.
+  -- Since I imagine this would be mostly used for searching, adding spaces
+  -- should be safe and make the search still find what you're looking for.
+  _ -> [KeySpace]
 
 screenWidth :: Int32
 screenWidth = 1920
