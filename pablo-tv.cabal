@@ -40,7 +40,6 @@ library
         Util
     build-depends:
         aeson
-      , async
       , bytestring
       , data-default
       , evdev

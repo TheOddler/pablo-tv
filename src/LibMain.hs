@@ -32,14 +32,14 @@ mkYesod
   "App"
   [parseRoutes|
 -- Routes for the mobile app
-/ HomeR GET
-/ips AllIPsR GET
+/ MobileHomeR GET
 /trackpad TrackpadR GET
 /pointer MousePointerR GET
 /keyboard KeyboardR GET
 
 -- Routes for the 
 /tv TVHomeR GET
+/ips AllIPsR GET
 
 -- Other
 /reconnecting-websocket.js ReconnectingWebSocketJSR GET
@@ -68,8 +68,8 @@ instance Yesod App where
     withUrlRenderer $
       $(hamletFile "templates/default-layout-wrapper.hamlet")
 
-getHomeR :: Handler Html
-getHomeR = do
+getMobileHomeR :: Handler Html
+getMobileHomeR = do
   inputDevice <- getsYesod appInputDevice
   webSockets $ actionsWebSocket inputDevice
   defaultLayout $(widgetFile "home")
