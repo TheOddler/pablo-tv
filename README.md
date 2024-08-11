@@ -14,5 +14,5 @@ Note: Make sure to open up the 8080 port so your phone can connect.
 # Dev server
 
 ```bash
-sudo watchexec -e hs,hamlet,cabal --restart cabal run -f development
+watchexec -e hs,hamlet,cabal --restart cabal run -f development
 ```
