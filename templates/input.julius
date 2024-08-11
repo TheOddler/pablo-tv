@@ -65,8 +65,8 @@ document.getElementById("right").addEventListener("click", clickMouse);
     const newLR = Math.tan(angleLR * Math.PI / 180);
     const newUD = Math.tan(angleUD * Math.PI / 180);
     smoothed = {
-      leftRight: slowMove(smoothed.leftRight, newLR * scalingFactor),
-      upDown: slowMove(smoothed.upDown, newUD * scalingFactor)
+      leftRight: slowMove(smoothed.leftRight, newLR),
+      upDown: slowMove(smoothed.upDown, newUD)
     }
 
     sendOrientation(smoothed);
@@ -75,13 +75,15 @@ document.getElementById("right").addEventListener("click", clickMouse);
   const sendOrientation = throttle((value) => {
     sendWebSocketMessage({
       tag: "PointMouse",
-      leftRight: -value.leftRight,
-      upDown: -value.upDown,
+      leftRight: -value.leftRight * scalingFactor,
+      upDown: -value.upDown * scalingFactor,
     });
   });
 
   function resetCenter() {
     center = raw;
+    smoothed = { leftRight: 0, upDown: 0 };
+    sendOrientation(smoothed);
   }
 
   window.addEventListener("deviceorientation", handleOrientation, true);
