@@ -4,6 +4,7 @@ import Control.Monad (forever)
 import Data.Aeson qualified as JSON
 import Data.ByteString.Lazy (ByteString)
 import Data.Int (Int32)
+import Data.List (nub)
 import Evdev.Codes
 import Evdev.Uinput
 import GHC.Float (int2Float)
@@ -186,69 +187,21 @@ mkInputDevice =
         idBustype = Nothing,
         idVersion = Nothing,
         keys =
-          [ -- Mouse buttons
-            BtnLeft,
-            BtnRight,
-            BtnMiddle,
-            -- Keyboard special buttons
-            KeyEsc,
-            KeyLeftshift,
-            KeyBackspace,
-            KeyTab,
-            KeyEnter,
-            -- Keyboard characters
-            KeySpace,
-            KeyA,
-            KeyB,
-            KeyC,
-            KeyD,
-            KeyE,
-            KeyF,
-            KeyG,
-            KeyH,
-            KeyI,
-            KeyJ,
-            KeyK,
-            KeyL,
-            KeyM,
-            KeyN,
-            KeyO,
-            KeyP,
-            KeyQ,
-            KeyR,
-            KeyS,
-            KeyT,
-            KeyU,
-            KeyV,
-            KeyW,
-            KeyX,
-            KeyY,
-            KeyZ,
-            KeyKp0,
-            KeyKp1,
-            KeyKp2,
-            KeyKp3,
-            KeyKp4,
-            KeyKp5,
-            KeyKp6,
-            KeyKp7,
-            KeyKp8,
-            KeyKp9,
-            Key0, -- for )
-            Key2, -- for @
-            Key9, -- for (
-            KeyMinus,
-            KeyEqual,
-            KeyComma,
-            KeyDot,
-            KeySlash,
-            KeyKpasterisk,
-            KeyLeftbrace,
-            KeyRightbrace,
-            KeySemicolon,
-            KeyApostrophe,
-            KeyBackslash
-          ],
+          -- We only run this once, so it's fine to use nub here
+          nub
+            ( [ -- Mouse buttons
+                BtnLeft,
+                BtnRight,
+                BtnMiddle,
+                -- Keyboard buttons
+                KeyEsc,
+                KeyBackspace,
+                KeyTab,
+                KeyEnter
+              ]
+                -- Add all keys we support in the keyboard
+                ++ concatMap charToKey [minBound .. maxBound]
+            ),
         relAxes = [RelX, RelY],
         absAxes =
           let absInfo max' =
