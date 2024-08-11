@@ -5,7 +5,7 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE ViewPatterns #-}
 
-module MyLib where
+module LibMain where
 
 import Actions (actionsWebSocket, mkInputDevice)
 import Control.Monad (when)
@@ -101,7 +101,7 @@ main = do
   inputDevice <- mkInputDevice
   ips <- getNetworkInterfaces
   let port = 8080
-  putStrLn "Running on port 8080 - http://localhost:8080/"
+  putStrLn $ "Running on port " ++ show port ++ " - http://localhost:" ++ show port ++ "/"
   putStrLn $ "Development mode: " ++ show isDevelopment
   warp port $
     App

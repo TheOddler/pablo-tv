@@ -1,8 +1,8 @@
 module Main where
 
-import MyLib qualified
+import LibMain qualified
 
 main :: IO ()
 main = do
-  putStrLn "Running server:"
-  MyLib.main
+  putStrLn "Running server..."
+  LibMain.main

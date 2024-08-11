@@ -31,7 +31,7 @@ common defaults
 library
     import:           defaults
     hs-source-dirs:   src
-    exposed-modules:  MyLib
+    exposed-modules:  LibMain
     if flag(development)
         cpp-options: -DDEVELOPMENT
     other-modules:
