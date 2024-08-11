@@ -23,25 +23,26 @@ data Action
     -- Does that make sense?
     -- It's meant to be used with the mouse pointer tool
     PointMouse {leftRight :: Float, upDown :: Float}
+  | Write {text :: String}
   deriving (Generic, Show)
 
 instance JSON.FromJSON Action
 
 actionsWebSocket :: (MonadHandler m) => Device -> WebSocketsT m ()
-actionsWebSocket mouse = forever $ do
+actionsWebSocket inputDevice = forever $ do
   d <- receiveData
-  liftIO $ decodeAndPerformAction mouse d
+  liftIO $ decodeAndPerformAction inputDevice d
 
 decodeAndPerformAction :: Device -> ByteString -> IO ()
-decodeAndPerformAction mouse websocketData = case JSON.eitherDecode websocketData of
+decodeAndPerformAction inputDevice websocketData = case JSON.eitherDecode websocketData of
   Left err -> putStrLn $ "Error decoding action: " <> err
-  Right action -> performAction mouse action
+  Right action -> performAction inputDevice action
 
 performAction :: Device -> Action -> IO ()
-performAction mouse = \case
+performAction inputDevice = \case
   ClickMouse ->
     writeBatch
-      mouse
+      inputDevice
       [ KeyEvent BtnLeft Pressed,
         SyncEvent SynReport,
         KeyEvent BtnLeft Released
@@ -49,7 +50,7 @@ performAction mouse = \case
       ]
   MoveMouse x y ->
     writeBatch
-      mouse
+      inputDevice
       [ RelativeEvent RelX $ EventValue x,
         RelativeEvent RelY $ EventValue y
       ]
@@ -62,10 +63,107 @@ performAction mouse = \case
         pointerX = floor $ centerX + lr * screenHalfSize
         pointerY = floor $ centerY + ud * screenHalfSize
     writeBatch
-      mouse
+      inputDevice
       [ AbsoluteEvent AbsX $ EventValue pointerX,
         AbsoluteEvent AbsY $ EventValue pointerY
       ]
+  Write text -> do
+    let clickKeyCombo keys =
+          map (`KeyEvent` Pressed) keys
+            ++ [SyncEvent SynReport]
+            ++ map (`KeyEvent` Released) (reverse keys)
+            ++ [SyncEvent SynReport]
+        events = concatMap (clickKeyCombo . charToKey) text
+    putStrLn $ "Writing " ++ text
+    putStrLn $ "Events: " ++ show events
+    writeBatch inputDevice events
+
+charToKey :: Char -> [Key]
+charToKey = \case
+  ' ' -> [KeySpace]
+  'a' -> [KeyA]
+  'b' -> [KeyB]
+  'c' -> [KeyC]
+  'd' -> [KeyD]
+  'e' -> [KeyE]
+  'f' -> [KeyF]
+  'g' -> [KeyG]
+  'h' -> [KeyH]
+  'i' -> [KeyI]
+  'j' -> [KeyJ]
+  'k' -> [KeyK]
+  'l' -> [KeyL]
+  'm' -> [KeyM]
+  'n' -> [KeyN]
+  'o' -> [KeyO]
+  'p' -> [KeyP]
+  'q' -> [KeyQ]
+  'r' -> [KeyR]
+  's' -> [KeyS]
+  't' -> [KeyT]
+  'u' -> [KeyU]
+  'v' -> [KeyV]
+  'w' -> [KeyW]
+  'x' -> [KeyX]
+  'y' -> [KeyY]
+  'z' -> [KeyZ]
+  'A' -> [KeyLeftshift, KeyA]
+  'B' -> [KeyLeftshift, KeyB]
+  'C' -> [KeyLeftshift, KeyC]
+  'D' -> [KeyLeftshift, KeyD]
+  'E' -> [KeyLeftshift, KeyE]
+  'F' -> [KeyLeftshift, KeyF]
+  'G' -> [KeyLeftshift, KeyG]
+  'H' -> [KeyLeftshift, KeyH]
+  'I' -> [KeyLeftshift, KeyI]
+  'J' -> [KeyLeftshift, KeyJ]
+  'K' -> [KeyLeftshift, KeyK]
+  'L' -> [KeyLeftshift, KeyL]
+  'M' -> [KeyLeftshift, KeyM]
+  'N' -> [KeyLeftshift, KeyN]
+  'O' -> [KeyLeftshift, KeyO]
+  'P' -> [KeyLeftshift, KeyP]
+  'Q' -> [KeyLeftshift, KeyQ]
+  'R' -> [KeyLeftshift, KeyR]
+  'S' -> [KeyLeftshift, KeyS]
+  'T' -> [KeyLeftshift, KeyT]
+  'U' -> [KeyLeftshift, KeyU]
+  'V' -> [KeyLeftshift, KeyV]
+  'W' -> [KeyLeftshift, KeyW]
+  'X' -> [KeyLeftshift, KeyX]
+  'Y' -> [KeyLeftshift, KeyY]
+  'Z' -> [KeyLeftshift, KeyZ]
+  '0' -> [KeyKp0]
+  '1' -> [KeyKp1]
+  '2' -> [KeyKp2]
+  '3' -> [KeyKp3]
+  '4' -> [KeyKp4]
+  '5' -> [KeyKp5]
+  '6' -> [KeyKp6]
+  '7' -> [KeyKp7]
+  '8' -> [KeyKp8]
+  '9' -> [KeyKp9]
+  ',' -> [KeyComma]
+  '.' -> [KeyDot]
+  '/' -> [KeySlash]
+  '-' -> [KeyMinus]
+  '_' -> [KeyLeftshift, KeyMinus]
+  '=' -> [KeyEqual]
+  '+' -> [KeyLeftshift, KeyEqual]
+  '*' -> [KeyKpasterisk]
+  '[' -> [KeyLeftbrace]
+  ']' -> [KeyRightbrace]
+  '}' -> [KeyLeftshift, KeyRightbrace]
+  '{' -> [KeyLeftshift, KeyLeftbrace]
+  '(' -> [KeyLeftshift, Key9]
+  ')' -> [KeyLeftshift, Key0]
+  '@' -> [KeyLeftshift, Key2]
+  ':' -> [KeySemicolon]
+  '\'' -> [KeyApostrophe]
+  '"' -> [KeyLeftshift, KeyApostrophe]
+  '\\' -> [KeyBackslash]
+  '\n' -> [KeyEnter]
+  _ -> []
 
 screenWidth :: Int32
 screenWidth = 1920
@@ -73,10 +171,10 @@ screenWidth = 1920
 screenHeight :: Int32
 screenHeight = 1080
 
-mkVirtualMouse :: IO Device
-mkVirtualMouse =
+mkInputDevice :: IO Device
+mkInputDevice =
   newDevice
-    "Virtual Mouse"
+    "Pablo TV Input Device"
     DeviceOpts
       { phys = Nothing,
         uniq = Nothing,
@@ -84,30 +182,84 @@ mkVirtualMouse =
         idVendor = Nothing,
         idBustype = Nothing,
         idVersion = Nothing,
-        keys = [BtnLeft, BtnRight, BtnMiddle],
+        keys =
+          [ -- Mouse buttons
+            BtnLeft,
+            BtnRight,
+            BtnMiddle,
+            -- Keyboard special buttons
+            KeyEsc,
+            KeyLeftshift,
+            KeyBackspace,
+            KeyTab,
+            KeyEnter,
+            -- Keyboard characters
+            KeySpace,
+            KeyA,
+            KeyB,
+            KeyC,
+            KeyD,
+            KeyE,
+            KeyF,
+            KeyG,
+            KeyH,
+            KeyI,
+            KeyJ,
+            KeyK,
+            KeyL,
+            KeyM,
+            KeyN,
+            KeyO,
+            KeyP,
+            KeyQ,
+            KeyR,
+            KeyS,
+            KeyT,
+            KeyU,
+            KeyV,
+            KeyW,
+            KeyX,
+            KeyY,
+            KeyZ,
+            KeyKp0,
+            KeyKp1,
+            KeyKp2,
+            KeyKp3,
+            KeyKp4,
+            KeyKp5,
+            KeyKp6,
+            KeyKp7,
+            KeyKp8,
+            KeyKp9,
+            Key0, -- for )
+            Key2, -- for @
+            Key9, -- for (
+            KeyMinus,
+            KeyEqual,
+            KeyComma,
+            KeyDot,
+            KeySlash,
+            KeyKpasterisk,
+            KeyLeftbrace,
+            KeyRightbrace,
+            KeySemicolon,
+            KeyApostrophe,
+            KeyBackslash
+          ],
         relAxes = [RelX, RelY],
         absAxes =
-          [ ( AbsX,
-              AbsInfo
-                { absValue = 0,
-                  absMinimum = 0,
-                  absMaximum = screenWidth,
-                  absFuzz = 0,
-                  absFlat = 0,
-                  absResolution = 0
-                }
-            ),
-            ( AbsY,
-              AbsInfo
-                { absValue = 0,
-                  absMinimum = 0,
-                  absMaximum = screenHeight,
-                  absFuzz = 0,
-                  absFlat = 0,
-                  absResolution = 0
-                }
-            )
-          ],
+          let absInfo max' =
+                AbsInfo
+                  { absValue = 0,
+                    absMinimum = 0,
+                    absMaximum = max',
+                    absFuzz = 0,
+                    absFlat = 0,
+                    absResolution = 0
+                  }
+           in [ (AbsX, absInfo screenWidth),
+                (AbsY, absInfo screenHeight)
+              ],
         miscs = [],
         switchs = [],
         leds = [],

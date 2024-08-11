@@ -1,0 +1,3 @@
+function sendText(text) {
+  sendWebSocketMessage({ tag: "Write", text });
+}

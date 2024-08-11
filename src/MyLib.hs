@@ -7,7 +7,7 @@
 
 module MyLib where
 
-import Actions (actionsWebSocket, mkVirtualMouse)
+import Actions (actionsWebSocket, mkInputDevice)
 import Control.Monad (when)
 import Data.List (isPrefixOf)
 import Evdev.Uinput (Device)
@@ -20,7 +20,7 @@ import Yesod.WebSockets (webSockets)
 data App = App
   { appNetworkInterfaces :: [NetworkInterface],
     appPort :: Int,
-    appMouse :: Device
+    appInputDevice :: Device
   }
 
 mkYesod
@@ -30,6 +30,7 @@ mkYesod
 /ips AllIPsR GET
 /trackpad TrackpadR GET
 /pointer MousePointerR GET
+/keyboard KeyboardR GET
 |]
 
 instance Yesod App where
@@ -56,8 +57,8 @@ instance Yesod App where
 
 getHomeR :: Handler Html
 getHomeR = do
-  mouse <- getsYesod appMouse
-  webSockets $ actionsWebSocket mouse
+  inputDevice <- getsYesod appInputDevice
+  webSockets $ actionsWebSocket inputDevice
   networkInterfaces <- networkInterfacesShortList <$> getsYesod appNetworkInterfaces
   port <- getsYesod appPort
   defaultLayout $(widgetFile "home")
@@ -76,6 +77,10 @@ getMousePointerR :: Handler Html
 getMousePointerR =
   defaultLayout $(widgetFile "mouse-pointer")
 
+getKeyboardR :: Handler Html
+getKeyboardR =
+  defaultLayout $(widgetFile "keyboard")
+
 networkInterfacesShortList :: [NetworkInterface] -> [NetworkInterface]
 networkInterfacesShortList = filter onShortList
   where
@@ -93,7 +98,7 @@ ipV4OrV6WithPort port i =
 
 main :: IO ()
 main = do
-  mouse <- mkVirtualMouse
+  inputDevice <- mkInputDevice
   ips <- getNetworkInterfaces
   let port = 8080
   putStrLn "Running on port 8080 - http://localhost:8080/"
@@ -102,5 +107,5 @@ main = do
     App
       { appNetworkInterfaces = ips,
         appPort = port,
-        appMouse = mouse
+        appInputDevice = inputDevice
       }
