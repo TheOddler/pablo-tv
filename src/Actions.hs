@@ -75,8 +75,6 @@ performAction inputDevice = \case
             ++ map (`KeyEvent` Released) (reverse keys)
             ++ [SyncEvent SynReport]
         events = concatMap (clickKeyCombo . charToKey) text
-    putStrLn $ "Writing " ++ text
-    putStrLn $ "Events: " ++ show events
     writeBatch inputDevice events
 
 charToKey :: Char -> [Key]
