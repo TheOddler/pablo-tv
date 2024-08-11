@@ -8,15 +8,19 @@
 module LibMain where
 
 import Actions (actionsWebSocket, mkInputDevice)
-import Control.Monad (when)
+import Control.Concurrent (threadDelay)
+import Control.Monad (forever, when)
 import Data.List (isPrefixOf)
+import Data.Text (intercalate, pack, unpack)
+import Data.Time.Clock (getCurrentTime)
 import Evdev.Uinput (Device)
 import Network.Info (IPv4 (..), NetworkInterface (..), getNetworkInterfaces)
+import System.Process (callProcess)
 import Text.Hamlet (hamletFile)
 import Text.Julius (Javascript, jsFile)
 import Util (isDevelopment, widgetFile)
 import Yesod
-import Yesod.WebSockets (webSockets)
+import Yesod.WebSockets (sendTextData, webSockets)
 
 data App = App
   { appNetworkInterfaces :: [NetworkInterface],
@@ -27,12 +31,17 @@ data App = App
 mkYesod
   "App"
   [parseRoutes|
+-- Routes for the mobile app
 / HomeR GET
 /ips AllIPsR GET
 /trackpad TrackpadR GET
 /pointer MousePointerR GET
 /keyboard KeyboardR GET
 
+-- Routes for the 
+/tv TVHomeR GET
+
+-- Other
 /reconnecting-websocket.js ReconnectingWebSocketJSR GET
 |]
 
@@ -63,8 +72,6 @@ getHomeR :: Handler Html
 getHomeR = do
   inputDevice <- getsYesod appInputDevice
   webSockets $ actionsWebSocket inputDevice
-  networkInterfaces <- networkInterfacesShortList <$> getsYesod appNetworkInterfaces
-  port <- getsYesod appPort
   defaultLayout $(widgetFile "home")
 
 getAllIPsR :: Handler Html
@@ -72,6 +79,12 @@ getAllIPsR = do
   networkInterfaces <- getsYesod appNetworkInterfaces
   port <- getsYesod appPort
   defaultLayout $(widgetFile "ips")
+  where
+    hideZero :: (Show a, Eq a, Bounded a) => a -> String
+    hideZero a =
+      if a == minBound
+        then ""
+        else show a
 
 getTrackpadR :: Handler Html
 getTrackpadR =
@@ -85,8 +98,21 @@ getKeyboardR :: Handler Html
 getKeyboardR =
   defaultLayout $(widgetFile "keyboard")
 
+getTVHomeR :: Handler Html
+getTVHomeR = do
+  -- TV has it's own web socket to not interfere with the mobile app
+  webSockets $ forever $ do
+    time <- liftIO getCurrentTime
+    sendTextData $ pack $ show time
+    liftIO $ threadDelay 1_000_000
+
+  networkInterfaces <- networkInterfacesShortList <$> getsYesod appNetworkInterfaces
+  port <- getsYesod appPort
+  defaultLayout $(widgetFile "tv-home")
+
 getReconnectingWebSocketJSR :: Handler Javascript
-getReconnectingWebSocketJSR = withUrlRenderer $ $(jsFile "templates/reconnecting-websocket.js")
+getReconnectingWebSocketJSR =
+  withUrlRenderer $(jsFile "templates/reconnecting-websocket.js")
 
 networkInterfacesShortList :: [NetworkInterface] -> [NetworkInterface]
 networkInterfacesShortList = filter onShortList
@@ -108,8 +134,16 @@ main = do
   inputDevice <- mkInputDevice
   ips <- getNetworkInterfaces
   let port = 8080
-  putStrLn $ "Running on port " ++ show port ++ " - http://localhost:" ++ show port ++ "/"
+  let url = "http://localhost:" ++ show port ++ "/"
+  putStrLn $ "Running on port " ++ show port ++ " - " ++ url
   putStrLn $ "Development mode: " ++ show isDevelopment
+
+  -- Only open the browser automatically in production because it;s annoying in
+  -- development as it opens a new tab every time the server restarts.
+  when (not isDevelopment) $ do
+    let (path, _params) = renderRoute TVHomeR
+    callProcess "xdg-open" [url ++ unpack (intercalate "/" path)]
+
   warp port $
     App
       { appNetworkInterfaces = ips,

@@ -47,3 +47,11 @@ button {
 .round {
   border-radius: 50%;
 }
+
+.large {
+  font-size: 200%;
+}
+
+.xl {
+  font-size: 300%;
+}

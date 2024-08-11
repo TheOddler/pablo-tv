@@ -15,7 +15,7 @@ function clickMouse() {
 }
 
 // Websocket stuff
-let webSocket = new ReconnectingWebSocket('@{HomeR}');
+const webSocket = new ReconnectingWebSocket('@{HomeR}');
 
 function sendWebSocketMessage(message) {
   if (webSocket.readyState === WebSocket.OPEN) {

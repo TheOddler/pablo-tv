@@ -1,4 +1,4 @@
-<p>Port: #{port}
+<p class="large">Port: #{port}
 <table>
   <thead>
     <tr>
@@ -8,6 +8,6 @@
   <tbody>
     $forall networkInterface <- networkInterfaces
       <tr>
-          <td>#{show $ ipv4 networkInterface}
-          <td>#{show $ ipv6 networkInterface}
           <td>#{name networkInterface}
+          <td>#{hideZero $ ipv4 networkInterface}
+          <td>#{hideZero $ ipv6 networkInterface}

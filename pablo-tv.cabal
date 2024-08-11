@@ -48,6 +48,8 @@ library
       , process
       , shakespeare
       , template-haskell
+      , text
+      , time
       , yesod
       , yesod-websockets
 
