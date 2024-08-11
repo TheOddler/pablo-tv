@@ -169,6 +169,10 @@ charToKey = \case
   -- should be safe and make the search still find what you're looking for.
   _ -> [KeySpace]
 
+-- | Exact resolution doesn't seem to matter, think of this as the virtual
+-- screen size that we use internally, but it'll get mapped onto the real one.
+-- But it's important to know what the absAxes values are when setting the
+-- mouse position.
 screenWidth :: Int32
 screenWidth = 1920
 
