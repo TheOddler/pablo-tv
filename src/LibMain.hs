@@ -13,6 +13,7 @@ import Data.List (isPrefixOf)
 import Evdev.Uinput (Device)
 import Network.Info (IPv4 (..), NetworkInterface (..), getNetworkInterfaces)
 import Text.Hamlet (hamletFile)
+import Text.Julius (Javascript, jsFile)
 import Util (isDevelopment, widgetFile)
 import Yesod
 import Yesod.WebSockets (webSockets)
@@ -31,6 +32,8 @@ mkYesod
 /trackpad TrackpadR GET
 /pointer MousePointerR GET
 /keyboard KeyboardR GET
+
+/reconnecting-websocket.js ReconnectingWebSocketJSR GET
 |]
 
 instance Yesod App where
@@ -51,6 +54,7 @@ instance Yesod App where
               eruda.init();
             };
           |]
+      addScript ReconnectingWebSocketJSR
       $(widgetFile "default-layout")
     withUrlRenderer $
       $(hamletFile "templates/default-layout-wrapper.hamlet")
@@ -80,6 +84,9 @@ getMousePointerR =
 getKeyboardR :: Handler Html
 getKeyboardR =
   defaultLayout $(widgetFile "keyboard")
+
+getReconnectingWebSocketJSR :: Handler Javascript
+getReconnectingWebSocketJSR = withUrlRenderer $ $(jsFile "templates/reconnecting-websocket.js")
 
 networkInterfacesShortList :: [NetworkInterface] -> [NetworkInterface]
 networkInterfacesShortList = filter onShortList

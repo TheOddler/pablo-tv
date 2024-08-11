@@ -15,31 +15,7 @@ function clickMouse() {
 }
 
 // Websocket stuff
-let webSocket;
-function connectWebSocket() {
-  webSocket = new WebSocket('ws://' + window.location.host);
-  webSocket.onopen = function() {
-    console.log('WebSocket is connected');
-  };
-
-  // For now we only send stuff to the server, so no need to read
-  // webSocket.onmessage = function(e) {
-  //   console.log('Message:', e.data);
-  // };
-
-  webSocket.onclose = function(e) {
-    console.log('Socket is closed. Reconnect will be attempted in 1 second.', e.reason);
-    setTimeout(function() {
-      connectWebSocket();
-    }, 1000);
-  };
-
-  webSocket.onerror = function(err) {
-    console.error('Socket encountered error: ', err.message, 'Closing socket');
-    webSocket.close();
-  };
-}
-connectWebSocket();
+let webSocket = new ReconnectingWebSocket('@{HomeR}');
 
 function sendWebSocketMessage(message) {
   if (webSocket.readyState === WebSocket.OPEN) {

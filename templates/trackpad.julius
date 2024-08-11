@@ -3,8 +3,7 @@ let previousTouch;
 const handleTouchMove = throttle((event) => {
   const touch = event.touches[0];
 
-  if(previousTouch)
-  {
+  if (previousTouch) {
     const x = touch.pageX - previousTouch.pageX;
     const y = touch.pageY - previousTouch.pageY;
     sendWebSocketMessage({ tag: "MoveMouse", x, y });

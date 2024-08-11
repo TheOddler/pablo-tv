@@ -48,7 +48,7 @@ function handleOrientation(event) {
 };
 
 const sendOrientation = throttle(() => {
-  sendWebSocketMessage({ 
+  sendWebSocketMessage({
     tag: "PointMouse",
     leftRight: -leftRight * scalingFactor,
     upDown: -upDown * scalingFactor,
