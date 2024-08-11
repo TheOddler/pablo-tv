@@ -36,6 +36,7 @@ mkYesod
 /trackpad TrackpadR GET
 /pointer MousePointerR GET
 /keyboard KeyboardR GET
+/input InputR GET
 
 -- Routes for the 
 /tv TVHomeR GET
@@ -97,6 +98,10 @@ getMousePointerR =
 getKeyboardR :: Handler Html
 getKeyboardR =
   defaultLayout $(widgetFile "keyboard")
+
+getInputR :: Handler Html
+getInputR =
+  defaultLayout $(widgetFile "input")
 
 getTVHomeR :: Handler Html
 getTVHomeR = do

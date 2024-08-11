@@ -1,0 +1,100 @@
+// Trackpad
+const trackpad = document.getElementById("trackpad");
+let previousTouch;
+const handleTouchMove = throttle((event) => {
+  const touch = event.touches[0];
+  const x = touch.pageX - previousTouch.pageX;
+  const y = touch.pageY - previousTouch.pageY;
+  sendWebSocketMessage({ tag: "MoveMouse", x, y });
+  previousTouch = touch;
+});
+trackpad.addEventListener("touchstart", e => previousTouch = e.touches[0]);
+trackpad.addEventListener("touchmove", handleTouchMove);
+trackpad.addEventListener("click", clickMouse);
+
+// Click buttons
+document.getElementById("left").addEventListener("click", clickMouse);
+document.getElementById("right").addEventListener("click", clickMouse);
+
+// Pointer
+(() => {
+  /** @typedef {{ leftRight: number, upDown: number }} Orientation  */
+  /** @type {Orientation} */
+  let raw;
+  /** @type {Orientation} */
+  let smoothed;
+  /** @type {Orientation} */
+  let center;
+
+  const scalingFactor = 5;
+  const jitterReduction = 10;
+  let active = false;
+
+  /**
+   * @param a {number}
+   * @param b {number}
+   */
+  function diffAngle(a, b) {
+    let diff = (a - b + 720) % 360;
+    if (diff > 180) diff -= 360;
+    return diff;
+  }
+
+  /**
+   * @param from {number}
+   * @param to {number}
+   */
+  function slowMove(from, to) {
+    return from + (to - from) / jitterReduction;
+  }
+
+  /** @param event {{ alpha: number, beta: number }} */
+  function handleOrientation(event) {
+    // Even update raw when not active to reset center works
+    raw = {
+      leftRight: event.alpha, // [0, 360[
+      upDown: event.beta, // [-180, 180]
+    };
+
+    if (!active) return;
+    if (!center) center = raw;
+    if (!smoothed) smoothed = raw;
+
+    const angleLR = diffAngle(raw.leftRight, center.leftRight);
+    const angleUD = diffAngle(raw.upDown, center.upDown);
+    const newLR = Math.tan(angleLR * Math.PI / 180);
+    const newUD = Math.tan(angleUD * Math.PI / 180);
+    smoothed = {
+      leftRight: slowMove(smoothed.leftRight, newLR * scalingFactor),
+      upDown: slowMove(smoothed.upDown, newUD * scalingFactor)
+    }
+
+    sendOrientation(smoothed);
+  };
+
+  const sendOrientation = throttle((value) => {
+    sendWebSocketMessage({
+      tag: "PointMouse",
+      leftRight: -value.leftRight,
+      upDown: -value.upDown,
+    });
+  });
+
+  function resetCenter() {
+    center = raw;
+  }
+
+  window.addEventListener("deviceorientation", handleOrientation, true);
+  const pointerButton = document.getElementById("pointer");
+  pointerButton.addEventListener("touchstart", () => active = true);
+  pointerButton.addEventListener("touchend", () => active = false);
+  pointerButton.addEventListener("mousedown", () => active = true);
+  pointerButton.addEventListener("mouseup", () => active = false);
+  document.getElementById("recenter").addEventListener("click", resetCenter);
+})();
+
+// Keyboard
+document.getElementById("keyboard").addEventListener("click", () => {
+  const text = prompt("Enter text");
+  if (text !== null) sendWebSocketMessage({ tag: "Write", text });
+});
