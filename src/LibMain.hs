@@ -10,32 +10,32 @@ module LibMain where
 
 import Actions (actionsWebSocket, mkInputDevice)
 import Control.Monad (when)
-import Data.List (isPrefixOf)
 import Data.Text (Text, intercalate, pack, unpack)
 import Evdev.Uinput (Device)
-import GHC.Conc (TVar, atomically, newTVarIO, readTVar, readTVarIO, retry, writeTVar)
+import GHC.Conc (TVar, atomically, newTVarIO, writeTVar)
 import GHC.Utils.Monad (partitionM)
+import IsDevelopment (isDevelopment)
 import Network.Info (IPv4 (..), NetworkInterface (..), getNetworkInterfaces)
 import System.Directory (doesFileExist, getHomeDirectory, listDirectory)
 import System.FilePath (combine, (</>))
 import System.Process (callProcess)
 import Text.Hamlet (hamletFile)
 import Text.Julius (Javascript, jsFile)
-import Util (isDevelopment, widgetFile)
+import Util (networkInterfacesShortList, onChanges, widgetFile)
 import Yesod
 import Yesod.WebSockets (sendTextData, webSockets)
 
 data App = App
   { appPort :: Int,
     appInputDevice :: Device,
-    appTVState :: TVar (TVState App)
+    appTVState :: TVar TVState
   }
 
-newtype TVState a = TVState
-  { tvPage :: Route a
+newtype TVState = TVState
+  { tvPage :: Route App
   }
 
-instance (Eq (Route a)) => Eq (TVState a) where
+instance (Eq (Route App)) => Eq TVState where
   TVState a == TVState b = a == b
 
 mkYesod
@@ -118,21 +118,6 @@ getInputR :: Handler Html
 getInputR =
   defaultLayout $(widgetFile "input")
 
-onChanges :: (Eq a, MonadIO m) => TVar a -> (a -> m ()) -> m b
-onChanges tVar f = do
-  a <- liftIO $ readTVarIO tVar
-  f a
-  loop a
-  where
-    loop a = do
-      a' <- liftIO $ atomically $ do
-        a' <- readTVar tVar
-        -- If value hasn't changed, retry, which will block until the value changes
-        when (a == a') retry
-        pure a'
-      f a'
-      loop a'
-
 getTVHomeR :: Handler Html
 getTVHomeR = do
   -- TV has it's own web socket to not interfere with the mobile app
@@ -143,6 +128,14 @@ getTVHomeR = do
   networkInterfaces <- networkInterfacesShortList <$> liftIO getNetworkInterfaces
   port <- getsYesod appPort
   defaultLayout $(widgetFile "tv-home")
+  where
+    ipV4OrV6WithPort port i =
+      ( if ipv4 i == IPv4 0
+          then show $ ipv6 i
+          else show $ ipv4 i
+      )
+        ++ ":"
+        ++ show port
 
 getAllIPsR :: Handler Html
 getAllIPsR = do
@@ -159,21 +152,6 @@ getAllIPsR = do
 getReconnectingWebSocketJSR :: Handler Javascript
 getReconnectingWebSocketJSR =
   withUrlRenderer $(jsFile "templates/reconnecting-websocket.js")
-
-networkInterfacesShortList :: [NetworkInterface] -> [NetworkInterface]
-networkInterfacesShortList = filter onShortList
-  where
-    onShortList :: NetworkInterface -> Bool
-    onShortList NetworkInterface {name} = any (`isPrefixOf` name) ["en", "eth", "wl"]
-
-ipV4OrV6WithPort :: Int -> NetworkInterface -> String
-ipV4OrV6WithPort port i =
-  ( if ipv4 i == IPv4 0
-      then show $ ipv6 i
-      else show $ ipv4 i
-  )
-    ++ ":"
-    ++ show port
 
 main :: IO ()
 main = do

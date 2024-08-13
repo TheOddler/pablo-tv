@@ -36,6 +36,7 @@ library
         cpp-options: -DDEVELOPMENT
     other-modules:
         Actions
+        IsDevelopment
         SafeMaths
         Util
     build-depends:
