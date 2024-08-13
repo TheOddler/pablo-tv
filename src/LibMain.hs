@@ -119,19 +119,19 @@ getInputR =
   defaultLayout $(widgetFile "input")
 
 onChanges :: (Eq a, MonadIO m) => TVar a -> (a -> m ()) -> m b
-onChanges tvar action = do
-  startValue <- liftIO $ readTVarIO tvar
-  action startValue
-  loop startValue
+onChanges tVar f = do
+  a <- liftIO $ readTVarIO tVar
+  f a
+  loop a
   where
-    loop currentValue = do
-      nextValue <- liftIO $ atomically $ do
-        nextValue <- readTVar tvar
+    loop a = do
+      a' <- liftIO $ atomically $ do
+        a' <- readTVar tVar
         -- If value hasn't changed, retry, which will block until the value changes
-        when (currentValue == nextValue) retry
-        pure nextValue
-      action nextValue
-      loop nextValue
+        when (a == a') retry
+        pure a'
+      f a'
+      loop a'
 
 getTVHomeR :: Handler Html
 getTVHomeR = do
