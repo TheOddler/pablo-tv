@@ -10,6 +10,7 @@ module LibMain where
 
 import Actions (actionsWebSocket, mkInputDevice)
 import Control.Monad (when)
+import Data.List (foldl')
 import Data.Text (Text, intercalate, pack, unpack)
 import Evdev.Uinput (Device)
 import GHC.Conc (TVar, atomically, newTVarIO, writeTVar)
@@ -101,7 +102,7 @@ getKeyboardR =
 getFilesR :: [Text] -> Handler Html
 getFilesR pieces = do
   home <- liftIO getHomeDirectory
-  let currentPath = home </> foldl combine "Videos" (unpack <$> pieces)
+  let currentPath = home </> foldl' combine "Videos" (unpack <$> pieces)
   allPaths <- liftIO $ listDirectory currentPath
   (files, directories) <- liftIO $ partitionM (\p -> doesFileExist $ currentPath </> p) allPaths
 
