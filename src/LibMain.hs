@@ -3,18 +3,21 @@
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE ViewPatterns #-}
 
 module LibMain where
 
 import Actions (actionsWebSocket, mkInputDevice)
-import Control.Concurrent (threadDelay)
-import Control.Monad (forever, when)
+import Control.Monad (when)
 import Data.List (isPrefixOf)
-import Data.Text (intercalate, pack, unpack)
-import Data.Time.Clock (getCurrentTime)
+import Data.Text (Text, intercalate, pack, unpack)
 import Evdev.Uinput (Device)
+import GHC.Conc (TVar, atomically, newTVarIO, readTVar, readTVarIO, retry, writeTVar)
+import GHC.Utils.Monad (partitionM)
 import Network.Info (IPv4 (..), NetworkInterface (..), getNetworkInterfaces)
+import System.Directory (doesFileExist, getHomeDirectory, listDirectory)
+import System.FilePath (combine, (</>))
 import System.Process (callProcess)
 import Text.Hamlet (hamletFile)
 import Text.Julius (Javascript, jsFile)
@@ -23,10 +26,17 @@ import Yesod
 import Yesod.WebSockets (sendTextData, webSockets)
 
 data App = App
-  { appNetworkInterfaces :: [NetworkInterface],
-    appPort :: Int,
-    appInputDevice :: Device
+  { appPort :: Int,
+    appInputDevice :: Device,
+    appTVState :: TVar (TVState App)
   }
+
+newtype TVState a = TVState
+  { tvPage :: Route a
+  }
+
+instance (Eq (Route a)) => Eq (TVState a) where
+  TVState a == TVState b = a == b
 
 mkYesod
   "App"
@@ -37,6 +47,7 @@ mkYesod
 /pointer MousePointerR GET
 /keyboard KeyboardR GET
 /input InputR GET
+/files/+Texts FilesR GET
 
 -- Routes for the 
 /tv TVHomeR GET
@@ -75,18 +86,6 @@ getMobileHomeR = do
   webSockets $ actionsWebSocket inputDevice
   defaultLayout $(widgetFile "home")
 
-getAllIPsR :: Handler Html
-getAllIPsR = do
-  networkInterfaces <- getsYesod appNetworkInterfaces
-  port <- getsYesod appPort
-  defaultLayout $(widgetFile "ips")
-  where
-    hideZero :: (Show a, Eq a, Bounded a) => a -> String
-    hideZero a =
-      if a == minBound
-        then ""
-        else show a
-
 getTrackpadR :: Handler Html
 getTrackpadR =
   defaultLayout $(widgetFile "trackpad")
@@ -99,21 +98,63 @@ getKeyboardR :: Handler Html
 getKeyboardR =
   defaultLayout $(widgetFile "keyboard")
 
+getFilesR :: [Text] -> Handler Html
+getFilesR pieces = do
+  home <- liftIO getHomeDirectory
+  let currentPath = home </> foldl combine "Videos" (unpack <$> pieces)
+  allPaths <- liftIO $ listDirectory currentPath
+  (files, directories) <- liftIO $ partitionM (\p -> doesFileExist $ currentPath </> p) allPaths
+
+  let mkPieces :: FilePath -> [Text]
+      mkPieces p = pieces ++ [pack p]
+
+  -- Let the tv know what page we're on
+  tvStateTVar <- getsYesod appTVState
+  liftIO $ atomically $ writeTVar tvStateTVar $ TVState $ FilesR pieces
+
+  defaultLayout $(widgetFile "files")
+
 getInputR :: Handler Html
 getInputR =
   defaultLayout $(widgetFile "input")
 
+onChanges :: (Eq a, MonadIO m) => TVar a -> (a -> m ()) -> m b
+onChanges tvar action = do
+  startValue <- liftIO $ readTVarIO tvar
+  action startValue
+  loop startValue
+  where
+    loop currentValue = do
+      nextValue <- liftIO $ atomically $ do
+        nextValue <- readTVar tvar
+        -- If value hasn't changed, retry, which will block until the value changes
+        when (currentValue == nextValue) retry
+        pure nextValue
+      action nextValue
+      loop nextValue
+
 getTVHomeR :: Handler Html
 getTVHomeR = do
   -- TV has it's own web socket to not interfere with the mobile app
-  webSockets $ forever $ do
-    time <- liftIO getCurrentTime
-    sendTextData $ pack $ show time
-    liftIO $ threadDelay 1_000_000
+  tvStateTVar <- getsYesod appTVState
+  webSockets $ onChanges tvStateTVar $ \tvState -> do
+    sendTextData $ pack $ show $ renderRoute $ tvPage tvState
 
-  networkInterfaces <- networkInterfacesShortList <$> getsYesod appNetworkInterfaces
+  networkInterfaces <- networkInterfacesShortList <$> liftIO getNetworkInterfaces
   port <- getsYesod appPort
   defaultLayout $(widgetFile "tv-home")
+
+getAllIPsR :: Handler Html
+getAllIPsR = do
+  networkInterfaces <- liftIO getNetworkInterfaces
+  port <- getsYesod appPort
+  defaultLayout $(widgetFile "ips")
+  where
+    hideZero :: (Show a, Eq a, Bounded a) => a -> String
+    hideZero a =
+      if a == minBound
+        then ""
+        else show a
 
 getReconnectingWebSocketJSR :: Handler Javascript
 getReconnectingWebSocketJSR =
@@ -137,7 +178,8 @@ ipV4OrV6WithPort port i =
 main :: IO ()
 main = do
   inputDevice <- mkInputDevice
-  ips <- getNetworkInterfaces
+  tvState <- newTVarIO $ TVState MobileHomeR
+
   let port = 8080
   let url = "http://localhost:" ++ show port ++ "/"
   putStrLn $ "Running on port " ++ show port ++ " - " ++ url
@@ -149,9 +191,10 @@ main = do
     let (path, _params) = renderRoute TVHomeR
     callProcess "xdg-open" [url ++ unpack (intercalate "/" path)]
 
-  warp port $
+  warp
+    port
     App
-      { appNetworkInterfaces = ips,
-        appPort = port,
-        appInputDevice = inputDevice
+      { appPort = port,
+        appInputDevice = inputDevice,
+        appTVState = tvState
       }

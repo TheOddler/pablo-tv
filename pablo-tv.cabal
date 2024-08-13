@@ -42,13 +42,15 @@ library
         aeson
       , bytestring
       , data-default
+      , directory
       , evdev
+      , filepath
+      , ghc
       , network-info
       , process
       , shakespeare
       , template-haskell
       , text
-      , time
       , yesod
       , yesod-websockets
 
