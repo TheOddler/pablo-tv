@@ -71,9 +71,9 @@ instance Yesod App where
     pc <- widgetToPageContent $ do
       when isDevelopment $ addScriptRemote "https://pabloproductions.be/LiveJS/live.js"
       addScript ReconnectingWebSocketJSR
-      $(widgetFile "shared-layout")
+      $(widgetFile "shared-default")
     withUrlRenderer $
-      $(hamletFile "templates/shared-layout-wrapper.hamlet")
+      $(hamletFile "templates/shared-page-wrapper.hamlet")
 
 mobileLayout :: Widget -> Handler Html
 mobileLayout widget = Yesod.defaultLayout $ do
@@ -85,25 +85,25 @@ mobileLayout widget = Yesod.defaultLayout $ do
             eruda.init();
           };
         |]
-  $(widgetFile "mobile-layout")
+  $(widgetFile "mobile/default")
 
 getMobileHomeR :: Handler Html
 getMobileHomeR = do
   inputDevice <- getsYesod appInputDevice
   webSockets $ actionsWebSocket inputDevice
-  mobileLayout $(widgetFile "home")
+  mobileLayout $(widgetFile "mobile/home")
 
 getTrackpadR :: Handler Html
 getTrackpadR =
-  mobileLayout $(widgetFile "trackpad")
+  mobileLayout $(widgetFile "mobile/trackpad")
 
 getMousePointerR :: Handler Html
 getMousePointerR =
-  mobileLayout $(widgetFile "mouse-pointer")
+  mobileLayout $(widgetFile "mobile/mouse-pointer")
 
 getKeyboardR :: Handler Html
 getKeyboardR =
-  mobileLayout $(widgetFile "keyboard")
+  mobileLayout $(widgetFile "mobile/keyboard")
 
 getFilesR :: [Text] -> Handler Html
 getFilesR pieces = do
@@ -119,14 +119,14 @@ getFilesR pieces = do
   tvStateTVar <- getsYesod appTVState
   liftIO $ atomically $ writeTVar tvStateTVar $ TVState $ FilesR pieces
 
-  mobileLayout $(widgetFile "files")
+  mobileLayout $(widgetFile "mobile/files")
 
 getInputR :: Handler Html
 getInputR =
-  mobileLayout $(widgetFile "input")
+  mobileLayout $(widgetFile "mobile/input")
 
 tvLayout :: Widget -> Handler Html
-tvLayout widget = Yesod.defaultLayout $(widgetFile "tv-layout")
+tvLayout widget = Yesod.defaultLayout $(widgetFile "tv/default")
 
 getTVHomeR :: Handler Html
 getTVHomeR = do
@@ -137,7 +137,7 @@ getTVHomeR = do
 
   networkInterfaces <- networkInterfacesShortList <$> liftIO getNetworkInterfaces
   port <- getsYesod appPort
-  tvLayout $(widgetFile "tv-home")
+  tvLayout $(widgetFile "tv/home")
   where
     ipV4OrV6WithPort port i =
       ( if ipv4 i == IPv4 0
@@ -151,7 +151,7 @@ getAllIPsR :: Handler Html
 getAllIPsR = do
   networkInterfaces <- liftIO getNetworkInterfaces
   port <- getsYesod appPort
-  tvLayout $(widgetFile "ips")
+  tvLayout $(widgetFile "tv/ips")
   where
     hideZero :: (Show a, Eq a, Bounded a) => a -> String
     hideZero a =
