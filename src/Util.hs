@@ -8,6 +8,7 @@ import GHC.Conc (TVar, atomically, readTVar, readTVarIO, retry)
 import IsDevelopment (isDevelopment)
 import Language.Haskell.TH.Syntax (Exp, Q)
 import Network.Info (NetworkInterface (..))
+import Text.Julius qualified as Julius
 import Yesod.Default.Util (widgetFileNoReload, widgetFileReload)
 
 -- | Load a widget file, automatically reloading it in development.
@@ -18,6 +19,13 @@ widgetFile =
     else widgetFileNoReload settings
   where
     settings = def
+
+-- | Load a julius file, automatically reloading it in development.
+juliusFile :: String -> Q Exp
+juliusFile =
+  if isDevelopment
+    then Julius.juliusFile
+    else Julius.juliusFileReload
 
 -- | Run an action whenever the value of the 'TVar' changes.
 onChanges :: (Eq a, MonadIO m) => TVar a -> (a -> m ()) -> m b

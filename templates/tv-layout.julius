@@ -1,0 +1,10 @@
+// Yesod might place this after code that tries to listen, so use a var so it's hoisted up.
+var tvWebSocket;
+function listenToSocket(callback) {
+  tvWebSocket = tvWebSocket ?? new ReconnectingWebSocket('@{TVHomeR}');
+  tvWebSocket.onmessage = function (event) {
+    // const obj = JSON.parse(event.data);
+    const obj = event;
+    callback(obj);
+  };
+}

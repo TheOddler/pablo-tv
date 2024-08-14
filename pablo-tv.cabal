@@ -37,7 +37,9 @@ library
     other-modules:
         Actions
         IsDevelopment
+        Mobile
         SafeMaths
+        TV
         Util
     build-depends:
         aeson

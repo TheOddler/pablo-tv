@@ -1,0 +1,26 @@
+:root {
+  --red: rgb(210, 30, 45);
+}
+
+body {
+  background: black;
+  color: white;
+}
+
+.red {
+  background: var(--red);
+  color: white;
+  fill: white;
+}
+
+.rounded {
+  border-radius: 1000vw;
+}
+
+.large {
+  font-size: 200%;
+}
+
+.xl {
+  font-size: 300%;
+}

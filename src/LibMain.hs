@@ -23,7 +23,8 @@ import System.Process (callProcess)
 import Text.Hamlet (hamletFile)
 import Text.Julius (Javascript, jsFile)
 import Util (networkInterfacesShortList, onChanges, widgetFile)
-import Yesod
+import Yesod hiding (defaultLayout)
+import Yesod qualified
 import Yesod.WebSockets (sendTextData, webSockets)
 
 data App = App
@@ -67,37 +68,41 @@ instance Yesod App where
     -- value passed to hamletToRepHtml cannot be a widget, this allows
     -- you to use normal widget features in default-layout.
     pc <- widgetToPageContent $ do
-      when isDevelopment $ do
-        addScriptRemote "https://pabloproductions.be/LiveJS/live.js"
-        addScriptRemote "//cdn.jsdelivr.net/npm/eruda" -- Console for mobile
-        toWidgetBody
-          [julius|
-            window.onload = function() {
-              eruda.init();
-            };
-          |]
+      when isDevelopment $ addScriptRemote "https://pabloproductions.be/LiveJS/live.js"
       addScript ReconnectingWebSocketJSR
-      $(widgetFile "default-layout")
+      $(widgetFile "shared-layout")
     withUrlRenderer $
-      $(hamletFile "templates/default-layout-wrapper.hamlet")
+      $(hamletFile "templates/shared-layout-wrapper.hamlet")
+
+mobileLayout :: Widget -> Handler Html
+mobileLayout widget = Yesod.defaultLayout $ do
+  when isDevelopment $ do
+    addScriptRemote "//cdn.jsdelivr.net/npm/eruda" -- Console for mobile
+    toWidgetBody
+      [julius|
+          window.onload = function() {
+            eruda.init();
+          };
+        |]
+  $(widgetFile "mobile-layout")
 
 getMobileHomeR :: Handler Html
 getMobileHomeR = do
   inputDevice <- getsYesod appInputDevice
   webSockets $ actionsWebSocket inputDevice
-  defaultLayout $(widgetFile "home")
+  mobileLayout $(widgetFile "home")
 
 getTrackpadR :: Handler Html
 getTrackpadR =
-  defaultLayout $(widgetFile "trackpad")
+  mobileLayout $(widgetFile "trackpad")
 
 getMousePointerR :: Handler Html
 getMousePointerR =
-  defaultLayout $(widgetFile "mouse-pointer")
+  mobileLayout $(widgetFile "mouse-pointer")
 
 getKeyboardR :: Handler Html
 getKeyboardR =
-  defaultLayout $(widgetFile "keyboard")
+  mobileLayout $(widgetFile "keyboard")
 
 getFilesR :: [Text] -> Handler Html
 getFilesR pieces = do
@@ -113,11 +118,14 @@ getFilesR pieces = do
   tvStateTVar <- getsYesod appTVState
   liftIO $ atomically $ writeTVar tvStateTVar $ TVState $ FilesR pieces
 
-  defaultLayout $(widgetFile "files")
+  mobileLayout $(widgetFile "files")
 
 getInputR :: Handler Html
 getInputR =
-  defaultLayout $(widgetFile "input")
+  mobileLayout $(widgetFile "input")
+
+tvLayout :: Widget -> Handler Html
+tvLayout widget = Yesod.defaultLayout $(widgetFile "tv-layout")
 
 getTVHomeR :: Handler Html
 getTVHomeR = do
@@ -128,7 +136,7 @@ getTVHomeR = do
 
   networkInterfaces <- networkInterfacesShortList <$> liftIO getNetworkInterfaces
   port <- getsYesod appPort
-  defaultLayout $(widgetFile "tv-home")
+  tvLayout $(widgetFile "tv-home")
   where
     ipV4OrV6WithPort port i =
       ( if ipv4 i == IPv4 0
@@ -142,7 +150,7 @@ getAllIPsR :: Handler Html
 getAllIPsR = do
   networkInterfaces <- liftIO getNetworkInterfaces
   port <- getsYesod appPort
-  defaultLayout $(widgetFile "ips")
+  tvLayout $(widgetFile "ips")
   where
     hideZero :: (Show a, Eq a, Bounded a) => a -> String
     hideZero a =
@@ -160,7 +168,7 @@ main = do
   tvState <- newTVarIO $ TVState MobileHomeR
 
   let port = 8080
-  let url = "http://localhost:" ++ show port ++ "/"
+  let url = "http://localhost:" ++ show port </> "tv"
   putStrLn $ "Running on port " ++ show port ++ " - " ++ url
   putStrLn $ "Development mode: " ++ show isDevelopment
 

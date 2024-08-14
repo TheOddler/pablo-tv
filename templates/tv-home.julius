@@ -1,7 +1,6 @@
-const tvWebSocket = new ReconnectingWebSocket('@{TVHomeR}');
 const debug = document.getElementById("debug");
 
-tvWebSocket.onmessage = function (event) {
+listenToSocket((event) => {
   const message = event.data;
   debug.innerHTML = `<p>${message}</p>`;
-};
+});
