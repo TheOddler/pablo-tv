@@ -17,6 +17,7 @@ import GHC.Conc (TVar, atomically, newTVarIO, writeTVar)
 import GHC.Utils.Monad (partitionM)
 import IsDevelopment (isDevelopment)
 import Network.Info (IPv4 (..), NetworkInterface (..), getNetworkInterfaces)
+import Network.Wai.Handler.Warp (run)
 import System.Directory (doesFileExist, getHomeDirectory, listDirectory)
 import System.FilePath (combine, (</>))
 import System.Process (callProcess)
@@ -178,10 +179,11 @@ main = do
     let (path, _params) = renderRoute TVHomeR
     callProcess "xdg-open" [url ++ unpack (intercalate "/" path)]
 
-  warp
-    port
-    App
-      { appPort = port,
-        appInputDevice = inputDevice,
-        appTVState = tvState
-      }
+  app <-
+    toWaiAppPlain
+      App
+        { appPort = port,
+          appInputDevice = inputDevice,
+          appTVState = tvState
+        }
+  run port $ defaultMiddlewaresNoLogging app

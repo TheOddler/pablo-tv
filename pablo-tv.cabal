@@ -54,6 +54,7 @@ library
       , shakespeare
       , template-haskell
       , text
+      , warp
       , yesod
       , yesod-websockets
 
