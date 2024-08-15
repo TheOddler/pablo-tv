@@ -7,6 +7,14 @@ body {
   color: white;
 }
 
+a {
+  color: lightblue;
+
+  &:visited {
+    color: pink;
+  }
+}
+
 pre {
   text-wrap: wrap;
 }
