@@ -7,6 +7,10 @@ body {
   color: white;
 }
 
+pre {
+  text-wrap: wrap;
+}
+
 .red {
   background: var(--red);
   color: white;
