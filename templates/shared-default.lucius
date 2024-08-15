@@ -5,6 +5,7 @@
 body {
   background: black;
   color: white;
+  overflow-wrap: break-word;
 }
 
 a {
