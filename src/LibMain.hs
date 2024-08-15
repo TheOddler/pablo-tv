@@ -106,20 +106,20 @@ getKeyboardR =
   mobileLayout $(widgetFile "mobile/keyboard")
 
 getDirectoryR :: [Text] -> Handler Html
-getDirectoryR pieces = do
+getDirectoryR segments = do
   home <- liftIO getHomeDirectory
-  let currentPath = home </> foldl' combine "Videos" (unpack <$> pieces)
+  let currentPath = home </> foldl' combine "Videos" (unpack <$> segments)
   allPaths <- liftIO $ listDirectory currentPath
   (files', directories') <- liftIO $ partitionM (\p -> doesFileExist $ currentPath </> p) allPaths
   let files = sort files'
   let directories = sort directories'
 
-  let mkPieces :: FilePath -> [Text]
-      mkPieces p = pieces ++ [pack p]
+  let mkSegments :: FilePath -> [Text]
+      mkSegments p = segments ++ [pack p]
 
   -- Let the tv know what page we're on
   tvStateTVar <- getsYesod appTVState
-  liftIO $ atomically $ writeTVar tvStateTVar $ TVState $ DirectoryR pieces
+  liftIO $ atomically $ writeTVar tvStateTVar $ TVState $ DirectoryR segments
 
   mobileLayout $(widgetFile "mobile/directory")
 

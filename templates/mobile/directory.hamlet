@@ -2,10 +2,10 @@
 <ul>
   $forall file <- files
     <li>
-      <a href=@{DirectoryR $ mkPieces file}>#{file}
+      <a href=@{DirectoryR $ mkSegments file}>#{file}
 
 <h1>Directories
 <ul>
   $forall dir <- directories
     <li>
-      <a href=@{DirectoryR $ mkPieces dir}>#{dir}
+      <a href=@{DirectoryR $ mkSegments dir}>#{dir}
