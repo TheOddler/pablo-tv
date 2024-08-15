@@ -56,5 +56,7 @@ networkInterfacesShortList = filter onShortList
 toUrl :: (MonadHandler m, Yesod (HandlerSite m), RenderRoute a) => Route a -> m LBS.ByteString
 toUrl route = do
   site <- getYesod
+  request <- waiRequest
   let (segments, parameters) = renderRoute route
-  pure $ toLazyByteString $ joinPath site "" segments parameters
+  let root = getApprootText approot site request
+  pure $ toLazyByteString $ joinPath site root segments parameters
