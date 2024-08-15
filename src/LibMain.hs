@@ -23,7 +23,7 @@ import System.FilePath (combine, (</>))
 import System.Process (callProcess)
 import Text.Hamlet (hamletFile)
 import Text.Julius (Javascript, jsFile)
-import Util (networkInterfacesShortList, onChanges, widgetFile)
+import Util (networkInterfacesShortList, onChanges, toUrl, widgetFile)
 import Yesod hiding (defaultLayout)
 import Yesod qualified
 import Yesod.WebSockets (sendTextData, webSockets)
@@ -133,7 +133,7 @@ getTVHomeR = do
   -- TV has it's own web socket to not interfere with the mobile app
   tvStateTVar <- getsYesod appTVState
   webSockets $ onChanges tvStateTVar $ \tvState -> do
-    sendTextData $ pack $ show $ renderRoute $ tvPage tvState
+    toUrl (tvPage tvState) >>= sendTextData
 
   networkInterfaces <- networkInterfacesShortList <$> liftIO getNetworkInterfaces
   port <- getsYesod appPort

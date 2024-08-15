@@ -43,6 +43,7 @@ library
         Util
     build-depends:
         aeson
+      , binary
       , bytestring
       , data-default
       , directory

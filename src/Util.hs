@@ -1,7 +1,8 @@
 module Util where
 
 import Control.Monad (when)
-import Control.Monad.IO.Class (MonadIO (liftIO))
+import Data.Binary.Builder (toLazyByteString)
+import Data.ByteString.Lazy qualified as LBS
 import Data.Default (def)
 import Data.List (isPrefixOf)
 import GHC.Conc (TVar, atomically, readTVar, readTVarIO, retry)
@@ -9,6 +10,7 @@ import IsDevelopment (isDevelopment)
 import Language.Haskell.TH.Syntax (Exp, Q)
 import Network.Info (NetworkInterface (..))
 import Text.Julius qualified as Julius
+import Yesod
 import Yesod.Default.Util (widgetFileNoReload, widgetFileReload)
 
 -- | Load a widget file, automatically reloading it in development.
@@ -49,3 +51,10 @@ networkInterfacesShortList = filter onShortList
   where
     onShortList :: NetworkInterface -> Bool
     onShortList NetworkInterface {name} = any (`isPrefixOf` name) ["en", "eth", "wl"]
+
+-- | Convert a route to a URL for the current website
+toUrl :: (MonadHandler m, Yesod (HandlerSite m), RenderRoute a) => Route a -> m LBS.ByteString
+toUrl route = do
+  site <- getYesod
+  let (segments, parameters) = renderRoute route
+  pure $ toLazyByteString $ joinPath site "" segments parameters
