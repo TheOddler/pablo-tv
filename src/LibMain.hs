@@ -50,7 +50,7 @@ mkYesod
 /pointer MousePointerR GET
 /keyboard KeyboardR GET
 /input InputR GET
-/files/+Texts FilesR GET
+/dir/+Texts DirectoryR GET
 
 -- Routes for the 
 /tv TVHomeR GET
@@ -105,8 +105,8 @@ getKeyboardR :: Handler Html
 getKeyboardR =
   mobileLayout $(widgetFile "mobile/keyboard")
 
-getFilesR :: [Text] -> Handler Html
-getFilesR pieces = do
+getDirectoryR :: [Text] -> Handler Html
+getDirectoryR pieces = do
   home <- liftIO getHomeDirectory
   let currentPath = home </> foldl' combine "Videos" (unpack <$> pieces)
   allPaths <- liftIO $ listDirectory currentPath
@@ -117,9 +117,9 @@ getFilesR pieces = do
 
   -- Let the tv know what page we're on
   tvStateTVar <- getsYesod appTVState
-  liftIO $ atomically $ writeTVar tvStateTVar $ TVState $ FilesR pieces
+  liftIO $ atomically $ writeTVar tvStateTVar $ TVState $ DirectoryR pieces
 
-  mobileLayout $(widgetFile "mobile/files")
+  mobileLayout $(widgetFile "mobile/directory")
 
 getInputR :: Handler Html
 getInputR =
