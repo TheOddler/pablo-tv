@@ -31,16 +31,17 @@ common defaults
 library
     import:           defaults
     hs-source-dirs:   src
-    exposed-modules:  LibMain
-    if flag(development)
-        cpp-options: -DDEVELOPMENT
-    other-modules:
+    exposed-modules:
         Actions
+        Files
         IsDevelopment
+        LibMain
         Mobile
         SafeMaths
         TV
         Util
+    if flag(development)
+        cpp-options: -DDEVELOPMENT
     build-depends:
         aeson
       , binary
@@ -52,6 +53,7 @@ library
       , ghc
       , network-info
       , process
+      , regex-compat
       , shakespeare
       , template-haskell
       , text
@@ -72,8 +74,10 @@ test-suite pablo-tv-test
     hs-source-dirs:   test
     main-is:          Spec.hs
     type:             exitcode-stdio-1.0
-    -- other-modules:
+    other-modules:
+        FilesSpec
     build-depends:
         pablo-tv
       , sydtest
       , sydtest-discover
+      , text

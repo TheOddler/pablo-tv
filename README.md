@@ -16,3 +16,9 @@ Note: Make sure to open up the 8080 port so your phone can connect.
 ```bash
 watchexec -e hs,hamlet,cabal --restart cabal run -f development
 ```
+
+# Testing
+
+```bash
+watchexec -e hs,cabal --restart cabal test
+```
