@@ -10,7 +10,7 @@ module LibMain where
 
 import Actions (actionsWebSocket, mkInputDevice)
 import Control.Monad (when)
-import Data.List (foldl')
+import Data.List (foldl', sort)
 import Data.Text (Text, intercalate, pack, unpack)
 import Evdev.Uinput (Device)
 import GHC.Conc (TVar, atomically, newTVarIO, writeTVar)
@@ -110,7 +110,9 @@ getDirectoryR pieces = do
   home <- liftIO getHomeDirectory
   let currentPath = home </> foldl' combine "Videos" (unpack <$> pieces)
   allPaths <- liftIO $ listDirectory currentPath
-  (files, directories) <- liftIO $ partitionM (\p -> doesFileExist $ currentPath </> p) allPaths
+  (files', directories') <- liftIO $ partitionM (\p -> doesFileExist $ currentPath </> p) allPaths
+  let files = sort files'
+  let directories = sort directories'
 
   let mkPieces :: FilePath -> [Text]
       mkPieces p = pieces ++ [pack p]
