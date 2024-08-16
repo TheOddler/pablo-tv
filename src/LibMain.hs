@@ -13,7 +13,10 @@ import Control.Monad (when)
 import Data.List (foldl', sort)
 import Data.Text (Text, intercalate, pack, unpack)
 import Evdev.Uinput (Device)
+import Files (EpisodeInfo (..), EpisodeNumber (..), MovieInfo (..), VideoInfo (..), parseDirectory)
 import GHC.Conc (TVar, atomically, newTVarIO, writeTVar)
+import GHC.Data.Maybe (orElse)
+import GHC.Utils.Misc (lastMaybe)
 import GHC.Utils.Monad (partitionM)
 import IsDevelopment (isDevelopment)
 import Network.Info (IPv4 (..), NetworkInterface (..), getNetworkInterfaces)
@@ -111,17 +114,30 @@ getDirectoryR segments = do
   let currentPath = home </> foldl' combine "Videos" (unpack <$> segments)
   allPaths <- liftIO $ listDirectory currentPath
   (files', directories') <- liftIO $ partitionM (\p -> doesFileExist $ currentPath </> p) allPaths
-  let files = sort files'
+  let files = parseDirectory (lastMaybe segments `orElse` "") $ pack <$> files'
   let directories = sort directories'
 
-  let mkSegments :: FilePath -> [Text]
-      mkSegments p = segments ++ [pack p]
+  let mkSegments :: String -> [Text]
+      mkSegments d = segments ++ [pack d]
+      mkUrl :: VideoInfo -> [Text]
+      mkUrl (VideoInfoEpisode e) = segments ++ [e.episodeFileName]
+      mkUrl (VideoInfoMovie m) = segments ++ [m.movieFileName]
 
   -- Let the tv know what page we're on
   tvStateTVar <- getsYesod appTVState
   liftIO $ atomically $ writeTVar tvStateTVar $ TVState $ DirectoryR segments
 
   mobileLayout $(widgetFile "mobile/directory")
+  where
+    showFile :: VideoInfo -> String
+    showFile (VideoInfoEpisode e) =
+      "Episode "
+        ++ ( case e.episodeNumber of
+               EpisodeNumber n -> show n
+               EpisodeNumberDouble n m -> show n ++ " and " ++ show m
+           )
+        ++ if e.episodeSpecial then " (Special)" else ""
+    showFile (VideoInfoMovie m) = unpack m.movieTitle
 
 getInputR :: Handler Html
 getInputR =

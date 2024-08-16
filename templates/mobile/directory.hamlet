@@ -2,7 +2,7 @@
 <ul>
   $forall file <- files
     <li>
-      <a href=@{DirectoryR $ mkSegments file}>#{file}
+      <a href=@{DirectoryR $ mkUrl file}>#{showFile file}
 
 <h1>Directories
 <ul>

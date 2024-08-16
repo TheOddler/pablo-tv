@@ -10,7 +10,7 @@ spec = do
     mapM_ folderSpec folderExamples
 
 -- | Folder name, file names, expected results
-folderExamples :: [(Text, [Text], [FileInfo])]
+folderExamples :: [(Text, [Text], [VideoInfo])]
 folderExamples =
   [ ( -- Base example
       "Season 2",
@@ -24,11 +24,11 @@ folderExamples =
         "Pabloland [01x04] The Episode Name.mp4",
         "Pabloland [01x04] The Episode Name.srt"
       ],
-      [ FileEpisode $ EpisodeInfo 1 (EpisodeNumber 4) False "Pabloland [01x04] The Episode Name.mp4",
-        FileEpisode $ EpisodeInfo 2 (EpisodeNumber 2) False "Pabloland.s02e02.XviD-AFG.avi",
-        FileEpisode $ EpisodeInfo 2 (EpisodeNumber 4) False "Pabloland.s02e04.hdtv.x264-tla.mp4",
-        FileEpisode $ EpisodeInfo 2 (EpisodeNumber 6) False "Pabloland.S02E06.hdtv.x264-tla.mp4",
-        FileEpisode $ EpisodeInfo 2 (EpisodeNumber 9) True "Pabloland.S00E09.Pabloland.Christmas.720p.HDTV.x264-GOGOGO[series].mkv"
+      [ VideoInfoEpisode $ EpisodeInfo 1 (EpisodeNumber 4) False "Pabloland [01x04] The Episode Name.mp4",
+        VideoInfoEpisode $ EpisodeInfo 2 (EpisodeNumber 2) False "Pabloland.s02e02.XviD-AFG.avi",
+        VideoInfoEpisode $ EpisodeInfo 2 (EpisodeNumber 4) False "Pabloland.s02e04.hdtv.x264-tla.mp4",
+        VideoInfoEpisode $ EpisodeInfo 2 (EpisodeNumber 6) False "Pabloland.S02E06.hdtv.x264-tla.mp4",
+        VideoInfoEpisode $ EpisodeInfo 2 (EpisodeNumber 9) True "Pabloland.S00E09.Pabloland.Christmas.720p.HDTV.x264-GOGOGO[series].mkv"
       ]
     ),
     ( -- A series without a season
@@ -37,8 +37,8 @@ folderExamples =
       [ "Episode 6 - Episode Name (My TV Series) [abcd].mp4",
         "NEW My TV Series Episode Name [xyza].mp4"
       ],
-      [ FileEpisode $ EpisodeInfo 1 (EpisodeNumber 2) False "NEW My TV Series Episode Name [xyza].mp4",
-        FileEpisode $ EpisodeInfo 1 (EpisodeNumber 6) False "Episode 6 - Episode Name (My TV Series) [abcd].mp4"
+      [ VideoInfoEpisode $ EpisodeInfo 1 (EpisodeNumber 2) False "NEW My TV Series Episode Name [xyza].mp4",
+        VideoInfoEpisode $ EpisodeInfo 1 (EpisodeNumber 6) False "Episode 6 - Episode Name (My TV Series) [abcd].mp4"
       ]
     ),
     ( -- Flemish support
@@ -46,34 +46,34 @@ folderExamples =
       [ "Vlaamschen Serie - Aflevering 2.avi",
         "Vlaamschen Serie - Aflevering 4.avi"
       ],
-      [ FileEpisode $ EpisodeInfo 1 (EpisodeNumber 2) False "Vlaamschen Serie - Aflevering 2.avi",
-        FileEpisode $ EpisodeInfo 1 (EpisodeNumber 4) False "Vlaamschen Serie - Aflevering 4.avi"
+      [ VideoInfoEpisode $ EpisodeInfo 1 (EpisodeNumber 2) False "Vlaamschen Serie - Aflevering 2.avi",
+        VideoInfoEpisode $ EpisodeInfo 1 (EpisodeNumber 4) False "Vlaamschen Serie - Aflevering 4.avi"
       ]
     ),
     ( "Film Van Mijn Jeugd",
       [ "Film Van Mijn Jeugd (1991).avi",
         "Film Van Mijn Jeugd (1991).srt"
       ],
-      [ FileMovie $ MovieInfo "Film Van Mijn Jeugd" (Just 1991) "Film Van Mijn Jeugd (1991).avi"
+      [ VideoInfoMovie $ MovieInfo "Film Van Mijn Jeugd" (Just 1991) "Film Van Mijn Jeugd (1991).avi"
       ]
     ),
     ( "Film Van Mijn Jeugd",
       [ "Film Van Mijn Jeugd (1991) Part 1.avi",
         "Film Van Mijn Jeugd (1991) Part 2.avi"
       ],
-      [ FileMovie $ MovieInfo "Film Van Mijn Jeugd" (Just 1991) "Film Van Mijn Jeugd (1991) Part 1.avi",
-        FileMovie $ MovieInfo "Film Van Mijn Jeugd" (Just 1991) "Film Van Mijn Jeugd (1991) Part 2.avi"
+      [ VideoInfoMovie $ MovieInfo "Film Van Mijn Jeugd" (Just 1991) "Film Van Mijn Jeugd (1991) Part 1.avi",
+        VideoInfoMovie $ MovieInfo "Film Van Mijn Jeugd" (Just 1991) "Film Van Mijn Jeugd (1991) Part 2.avi"
       ]
     ),
     ( "Japanese Movie (2023, Dubbed)",
       [ "Japanese.Movie.2023.DUBBED.1080p.AMZN.WEBRip.DD5.1.x264-Woooops.mkv"
       ],
-      [ FileMovie $ MovieInfo "Japanese Movie" (Just 2023) "Japanese.Movie.2023.DUBBED.1080p.AMZN.WEBRip.DD5.1.x264-Woooops.mkv"
+      [ VideoInfoMovie $ MovieInfo "Japanese Movie" (Just 2023) "Japanese.Movie.2023.DUBBED.1080p.AMZN.WEBRip.DD5.1.x264-Woooops.mkv"
       ]
     )
   ]
 
-folderSpec :: (Text, [Text], [FileInfo]) -> Spec
+folderSpec :: (Text, [Text], [VideoInfo]) -> Spec
 folderSpec (folderName, fileNames, expected) =
   it ("Correctly parses " <> unpack folderName) $
     parseDirectory folderName fileNames `shouldBe` expected

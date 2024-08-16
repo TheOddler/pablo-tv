@@ -1,5 +1,5 @@
 module Files
-  ( FileInfo (..),
+  ( VideoInfo (..),
     EpisodeInfo (..),
     EpisodeNumber (..),
     MovieInfo (..),
@@ -58,9 +58,9 @@ data MovieInfo = MovieInfo
   }
   deriving (Eq, Show, Ord)
 
-data FileInfo
-  = FileEpisode EpisodeInfo
-  | FileMovie MovieInfo
+data VideoInfo
+  = VideoInfoEpisode EpisodeInfo
+  | VideoInfoMovie MovieInfo
   deriving (Eq, Show, Ord)
 
 -- Some helpers
@@ -161,7 +161,7 @@ movieTitleFromFolderOrFile folder file = case folder of
   "" -> strip . fst $ breakOn "(" file
   _ -> strip . fst $ breakOn "(" folder
 
-parseDirectory :: Text -> [Text] -> [FileInfo]
+parseDirectory :: Text -> [Text] -> [VideoInfo]
 parseDirectory folder allFiles =
   let videoFiles = filter isVideoFile allFiles
       isVideoFile file = any (`T.isSuffixOf` file) [".mp4", ".mkv", ".avi", ".webm"]
@@ -170,7 +170,7 @@ parseDirectory folder allFiles =
    in sort $ case mSeasonFromFolder <|> mSeasonFromFiles of
         Nothing ->
           -- If there is no season, we assume it's a movie
-          [ FileMovie $
+          [ VideoInfoMovie $
               MovieInfo
                 (movieTitleFromFolderOrFile folder file)
                 (movieYearFromFolderOrFile folder file)
@@ -178,7 +178,7 @@ parseDirectory folder allFiles =
             | file <- videoFiles
           ]
         Just season ->
-          [ FileEpisode $
+          [ VideoInfoEpisode $
               EpisodeInfo
                 (if rawSeason == 0 then season else rawSeason)
                 (mEpisodeFromFile `orElse` index)
