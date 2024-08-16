@@ -53,7 +53,7 @@ library
       , ghc
       , network-info
       , process
-      , regex-compat
+      , regex-tdfa
       , shakespeare
       , template-haskell
       , text
@@ -79,5 +79,4 @@ test-suite pablo-tv-test
     build-depends:
         pablo-tv
       , sydtest
-      , sydtest-discover
       , text
