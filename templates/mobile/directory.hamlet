@@ -1,11 +1,26 @@
-<h1>Files
-<ul>
-  $forall file <- files
-    <li>
-      <a href=@{DirectoryR $ mkUrl file}>#{showFile file}
+$case info
+  $of Nothing
+    <!-- No Files -->
+  $of Just (SeasonDirectory title episodes)
+    <h1>#{title}
+    <ul>
+      $forall ep <- episodes
+        <li>
+          <a href=@{DirectoryR $ mkSegments $ episodeFileName ep}>#{showEpisode ep}
+  $of Just (MovieDirectory title _year files)
+    <h1>#{title}
+    <ul>
+      $forall f <- files
+        <li>
+          <a href=@{DirectoryR $ mkSegments $ movieFileName f}>#{movieFileName f}
 
-<h1>Directories
-<ul>
-  $forall dir <- directories
-    <li>
-      <a href=@{DirectoryR $ mkSegments dir}>#{dir}
+$if (not $ null directories)
+  $case info
+    $of Nothing
+      <h1>#{header}
+    $of _
+      <h1>Directories
+  <ul>
+    $forall dir <- directories
+      <li>
+        <a href=@{DirectoryR $ mkSegments dir}>#{dir}

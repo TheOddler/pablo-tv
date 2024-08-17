@@ -13,10 +13,8 @@ import Control.Monad (when)
 import Data.List (foldl', sort)
 import Data.Text (Text, intercalate, pack, unpack)
 import Evdev.Uinput (Device)
-import Files (EpisodeInfo (..), EpisodeNumber (..), MovieInfo (..), VideoInfo (..), parseDirectory)
+import Files (DirectoryInfo (..), EpisodeInfo (..), EpisodeNumber (..), MovieInfo (..), parseDirectory)
 import GHC.Conc (TVar, atomically, newTVarIO, writeTVar)
-import GHC.Data.Maybe (orElse)
-import GHC.Utils.Misc (lastMaybe)
 import GHC.Utils.Monad (partitionM)
 import IsDevelopment (isDevelopment)
 import Network.Info (IPv4 (..), NetworkInterface (..), getNetworkInterfaces)
@@ -114,14 +112,26 @@ getDirectoryR segments = do
   let currentPath = home </> foldl' combine "Videos" (unpack <$> segments)
   allPaths <- liftIO $ listDirectory currentPath
   (files', directories') <- liftIO $ partitionM (\p -> doesFileExist $ currentPath </> p) allPaths
-  let files = parseDirectory (lastMaybe segments `orElse` "") $ pack <$> files'
-  let directories = sort directories'
+  let directories = pack <$> sort directories'
 
-  let mkSegments :: String -> [Text]
-      mkSegments d = segments ++ [pack d]
-      mkUrl :: VideoInfo -> [Text]
-      mkUrl (VideoInfoEpisode e) = segments ++ [e.episodeFileName]
-      mkUrl (VideoInfoMovie m) = segments ++ [m.movieFileName]
+  let revSegments = reverse segments
+      info =
+        case files' of
+          [] -> Nothing
+          files -> case revSegments of
+            [] -> Just $ parseDirectory "" "" (pack <$> files)
+            [x] -> Just $ parseDirectory "" x (pack <$> files)
+            (a : b : _) -> Just $ parseDirectory b a (pack <$> files)
+      header = case revSegments of
+        [] -> "Videos"
+        (a : _) -> a
+
+  liftIO $ putStrLn "\n"
+  liftIO $ print info
+  liftIO $ putStrLn "\n"
+
+  let mkSegments :: Text -> [Text]
+      mkSegments d = segments ++ [d]
 
   -- Let the tv know what page we're on
   tvStateTVar <- getsYesod appTVState
@@ -129,15 +139,16 @@ getDirectoryR segments = do
 
   mobileLayout $(widgetFile "mobile/directory")
   where
-    showFile :: VideoInfo -> String
-    showFile (VideoInfoEpisode e) =
-      "Episode "
+    showEpisode :: EpisodeInfo -> String
+    showEpisode e =
+      ( if e.episodeSpecial
+          then " Special "
+          else "Season " ++ show e.episodeSeason ++ " Episode "
+      )
         ++ ( case e.episodeNumber of
                EpisodeNumber n -> show n
                EpisodeNumberDouble n m -> show n ++ " and " ++ show m
            )
-        ++ if e.episodeSpecial then " (Special)" else ""
-    showFile (VideoInfoMovie m) = unpack m.movieTitle
 
 getInputR :: Handler Html
 getInputR =

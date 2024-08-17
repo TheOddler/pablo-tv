@@ -1,5 +1,5 @@
 module Files
-  ( VideoInfo (..),
+  ( DirectoryInfo (..),
     EpisodeInfo (..),
     EpisodeNumber (..),
     MovieInfo (..),
@@ -20,7 +20,12 @@ import Text.Read (readMaybe)
 import Text.Regex.TDFA
 
 data EpisodeInfo = EpisodeInfo
-  { episodeSeason :: Int,
+  { -- It's possible a folder contains episodes from multiple seasons,
+    -- so we store the season number per episode.
+    -- When a folder only contains specials, and no other indication of season,
+    -- the season is set to 0. If there is an indication, we set the correct
+    -- season number. In either case the `special` flag will be set too.
+    episodeSeason :: Int,
     episodeNumber :: EpisodeNumber,
     episodeSpecial :: Bool,
     episodeFileName :: Text
@@ -29,7 +34,7 @@ data EpisodeInfo = EpisodeInfo
 
 instance Ord EpisodeInfo where
   compare a b =
-    -- Season 0 is an indicator for specials, and should be at the end
+    -- Season 0 is an indicator for specials when we don't know the season
     ( case (a.episodeSeason, b.episodeSeason) of
         (0, 0) -> EQ
         (0, _) -> GT
@@ -51,16 +56,21 @@ instance Ord EpisodeNumber where
   compare (EpisodeNumber a) (EpisodeNumber b) = compare a b
   compare (EpisodeNumberDouble a b) (EpisodeNumberDouble c d) = compare a c <> compare b d
 
-data MovieInfo = MovieInfo
-  { movieTitle :: Text,
-    movieYear :: Maybe Int,
-    movieFileName :: Text
+newtype MovieInfo = MovieInfo
+  { movieFileName :: Text
   }
   deriving (Eq, Show, Ord)
 
-data VideoInfo
-  = VideoInfoEpisode EpisodeInfo
-  | VideoInfoMovie MovieInfo
+data DirectoryInfo
+  = SeasonDirectory
+      { seasonSeriesTitle :: Text,
+        seasonEpisodes :: [EpisodeInfo]
+      }
+  | MovieDirectory
+      { movieTitle :: Text,
+        movieYear :: Maybe Int,
+        movieFiles :: [MovieInfo]
+      }
   deriving (Eq, Show, Ord)
 
 -- Some helpers
@@ -146,45 +156,44 @@ isSpecialFromFile file =
     || file =~ ("[Ss]0+[Ee][0-9]+" :: Text)
     || file =~ ("0+[Xx][0-9]+" :: Text)
 
-movieYearFromFolderOrFile :: Text -> Text -> Maybe Int
-movieYearFromFolderOrFile folder file =
-  let yearRegex = "((19|20)[0-9][0-9])"
-   in -- Take fst because the regex parses doesn't support non-capturing groups
-      -- so we capture two, but only use the first, and ignore the inner group
-      fst
-        <$> ( tryRegex folder expect2Ints yearRegex
-                <|> tryRegex file expect2Ints yearRegex
-            )
+movieYearFromFolder :: Text -> Maybe Int
+movieYearFromFolder folder =
+  -- Take fst because the regex parses doesn't support non-capturing groups
+  -- so we capture two, but only use the first, and ignore the inner group
+  fst <$> tryRegex folder expect2Ints "((19|20)[0-9][0-9])"
 
-movieTitleFromFolderOrFile :: Text -> Text -> Text
-movieTitleFromFolderOrFile folder file = case folder of
-  "" -> strip . fst $ breakOn "(" file
-  _ -> strip . fst $ breakOn "(" folder
+movieTitleFromFolder :: Text -> Text
+movieTitleFromFolder folder = strip . fst $ breakOn "(" folder
 
-parseDirectory :: Text -> [Text] -> [VideoInfo]
-parseDirectory folder allFiles =
-  let videoFiles = filter isVideoFile allFiles
+parseDirectory :: Text -> Text -> [Text] -> DirectoryInfo
+parseDirectory parentFolder folder allFiles =
+  let videoFiles = sort $ filter isVideoFile allFiles
       isVideoFile file = any (`T.isSuffixOf` file) [".mp4", ".mkv", ".avi", ".webm"]
       mSeasonFromFolder = seasonFromFolder folder
       mSeasonFromFiles = seasonFromFiles videoFiles
-   in sort $ case mSeasonFromFolder <|> mSeasonFromFiles of
-        Nothing ->
-          -- If there is no season, we assume it's a movie
-          [ VideoInfoMovie $
-              MovieInfo
-                (movieTitleFromFolderOrFile folder file)
-                (movieYearFromFolderOrFile folder file)
-                file
-            | file <- videoFiles
-          ]
+   in case mSeasonFromFolder <|> mSeasonFromFiles of
         Just season ->
-          [ VideoInfoEpisode $
-              EpisodeInfo
-                (if rawSeason == 0 then season else rawSeason)
-                (mEpisodeFromFile `orElse` index)
-                (isSpecialFromFile file || rawSeason == 0)
-                file
-            | (index, file) <- zip (EpisodeNumber <$> [1 ..]) videoFiles,
-              (mSeasonFromFile, mEpisodeFromFile) <- [episodeInfoFromFile file],
-              rawSeason <- [mSeasonFromFile `orElse` season]
-          ]
+          SeasonDirectory
+            { seasonSeriesTitle =
+                if isJust mSeasonFromFolder && parentFolder /= ""
+                  then parentFolder
+                  else folder,
+              seasonEpisodes =
+                sort
+                  [ EpisodeInfo
+                      { episodeSeason = if rawSeason == 0 then season else rawSeason,
+                        episodeNumber = mEpisodeFromFile `orElse` index,
+                        episodeSpecial = isSpecialFromFile file || rawSeason == 0,
+                        episodeFileName = file
+                      }
+                    | (index, file) <- zip (EpisodeNumber <$> [1 ..]) videoFiles,
+                      (mSeasonFromFile, mEpisodeFromFile) <- [episodeInfoFromFile file],
+                      rawSeason <- [mSeasonFromFile `orElse` season]
+                  ]
+            }
+        Nothing ->
+          MovieDirectory
+            { movieTitle = movieTitleFromFolder folder,
+              movieYear = movieYearFromFolder folder,
+              movieFiles = sort $ MovieInfo <$> videoFiles
+            }
