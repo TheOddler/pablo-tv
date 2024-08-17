@@ -126,10 +126,6 @@ getDirectoryR segments = do
         [] -> "Videos"
         (a : _) -> a
 
-  liftIO $ putStrLn "\n"
-  liftIO $ print info
-  liftIO $ putStrLn "\n"
-
   let mkSegments :: Text -> [Text]
       mkSegments d = segments ++ [d]
 
