@@ -1,6 +1,6 @@
 $case info
   $of Nothing
-    <!-- No Files -->
+    <h1>Videos
   $of Just (SeriesDirectory title)
     <h1>#{title}
   $of Just (SeasonDirectory title episodes)
@@ -9,20 +9,19 @@ $case info
       $forall ep <- episodes
         <li>
           <a href=@{DirectoryR $ mkSegments $ episodeFileName ep}>#{showEpisode ep}
+    $if (not $ null directories)
+      <h2>Directories
   $of Just (MovieDirectory title _year files)
     <h1>#{title}
     <ul>
       $forall f <- files
         <li>
-          <a href=@{DirectoryR $ mkSegments $ movieFileName f}>#{movieFileName f}
+          <a href=@{DirectoryR $ mkSegments $ movieFileName f}>#{showPath $ movieFileName f}
+    $if (not $ null directories)
+      <h2>Directories
 
 $if (not $ null directories)
-  $case info
-    $of Nothing
-      <h1>#{header}
-    $of _
-      <h1>Directories
   <ul>
     $forall dir <- directories
       <li>
-        <a href=@{DirectoryR $ mkSegments dir}>#{dir}
+        <a href=@{DirectoryR $ mkSegments dir}>#{showPath dir}

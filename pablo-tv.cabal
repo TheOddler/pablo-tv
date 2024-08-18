@@ -52,6 +52,7 @@ library
       , filepath
       , ghc
       , network-info
+      , path
       , process
       , regex-tdfa
       , shakespeare

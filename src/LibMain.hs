@@ -10,17 +10,18 @@ module LibMain where
 
 import Actions (actionsWebSocket, mkInputDevice)
 import Control.Monad (when)
-import Data.List (foldl', sort)
-import Data.Text (Text, intercalate, pack, unpack)
+import Data.List (foldl')
+import Data.Text (Text, intercalate, unpack)
+import Data.Text qualified as T
 import Evdev.Uinput (Device)
 import Files (DirectoryInfo (..), EpisodeInfo (..), EpisodeNumber (..), MovieInfo (..), parseDirectory)
 import GHC.Conc (TVar, atomically, newTVarIO, writeTVar)
-import GHC.Utils.Monad (partitionM)
 import IsDevelopment (isDevelopment)
 import Network.Info (IPv4 (..), NetworkInterface (..), getNetworkInterfaces)
 import Network.Wai.Handler.Warp (run)
-import System.Directory (doesFileExist, getHomeDirectory, listDirectory)
-import System.FilePath (combine, (</>))
+import Path (Path, Rel, parseAbsDir, toFilePath)
+import System.Directory (getHomeDirectory)
+import System.FilePath (combine, dropTrailingPathSeparator, (</>))
 import System.Process (callProcess)
 import Text.Hamlet (hamletFile)
 import Text.Julius (Javascript, jsFile)
@@ -110,24 +111,9 @@ getDirectoryR :: [Text] -> Handler Html
 getDirectoryR segments = do
   home <- liftIO getHomeDirectory
   let currentPath = home </> foldl' combine "Videos" (unpack <$> segments)
-  allPaths <- liftIO $ listDirectory currentPath
-  (files', directories') <- liftIO $ partitionM (\p -> doesFileExist $ currentPath </> p) allPaths
-  let directories = pack <$> sort directories'
+  absPath <- parseAbsDir currentPath
 
-  let revSegments = reverse segments
-      info =
-        case revSegments of
-          [] -> Just $ parseDirectory "" "" (pack <$> files') directories
-          [x] -> Just $ parseDirectory "" x (pack <$> files') directories
-          (a : b : _) -> Just $ parseDirectory b a (pack <$> files') directories
-      header = case revSegments of
-        [] -> "Videos"
-        (a : _) -> a
-
-  liftIO $ putStrLn $ "\n" ++ show info ++ "\n"
-
-  let mkSegments :: Text -> [Text]
-      mkSegments d = segments ++ [d]
+  (info, directories) <- liftIO $ parseDirectory absPath
 
   -- Let the tv know what page we're on
   tvStateTVar <- getsYesod appTVState
@@ -145,6 +131,12 @@ getDirectoryR segments = do
                EpisodeNumber n -> show n
                EpisodeNumberDouble n m -> show n ++ " and " ++ show m
            )
+
+    showPath :: Path Rel x -> String
+    showPath = dropTrailingPathSeparator . toFilePath
+
+    mkSegments :: Path Rel x -> [Text]
+    mkSegments d = segments ++ [T.pack $ dropTrailingPathSeparator $ toFilePath d]
 
 getInputR :: Handler Html
 getInputR =
