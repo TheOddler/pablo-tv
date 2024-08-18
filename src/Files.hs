@@ -17,7 +17,7 @@ import Data.Text qualified as T
 import GHC.Data.Maybe (listToMaybe, orElse)
 import GHC.Exts (sortWith)
 import Text.Read (readMaybe)
-import Text.Regex.TDFA
+import Text.Regex.TDFA ((=~))
 
 data EpisodeInfo = EpisodeInfo
   { -- It's possible a folder contains episodes from multiple seasons,
@@ -62,7 +62,10 @@ newtype MovieInfo = MovieInfo
   deriving (Eq, Show, Ord)
 
 data DirectoryInfo
-  = SeasonDirectory
+  = SeriesDirectory
+      { seriesTitle :: Text
+      }
+  | SeasonDirectory
       { seasonSeriesTitle :: Text,
         seasonEpisodes :: [EpisodeInfo]
       }
@@ -165,10 +168,11 @@ movieYearFromFolder folder =
 movieTitleFromFolder :: Text -> Text
 movieTitleFromFolder folder = strip . fst $ breakOn "(" folder
 
-parseDirectory :: Text -> Text -> [Text] -> DirectoryInfo
-parseDirectory parentFolder folder allFiles =
-  let videoFiles = sort $ filter isVideoFile allFiles
+parseDirectory :: Text -> Text -> [Text] -> [Text] -> DirectoryInfo
+parseDirectory parentFolder folder files directories =
+  let videoFiles = sort $ filter isVideoFile files
       isVideoFile file = any (`T.isSuffixOf` file) [".mp4", ".mkv", ".avi", ".webm"]
+      isSeriesFolder = any (isJust . seasonFromFolder) directories
       mSeasonFromFolder = seasonFromFolder folder
       mSeasonFromFiles = seasonFromFiles videoFiles
    in case mSeasonFromFolder <|> mSeasonFromFiles of
@@ -192,8 +196,14 @@ parseDirectory parentFolder folder allFiles =
                   ]
             }
         Nothing ->
-          MovieDirectory
-            { movieTitle = movieTitleFromFolder folder,
-              movieYear = movieYearFromFolder folder,
-              movieFiles = sort $ MovieInfo <$> videoFiles
-            }
+          if isSeriesFolder
+            then
+              SeriesDirectory
+                { seriesTitle = folder
+                }
+            else
+              MovieDirectory
+                { movieTitle = movieTitleFromFolder folder,
+                  movieYear = movieYearFromFolder folder,
+                  movieFiles = sort $ MovieInfo <$> videoFiles
+                }

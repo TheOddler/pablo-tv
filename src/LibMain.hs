@@ -116,15 +116,15 @@ getDirectoryR segments = do
 
   let revSegments = reverse segments
       info =
-        case files' of
-          [] -> Nothing
-          files -> case revSegments of
-            [] -> Just $ parseDirectory "" "" (pack <$> files)
-            [x] -> Just $ parseDirectory "" x (pack <$> files)
-            (a : b : _) -> Just $ parseDirectory b a (pack <$> files)
+        case revSegments of
+          [] -> Just $ parseDirectory "" "" (pack <$> files') directories
+          [x] -> Just $ parseDirectory "" x (pack <$> files') directories
+          (a : b : _) -> Just $ parseDirectory b a (pack <$> files') directories
       header = case revSegments of
         [] -> "Videos"
         (a : _) -> a
+
+  liftIO $ putStrLn $ "\n" ++ show info ++ "\n"
 
   let mkSegments :: Text -> [Text]
       mkSegments d = segments ++ [d]

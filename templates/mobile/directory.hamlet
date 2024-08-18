@@ -1,6 +1,8 @@
 $case info
   $of Nothing
     <!-- No Files -->
+  $of Just (SeriesDirectory title)
+    <h1>#{title}
   $of Just (SeasonDirectory title episodes)
     <h1>#{title}
     <ul>
