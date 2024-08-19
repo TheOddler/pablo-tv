@@ -1,3 +1,5 @@
+<img src=@{ImageR segments} alt="🖼️ Missing poster ☹️" class="header">
+
 $case info
   $of Nothing
     <h1>Videos

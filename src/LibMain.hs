@@ -9,19 +9,22 @@
 module LibMain where
 
 import Actions (actionsWebSocket, mkInputDevice)
-import Control.Monad (when)
-import Data.List (foldl')
+import Control.Monad (filterM, join, when)
+import Data.Char (toLower)
+import Data.List (foldl', isSuffixOf)
+import Data.String (fromString)
 import Data.Text (Text, intercalate, unpack)
 import Data.Text qualified as T
 import Evdev.Uinput (Device)
 import Files (DirectoryInfo (..), EpisodeInfo (..), EpisodeNumber (..), MovieInfo (..), parseDirectory)
 import GHC.Conc (TVar, atomically, newTVarIO, writeTVar)
+import GHC.Data.Maybe (firstJustsM, listToMaybe)
 import IsDevelopment (isDevelopment)
 import Network.Info (IPv4 (..), NetworkInterface (..), getNetworkInterfaces)
 import Network.Wai.Handler.Warp (run)
-import Path (Path, Rel, parseAbsDir, toFilePath)
-import System.Directory (getHomeDirectory)
-import System.FilePath (combine, dropTrailingPathSeparator, (</>))
+import Path (Abs, Dir, File, Path, Rel, fileExtension, fromAbsDir, fromAbsFile, parent, parseAbsDir, parseRelFile, toFilePath, (</>))
+import System.Directory (doesFileExist, getHomeDirectory, listDirectory)
+import System.FilePath (combine, dropTrailingPathSeparator)
 import System.Process (callProcess)
 import Text.Hamlet (hamletFile)
 import Text.Julius (Javascript, jsFile)
@@ -59,6 +62,7 @@ mkYesod
 /ips AllIPsR GET
 
 -- Other
+/image/+Texts ImageR GET
 /reconnecting-websocket.js ReconnectingWebSocketJSR GET
 |]
 
@@ -107,12 +111,15 @@ getKeyboardR :: Handler Html
 getKeyboardR =
   mobileLayout $(widgetFile "mobile/keyboard")
 
+getPathFromSegments :: [Text] -> Handler (Path Abs Dir)
+getPathFromSegments segments = do
+  home <- liftIO getHomeDirectory
+  let currentPath = combine home $ foldl' combine "Videos" (unpack <$> segments)
+  parseAbsDir currentPath
+
 getDirectoryR :: [Text] -> Handler Html
 getDirectoryR segments = do
-  home <- liftIO getHomeDirectory
-  let currentPath = home </> foldl' combine "Videos" (unpack <$> segments)
-  absPath <- parseAbsDir currentPath
-
+  absPath <- getPathFromSegments segments
   (info, directories) <- liftIO $ parseDirectory absPath
 
   -- Let the tv know what page we're on
@@ -137,6 +144,38 @@ getDirectoryR segments = do
 
     mkSegments :: Path Rel x -> [Text]
     mkSegments d = segments ++ [T.pack $ dropTrailingPathSeparator $ toFilePath d]
+
+getImageR :: [Text] -> Handler Html
+getImageR segments = do
+  dir <- getPathFromSegments segments
+  mImg <- firstJustsM $ tryGetImage <$> take 3 (iterate parent dir)
+  case mImg of
+    Just (contentType, path) ->
+      sendFile contentType $ fromAbsFile path
+    Nothing ->
+      notFound
+  where
+    tryGetImage :: Path Abs Dir -> Handler (Maybe (ContentType, Path Abs File))
+    tryGetImage dir = do
+      fileAndDirNames <- liftIO $ listDirectory $ fromAbsDir dir
+      let hasImageExt :: FilePath -> Bool
+          hasImageExt file = any (`isSuffixOf` file) [".jpg", ".jpeg", ".png", ".gif"]
+          isImage :: FilePath -> IO Bool
+          isImage file =
+            if not $ hasImageExt file
+              then pure False
+              else doesFileExist $ combine (fromAbsDir dir) file
+      mImageFile <- liftIO $ join . mapM parseRelFile . listToMaybe <$> filterM isImage fileAndDirNames
+      case mImageFile of
+        Nothing -> pure Nothing
+        Just imageFile -> do
+          let absPath = dir </> imageFile
+          ext <- fileExtension imageFile
+          let cleanedExt = map toLower $
+                case ext of
+                  '.' : e -> e
+                  e -> e
+          pure $ Just ("image/" <> fromString cleanedExt, absPath)
 
 getInputR :: Handler Html
 getInputR =
@@ -186,7 +225,7 @@ main = do
   tvState <- newTVarIO $ TVState MobileHomeR
 
   let port = 8080
-  let url = "http://localhost:" ++ show port </> "tv"
+  let url = "http://localhost:" ++ show port `combine` "tv"
   putStrLn $ "Running on port " ++ show port ++ " - " ++ url
   putStrLn $ "Development mode: " ++ show isDevelopment
 

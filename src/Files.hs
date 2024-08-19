@@ -233,7 +233,10 @@ parseDirectory' :: Path a Dir -> [Path Rel File] -> [Path Rel Dir] -> Maybe Dire
 parseDirectory' dir files directories =
   let videoFiles :: [Path Rel File]
       videoFiles = sort $ filter isVideoFile files
-      isVideoFile file = elem (fileExtension file `orElse` "") [".mp4", ".mkv", ".avi", ".webm"]
+      isVideoFile file =
+        case fileExtension file of
+          Just ext -> ext `elem` [".mp4", ".mkv", ".avi", ".webm"]
+          Nothing -> False
 
       isSeriesDir = any (isJust . seasonFromDir) directories
 
