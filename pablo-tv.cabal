@@ -35,6 +35,7 @@ library
         Actions
         Files
         IsDevelopment
+        JSON
         LibMain
         SafeMaths
         Util

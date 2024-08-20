@@ -9,8 +9,7 @@ module Files
 where
 
 import Control.Applicative ((<|>))
-import Data.Aeson (FromJSON (..), Options (..), ToJSON (toEncoding), defaultOptions, genericParseJSON, genericToEncoding)
-import Data.Char (toLower)
+import Data.Aeson (FromJSON (parseJSON), ToJSON (toEncoding), genericParseJSON, genericToEncoding)
 import Data.List (sort)
 import Data.List.NonEmpty (NonEmpty, group, nonEmpty)
 import Data.List.NonEmpty qualified as NE
@@ -21,6 +20,7 @@ import GHC.Data.Maybe (firstJusts, listToMaybe, orElse)
 import GHC.Exts (sortWith)
 import GHC.Generics (Generic)
 import GHC.Utils.Monad (partitionM)
+import JSON (prefixedDefaultOptions)
 import Path
 import System.Directory (doesFileExist, listDirectory)
 import System.FilePath (combine, dropTrailingPathSeparator)
@@ -91,17 +91,6 @@ data DirectoryInfoFile = DirectoryInfoFile
     directoryInfoFileTmdb :: Maybe Text
   }
   deriving (Generic)
-
-prefixedDefaultOptions :: Int -> Options
-prefixedDefaultOptions n =
-  defaultOptions
-    { fieldLabelModifier = lowerFirst . drop n,
-      constructorTagModifier = lowerFirst . drop n,
-      omitNothingFields = True
-    }
-  where
-    lowerFirst "" = ""
-    lowerFirst (x : xs) = toLower x : xs
 
 instance FromJSON DirectoryInfoFile where
   parseJSON = genericParseJSON $ prefixedDefaultOptions 17
