@@ -17,7 +17,7 @@ import Data.List.NonEmpty qualified as NE
 import Data.Maybe (isJust, mapMaybe)
 import Data.Text (Text, breakOn, strip)
 import Data.Text qualified as T
-import GHC.Data.Maybe (listToMaybe, orElse)
+import GHC.Data.Maybe (firstJusts, listToMaybe, orElse)
 import GHC.Exts (sortWith)
 import GHC.Generics (Generic)
 import GHC.Utils.Monad (partitionM)
@@ -175,6 +175,7 @@ seasonFromFiles files =
     seasonFromFile file =
       tryRegex file expect1Int "[Ss]eason ([0-9]+)"
         <|> tryRegex file expect1Int "[Ss]eries ([0-9]+)"
+        <|> tryRegex file expect1Int "[Ss]eizoen ([0-9]+)"
         <|> tryRegex file expect1Int "[Ss]([0-9]+)[Ee][0-9]+"
         <|> tryRegex file expect1Int "([0-9]+)[Xx][0-9]+"
 
@@ -212,6 +213,12 @@ movieYearFromDir dir =
   -- Take fst because the regex parses doesn't support non-capturing groups
   -- so we capture two, but only use the first, and ignore the inner group
   fst <$> tryRegex (dirname dir) expect2Ints "((19|20)[0-9][0-9])"
+
+movieYearFromFiles :: [Path a File] -> Maybe Int
+movieYearFromFiles files =
+  firstJusts (try <$> files)
+  where
+    try file = fst <$> tryRegex file expect2Ints "((19|20)[0-9][0-9])"
 
 movieTitleFromDir :: Path a Dir -> Text
 movieTitleFromDir folder = strip . fst $ breakOn "(" (niceDirNameT folder)
@@ -275,7 +282,7 @@ parseDirectory' dir files directories =
           Just
             MovieDirectory
               { movieTitle = movieTitleFromDir dir,
-                movieYear = movieYearFromDir dir,
+                movieYear = movieYearFromDir dir <|> movieYearFromFiles videoFiles,
                 movieFiles = NE.sort $ MovieInfo <$> actualFiles
               }
         _ -> Nothing
