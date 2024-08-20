@@ -1,14 +1,35 @@
 module FilesSpec (spec) where
 
 import Data.Text (Text)
+import Data.Text qualified as T
 import Files
-import Path (parseRelDir, parseRelFile)
-import Test.Syd (Spec, describe, it, shouldBe)
+import Path (File, Path, Rel, fromRelFile, parseRelDir, parseRelFile)
+import Test.Syd (Spec, describe, it, pureGoldenTextFile, shouldBe)
+import TestUtils (labeledExpectationFailure)
 
 spec :: Spec
 spec = do
   describe "Correctly parses folders" $
     mapM_ folderSpec folderExamples
+
+  it "Correctly cleans file names" $
+    pureGoldenTextFile "test/golden/cleanFileName" $
+      T.unlines
+        [ T.unlines
+            [ "Dir:   " <> T.pack root,
+              "Orig:  " <> T.pack (fromRelFile file),
+              "Clean: " <> niceFileNameT file
+            ]
+          | (root, files, _dirs, _mPathAndInfo) <- folderExamples,
+            file <- forceRelFile <$> files,
+            isVideoFile file
+        ]
+
+forceRelFile :: FilePath -> Path Rel File
+forceRelFile file =
+  case parseRelFile file of
+    Left err -> labeledExpectationFailure "Failed forceRelFile" err
+    Right f -> f
 
 mkGuess :: DirectoryKind -> Text -> Maybe Text -> DirectoryInfo
 mkGuess kind title diff = DirectoryInfo kind title Nothing diff Nothing Nothing Nothing Nothing
