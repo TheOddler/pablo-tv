@@ -9,20 +9,27 @@ module Files
   )
 where
 
+import Autodocodec
+  ( HasCodec (codec),
+    object,
+    optionalFieldOrNull,
+    requiredField,
+    stringConstCodec,
+    (.=),
+  )
+import Autodocodec.Yaml (eitherDecodeYamlViaCodec, encodeYamlViaCodec)
 import Control.Applicative ((<|>))
-import Data.Aeson (FromJSON (parseJSON), ToJSON (toJSON), genericParseJSON, genericToJSON)
+import Data.ByteString qualified as BS
 import Data.List (sort)
 import Data.List.NonEmpty (group, nonEmpty)
 import Data.List.NonEmpty qualified as NE
 import Data.Maybe (isJust, mapMaybe)
 import Data.Text (Text, breakOn, replace, strip)
 import Data.Text qualified as T
-import Data.Yaml (decodeFileEither, encodeFile)
 import GHC.Data.Maybe (firstJusts, firstJustsM, listToMaybe, orElse)
 import GHC.Exts (sortWith)
 import GHC.Generics (Generic)
 import GHC.Utils.Monad (partitionM)
-import JSON (prefixedDefaultOptions)
 import Path
 import System.Directory (doesFileExist, listDirectory, renameFile)
 import System.FilePath (combine, dropTrailingPathSeparator)
@@ -41,22 +48,30 @@ data DirectoryInfo = DirectoryInfo
   }
   deriving (Generic, Show, Eq)
 
-instance FromJSON DirectoryInfo where
-  parseJSON = genericParseJSON $ prefixedDefaultOptions 13
-
-instance ToJSON DirectoryInfo where
-  toJSON = genericToJSON $ prefixedDefaultOptions 13
+instance HasCodec DirectoryInfo where
+  codec =
+    object "DirectoryInfo" $
+      DirectoryInfo
+        <$> requiredField "kind" "Is this a series or a movie?" .= directoryInfoKind
+        <*> requiredField "title" "The title of this series or movie" .= directoryInfoTitle
+        <*> optionalFieldOrNull "image" "A URL to an image" .= directoryInfoImage
+        <*> optionalFieldOrNull "differentiator" "A differentiator for when there are multiple series or movies with the same title" .= directoryInfoDifferentiator
+        <*> optionalFieldOrNull "description" "The description of the series or movie" .= directoryInfoDescription
+        <*> optionalFieldOrNull "imdb" "The IMDB ID" .= directoryInfoImdb
+        <*> optionalFieldOrNull "tvdb" "The TVDB ID" .= directoryInfoTvdb
+        <*> optionalFieldOrNull "tmdb" "The TMDB ID" .= directoryInfoTmdb
 
 data DirectoryKind
   = DirectoryKindMovie
   | DirectoryKindSeries
   deriving (Generic, Show, Eq)
 
-instance FromJSON DirectoryKind where
-  parseJSON = genericParseJSON $ prefixedDefaultOptions 13
-
-instance ToJSON DirectoryKind where
-  toJSON = genericToJSON $ prefixedDefaultOptions 13
+instance HasCodec DirectoryKind where
+  codec =
+    stringConstCodec $
+      (DirectoryKindMovie, "movie")
+        NE.:| [ (DirectoryKindSeries, "series")
+              ]
 
 -- | The main function, gives a directory, tries to see if there's existing info,
 -- and if not tries to guess it and saves it.
@@ -78,7 +93,7 @@ parseDirectory dir = do
       handleNoExistingInfo rootDir info = do
         -- Write the info, that way we have a template to fill in the data
         -- TODO: Do a call to the TVDB or something to get better data
-        encodeFile (combine (fromAbsDir rootDir) "info.yaml") info
+        BS.writeFile (combine (fromAbsDir rootDir) "info.yaml") (encodeYamlViaCodec info)
         pure (Just info, filesWithNames, directoriesWithNames)
 
   -- See if there's an info file
@@ -86,7 +101,7 @@ parseDirectory dir = do
 
   case mInfoFile of
     Just infoFile -> do
-      decodedOrError <- decodeFileEither (fromAbsFile infoFile)
+      decodedOrError <- eitherDecodeYamlViaCodec <$> BS.readFile (fromAbsFile infoFile)
       case decodedOrError of
         Right info ->
           -- We have a file and it coded correctly, so we use that

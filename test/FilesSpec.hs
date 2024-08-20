@@ -1,12 +1,12 @@
 module FilesSpec (spec) where
 
+import Autodocodec.Yaml (eitherDecodeYamlViaCodec, encodeYamlViaCodec)
 import Data.ByteString.Char8 qualified as BS
 import Data.Text (Text)
 import Data.Text qualified as T
-import Data.Yaml (decodeThrow, encode)
 import Files
 import Path (File, Path, Rel, fromRelFile, parseRelDir, parseRelFile)
-import Test.Syd (Spec, describe, it, pureGoldenByteStringFile, pureGoldenTextFile, shouldBe)
+import Test.Syd (Spec, describe, expectationFailure, it, pureGoldenByteStringFile, pureGoldenTextFile, shouldBe)
 import TestUtils (labeledExpectationFailure)
 
 spec :: Spec
@@ -29,7 +29,7 @@ spec = do
   describe "Saving info files" $ do
     it "basic info" $
       pureGoldenByteStringFile "test/golden/basic-info.yaml" $
-        encode
+        encodeYamlViaCodec
           DirectoryInfo
             { directoryInfoKind = DirectoryKindSeries,
               directoryInfoTitle = "Pabloland",
@@ -42,7 +42,7 @@ spec = do
             }
     it "with description" $
       pureGoldenByteStringFile "test/golden/with-description.yaml" $
-        encode
+        encodeYamlViaCodec
           DirectoryInfo
             { directoryInfoKind = DirectoryKindSeries,
               directoryInfoTitle = "Pabloland",
@@ -54,8 +54,8 @@ spec = do
               directoryInfoTmdb = Nothing
             }
     it "all info" $
-      pureGoldenByteStringFile "test/golden/basicOnfo.yaml" $
-        encode
+      pureGoldenByteStringFile "test/golden/all-info.yaml" $
+        encodeYamlViaCodec
           DirectoryInfo
             { directoryInfoKind = DirectoryKindSeries,
               directoryInfoTitle = "Pabloland",
@@ -85,8 +85,56 @@ spec = do
               "title: Master Movie",
               "description: null"
             ]
-    decoded <- decodeThrow encoded
-    decoded `shouldBe` example
+    let decoded = eitherDecodeYamlViaCodec encoded
+    case decoded of
+      Left err -> expectationFailure $ show err
+      Right x -> x `shouldBe` example
+
+  it "Can decode info with fields in different order" $ do
+    let example =
+          DirectoryInfo
+            { directoryInfoKind = DirectoryKindMovie,
+              directoryInfoTitle = "Master Movie",
+              directoryInfoImage = Nothing,
+              directoryInfoDifferentiator = Nothing,
+              directoryInfoDescription = Nothing,
+              directoryInfoImdb = Nothing,
+              directoryInfoTvdb = Nothing,
+              directoryInfoTmdb = Nothing
+            }
+    let encoded =
+          BS.unlines
+            [ "description: null",
+              "title: Master Movie",
+              "kind: movie"
+            ]
+    let decoded = eitherDecodeYamlViaCodec encoded
+    case decoded of
+      Left err -> expectationFailure $ show err
+      Right x -> x `shouldBe` example
+
+  it "Can decode info with unknown fields" $ do
+    let example =
+          DirectoryInfo
+            { directoryInfoKind = DirectoryKindMovie,
+              directoryInfoTitle = "Master Movie",
+              directoryInfoImage = Nothing,
+              directoryInfoDifferentiator = Nothing,
+              directoryInfoDescription = Nothing,
+              directoryInfoImdb = Nothing,
+              directoryInfoTvdb = Nothing,
+              directoryInfoTmdb = Nothing
+            }
+    let encoded =
+          BS.unlines
+            [ "kind: movie",
+              "title: Master Movie",
+              "a-field-that-does-not-exit: value"
+            ]
+    let decoded = eitherDecodeYamlViaCodec encoded
+    case decoded of
+      Left err -> expectationFailure $ show err
+      Right x -> x `shouldBe` example
 
   it "Can round-trip info file" $ do
     let example =
@@ -100,9 +148,11 @@ spec = do
               directoryInfoTvdb = Just "123",
               directoryInfoTmdb = Just "abc"
             }
-    let encoded = encode example
-    decoded <- decodeThrow encoded
-    decoded `shouldBe` example
+    let encoded = encodeYamlViaCodec example
+    let decoded = eitherDecodeYamlViaCodec encoded
+    case decoded of
+      Left err -> expectationFailure $ show err
+      Right x -> x `shouldBe` example
 
 forceRelFile :: FilePath -> Path Rel File
 forceRelFile file =
