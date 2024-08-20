@@ -77,5 +77,7 @@ test-suite pablo-tv-test
         FilesSpec
     build-depends:
         pablo-tv
+      , path
       , sydtest
+      , sydtest-discover
       , text
