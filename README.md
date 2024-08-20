@@ -20,5 +20,5 @@ watchexec -e hs,hamlet,cabal --restart cabal run -f development
 # Testing
 
 ```bash
-watchexec -e hs,cabal --restart "cabal test --test-options=\"--golden-reset --golden-start\""
+watchexec --restart "cabal test --test-options=\"--golden-reset --golden-start\""
 ```
