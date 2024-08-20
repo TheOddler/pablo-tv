@@ -1,29 +1,33 @@
-<img src=@{ImageR segments} alt="🖼️ Missing poster ☹️" class="header">
-
-$case info
+$case mInfo
   $of Nothing
     <h1>Videos
-  $of Just (SeriesDirectory title)
-    <h1>#{title}
-  $of Just (SeasonDirectory title episodes)
-    <h1>#{title}
-    <ul>
-      $forall ep <- episodes
-        <li>
-          <a href=@{DirectoryR $ mkSegments $ episodeFileName ep}>#{showEpisode ep}
-    $if (not $ null directories)
-      <h2>Directories
-  $of Just (MovieDirectory title _year files)
-    <h1>#{title}
-    <ul>
-      $forall f <- files
-        <li>
-          <a href=@{DirectoryR $ mkSegments $ movieFileName f}>#{showPath $ movieFileName f}
-    $if (not $ null directories)
-      <h2>Directories
+  $of Just info
+    <img src=@{ImageR segments} alt="🖼️ Missing poster ☹️" class="header">
+    <h1>#{directoryInfoTitle info}
 
-$if (not $ null directories)
+
+$if (not $ null filesWithNames)
+  $case (directoryInfoKind <$> mInfo)
+    $of Nothing
+      <h2>Files
+    $of Just DirectoryKindSeries
+      <h2>Episodes
+    $of Just DirectoryKindMovie
+      $if (length filesWithNames > 1)
+        <h2>Parts
   <ul>
-    $forall dir <- directories
+    $forall (name, path) <- filesWithNames
       <li>
-        <a href=@{DirectoryR $ mkSegments dir}>#{showPath dir}
+        <a href=@{DirectoryR $ mkSegments path}>#{name}
+
+
+$if (not $ null dirsWithNames)
+  $case (directoryInfoKind <$> mInfo)
+    $of Just DirectoryKindSeries
+      <h2>Seasons
+    $of _
+      <h2>Directories
+  <ul>
+    $forall (name, path) <- dirsWithNames
+      <li>
+        <a href=@{DirectoryR $ mkSegments path}>#{name}

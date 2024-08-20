@@ -58,6 +58,7 @@ library
       , template-haskell
       , text
       , warp
+      , yaml
       , yesod
       , yesod-websockets
 

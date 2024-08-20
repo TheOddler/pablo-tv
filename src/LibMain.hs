@@ -16,7 +16,7 @@ import Data.String (fromString)
 import Data.Text (Text, intercalate, unpack)
 import Data.Text qualified as T
 import Evdev.Uinput (Device)
-import Files (DirectoryInfo (..), EpisodeInfo (..), EpisodeNumber (..), MovieInfo (..), parseDirectory)
+import Files (DirectoryInfo (..), DirectoryKind (..), parseDirectory)
 import GHC.Conc (TVar, atomically, newTVarIO, writeTVar)
 import GHC.Data.Maybe (firstJustsM, listToMaybe)
 import IsDevelopment (isDevelopment)
@@ -120,7 +120,7 @@ getPathFromSegments segments = do
 getDirectoryR :: [Text] -> Handler Html
 getDirectoryR segments = do
   absPath <- getPathFromSegments segments
-  (info, directories) <- liftIO $ parseDirectory absPath
+  (mInfo, filesWithNames, dirsWithNames) <- liftIO $ parseDirectory absPath
 
   -- Let the tv know what page we're on
   tvStateTVar <- getsYesod appTVState
@@ -128,20 +128,6 @@ getDirectoryR segments = do
 
   mobileLayout $(widgetFile "mobile/directory")
   where
-    showEpisode :: EpisodeInfo -> String
-    showEpisode e =
-      ( if e.episodeSpecial
-          then " Special "
-          else "Season " ++ show e.episodeSeason ++ " Episode "
-      )
-        ++ ( case e.episodeNumber of
-               EpisodeNumber n -> show n
-               EpisodeNumberDouble n m -> show n ++ " and " ++ show m
-           )
-
-    showPath :: Path Rel x -> String
-    showPath = dropTrailingPathSeparator . toFilePath
-
     mkSegments :: Path Rel x -> [Text]
     mkSegments d = segments ++ [T.pack $ dropTrailingPathSeparator $ toFilePath d]
 

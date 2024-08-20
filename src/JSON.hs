@@ -7,8 +7,7 @@ prefixedDefaultOptions :: Int -> Options
 prefixedDefaultOptions n =
   defaultOptions
     { fieldLabelModifier = lowerFirst . drop n,
-      constructorTagModifier = lowerFirst . drop n,
-      omitNothingFields = True
+      constructorTagModifier = lowerFirst . drop n
     }
   where
     lowerFirst "" = ""

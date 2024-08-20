@@ -1,117 +1,108 @@
 module Files
   ( DirectoryInfo (..),
-    EpisodeInfo (..),
-    EpisodeNumber (..),
-    MovieInfo (..),
+    DirectoryKind (..),
     parseDirectory,
-    parseDirectory',
+    guessDirectoryInfo,
   )
 where
 
 import Control.Applicative ((<|>))
-import Data.Aeson (FromJSON (parseJSON), ToJSON (toEncoding), genericParseJSON, genericToEncoding)
+import Data.Aeson (FromJSON (parseJSON), ToJSON (toJSON), genericParseJSON, genericToJSON)
 import Data.List (sort)
-import Data.List.NonEmpty (NonEmpty, group, nonEmpty)
+import Data.List.NonEmpty (group, nonEmpty)
 import Data.List.NonEmpty qualified as NE
 import Data.Maybe (isJust, mapMaybe)
-import Data.Text (Text, breakOn, strip)
+import Data.Text (Text, breakOn, replace, strip)
 import Data.Text qualified as T
-import GHC.Data.Maybe (firstJusts, listToMaybe, orElse)
+import Data.Yaml (decodeFileEither, encodeFile)
+import GHC.Data.Maybe (firstJusts, firstJustsM, listToMaybe, orElse)
 import GHC.Exts (sortWith)
 import GHC.Generics (Generic)
 import GHC.Utils.Monad (partitionM)
 import JSON (prefixedDefaultOptions)
 import Path
-import System.Directory (doesFileExist, listDirectory)
+import System.Directory (doesFileExist, listDirectory, renameFile)
 import System.FilePath (combine, dropTrailingPathSeparator)
 import Text.Read (readMaybe)
 import Text.Regex.TDFA ((=~))
 
-data EpisodeInfo = EpisodeInfo
-  { -- It's possible a folder contains episodes from multiple seasons,
-    -- so we store the season number per episode.
-    -- When a folder only contains specials, and no other indication of season,
-    -- the season is set to 0. If there is an indication, we set the correct
-    -- season number. In either case the `special` flag will be set too.
-    episodeSeason :: Int,
-    episodeNumber :: EpisodeNumber,
-    episodeSpecial :: Bool,
-    episodeFileName :: Path Rel File
-  }
-  deriving (Eq, Show)
-
-instance Ord EpisodeInfo where
-  compare a b =
-    -- Season 0 is an indicator for specials when we don't know the season
-    ( case (a.episodeSeason, b.episodeSeason) of
-        (0, 0) -> EQ
-        (0, _) -> GT
-        (_, 0) -> LT
-        (x, y) -> compare x y
-    )
-      <> compare a.episodeSpecial b.episodeSpecial
-      <> compare a.episodeNumber b.episodeNumber
-      <> compare a.episodeFileName b.episodeFileName
-
-data EpisodeNumber
-  = EpisodeNumber Int
-  | EpisodeNumberDouble Int Int
-  deriving (Eq, Show)
-
-instance Ord EpisodeNumber where
-  compare :: EpisodeNumber -> EpisodeNumber -> Ordering
-  compare (EpisodeNumber a) (EpisodeNumberDouble c d) = compare a c <> compare a d
-  compare (EpisodeNumberDouble c d) (EpisodeNumber a) = compare c a <> compare d a
-  compare (EpisodeNumber a) (EpisodeNumber b) = compare a b
-  compare (EpisodeNumberDouble a b) (EpisodeNumberDouble c d) = compare a c <> compare b d
-
-newtype MovieInfo = MovieInfo
-  { movieFileName :: Path Rel File
-  }
-  deriving (Eq, Show, Ord)
-
-data DirectoryInfoFileKind
-  = DirectoryInfoFileKindMovie
-  | DirectoryInfoFileKindSeries
-  deriving (Generic)
-
-instance FromJSON DirectoryInfoFileKind where
-  parseJSON = genericParseJSON $ prefixedDefaultOptions 21
-
-instance ToJSON DirectoryInfoFileKind where
-  toEncoding = genericToEncoding $ prefixedDefaultOptions 21
-
-data DirectoryInfoFile = DirectoryInfoFile
-  { directoryInfoFileKind :: DirectoryInfoFileKind,
-    directoryInfoFileTitle :: Text,
-    directoryInfoFileDifferentiator :: Maybe Text,
-    directoryInfoFileDescription :: Maybe Text,
-    directoryInfoFileImdb :: Maybe Text,
-    directoryInfoFileTvdb :: Maybe Text,
-    directoryInfoFileTmdb :: Maybe Text
+data DirectoryInfo = DirectoryInfo
+  { directoryInfoKind :: DirectoryKind,
+    directoryInfoTitle :: Text,
+    directoryInfoImage :: Maybe Text,
+    directoryInfoDifferentiator :: Maybe Text,
+    directoryInfoDescription :: Maybe Text,
+    directoryInfoImdb :: Maybe Text,
+    directoryInfoTvdb :: Maybe Text,
+    directoryInfoTmdb :: Maybe Text
   }
   deriving (Generic)
 
-instance FromJSON DirectoryInfoFile where
-  parseJSON = genericParseJSON $ prefixedDefaultOptions 17
+instance FromJSON DirectoryInfo where
+  parseJSON = genericParseJSON $ prefixedDefaultOptions 13
 
-instance ToJSON DirectoryInfoFile where
-  toEncoding = genericToEncoding $ prefixedDefaultOptions 17
+instance ToJSON DirectoryInfo where
+  toJSON = genericToJSON $ prefixedDefaultOptions 13
 
-data DirectoryInfo
-  = SeriesDirectory
-      { seriesTitle :: Text
-      }
-  | SeasonDirectory
-      { seasonSeriesTitle :: Text,
-        seasonEpisodes :: NonEmpty EpisodeInfo
-      }
-  | MovieDirectory
-      { movieTitle :: Text,
-        movieYear :: Maybe Int,
-        movieFiles :: NonEmpty MovieInfo
-      }
-  deriving (Eq, Show, Ord)
+data DirectoryKind
+  = DirectoryKindMovie
+  | DirectoryKindSeries
+  deriving (Generic)
+
+instance FromJSON DirectoryKind where
+  parseJSON = genericParseJSON $ prefixedDefaultOptions 13
+
+instance ToJSON DirectoryKind where
+  toJSON = genericToJSON $ prefixedDefaultOptions 13
+
+-- | The main function, gives a directory, tries to see if there's existing info,
+-- and if not tries to guess it and saves it.
+parseDirectory :: Path Abs Dir -> IO (Maybe DirectoryInfo, [(Text, Path Rel File)], [(Text, Path Rel Dir)])
+parseDirectory dir = do
+  -- Read files and directories
+  fileAndDirectoryNames <- listDirectory $ fromAbsDir dir
+  (fileNames, directoryNames) <- partitionM (doesFileExist . combine (fromAbsDir dir)) fileAndDirectoryNames
+  files <- sort . filter isVideoFile <$> mapM parseRelFile fileNames
+  directories <- sort <$> mapM parseRelDir directoryNames
+
+  -- TODO: Make proper way of cleaning names, such as including season info if we have it
+  -- But for now we just use the filename
+  let filesWithNames = map (\f -> (niceFileNameT f, f)) files
+      directoriesWithNames = map (\d -> (niceDirNameT d, d)) directories
+      -- Guess some info in case there's no info file
+      mInfoGuess = guessDirectoryInfo dir files directories
+
+      handleNoExistingInfo rootDir info = do
+        -- Write the info, that way we have a template to fill in the data
+        -- TODO: Do a call to the TVDB or something to get better data
+        encodeFile (combine (fromAbsDir rootDir) "info.yaml") info
+        pure (Just info, filesWithNames, directoriesWithNames)
+
+  -- See if there's an info file
+  mInfoFile <- tryGetFile (== "info.yaml") dir
+
+  case mInfoFile of
+    Just infoFile -> do
+      decodedOrError <- decodeFileEither (fromAbsFile infoFile)
+      case decodedOrError of
+        Right info ->
+          -- We have a file and it coded correctly, so we use that
+          pure (Just info, filesWithNames, directoriesWithNames)
+        -- We have a file, but it failed to decode, so we use the guess
+        Left _ -> case mInfoGuess of
+          Nothing ->
+            -- Couldn't guess either, so I guess we have nothing
+            pure (Nothing, filesWithNames, directoriesWithNames)
+          Just (rootDir, info) -> do
+            -- The file failed to decode, but we do have a guess, so make a backup
+            -- and then save the guess
+            newName <- addExtension ".backup" infoFile
+            renameFile (fromAbsFile infoFile) (fromAbsFile newName)
+            handleNoExistingInfo rootDir info
+    Nothing ->
+      case mInfoGuess of
+        Nothing -> pure (Nothing, filesWithNames, directoriesWithNames)
+        Just (rootDir, info) -> handleNoExistingInfo rootDir info
 
 -- Some helpers
 
@@ -143,8 +134,6 @@ expect3Ints = \case
     (,,) <$> readInt a <*> readInt b <*> readInt c
   _ -> Nothing
 
--- Getting the info
-
 seasonFromDir :: Path a Dir -> Maybe Int
 seasonFromDir dir =
   tryRegex dir expect1Int "[Ss]eason ([0-9]+)"
@@ -168,7 +157,7 @@ seasonFromFiles files =
         <|> tryRegex file expect1Int "[Ss]([0-9]+)[Ee][0-9]+"
         <|> tryRegex file expect1Int "([0-9]+)[Xx][0-9]+"
 
-episodeInfoFromFile :: Path a File -> (Maybe Int, Maybe EpisodeNumber)
+episodeInfoFromFile :: Path a File -> (Maybe Int, Maybe (Either Int (Int, Int)))
 episodeInfoFromFile file =
   let double :: Maybe (Int, Int, Int)
       double =
@@ -184,18 +173,12 @@ episodeInfoFromFile file =
         tryRegex file expect1Int "[Ee]pisode ([0-9]+)"
           <|> tryRegex file expect1Int "[Aa]flevering ([0-9]+)"
    in case double of
-        Just (s, a, b) -> (Just s, Just $ EpisodeNumberDouble a b)
+        Just (s, a, b) -> (Just s, Just $ Right (a, b))
         Nothing -> case seasonAndEp of
-          Just (s, a) -> (Just s, Just $ EpisodeNumber a)
+          Just (s, a) -> (Just s, Just $ Left a)
           Nothing -> case epOnly of
-            Just a -> (Nothing, Just $ EpisodeNumber a)
+            Just a -> (Nothing, Just $ Left a)
             Nothing -> (Nothing, Nothing)
-
-isSpecialFromFile :: Path a File -> Bool
-isSpecialFromFile file =
-  toFilePath file =~ ("[Ss]pecial" :: Text)
-    || toFilePath file =~ ("[Ss]0+[Ee][0-9]+" :: Text)
-    || toFilePath file =~ ("0+[Xx][0-9]+" :: Text)
 
 movieYearFromDir :: Path a Dir -> Maybe Int
 movieYearFromDir dir =
@@ -212,66 +195,75 @@ movieYearFromFiles files =
 movieTitleFromDir :: Path a Dir -> Text
 movieTitleFromDir folder = strip . fst $ breakOn "(" (niceDirNameT folder)
 
-parseDirectory :: Path Abs Dir -> IO (Maybe DirectoryInfo, [Path Rel Dir])
-parseDirectory dir = do
-  fileAndDirectoryNames <- listDirectory $ fromAbsDir dir
-  (fileNames, directoryNames) <- partitionM (doesFileExist . combine (fromAbsDir dir)) fileAndDirectoryNames
-
-  files <- mapM parseRelFile fileNames
-  directories <- mapM parseRelDir directoryNames
-
-  pure (parseDirectory' dir files directories, sort directories)
+tryGetFile :: (FilePath -> Bool) -> Path Abs Dir -> IO (Maybe (Path Abs File))
+tryGetFile predicate startDir =
+  -- Look up to X levels deep
+  firstJustsM $ tryGetFile' <$> take 3 (iterate parent startDir)
+  where
+    tryGetFile' dir = do
+      fileAndDirNames <- listDirectory $ fromAbsDir dir
+      let matchingFileNames = filter predicate fileAndDirNames
+      foundFile <- listToMaybe <$> mapM parseRelFile matchingFileNames
+      pure $ (dir </>) <$> foundFile
 
 niceDirNameT :: Path a Dir -> Text
 niceDirNameT = T.pack . dropTrailingPathSeparator . fromRelDir . dirname
 
-parseDirectory' :: Path a Dir -> [Path Rel File] -> [Path Rel Dir] -> Maybe DirectoryInfo
-parseDirectory' dir files directories =
+niceFileNameT :: Path a File -> Text
+niceFileNameT file =
+  let withoutExt = (fst <$> splitExtension file) `orElse` file
+      name = fromRelFile $ filename withoutExt
+   in replace "." " " $ T.pack name
+
+isVideoFile :: Path b File -> Bool
+isVideoFile file =
+  case fileExtension file of
+    Just ext -> ext `elem` [".mp4", ".mkv", ".avi", ".webm"]
+    Nothing -> False
+
+guessDirectoryInfo :: Path a Dir -> [Path Rel File] -> [Path Rel Dir] -> Maybe (Path a Dir, DirectoryInfo)
+guessDirectoryInfo dir files directories =
   let videoFiles :: [Path Rel File]
       videoFiles = sort $ filter isVideoFile files
-      isVideoFile file =
-        case fileExtension file of
-          Just ext -> ext `elem` [".mp4", ".mkv", ".avi", ".webm"]
-          Nothing -> False
 
       isSeriesDir = any (isJust . seasonFromDir) directories
 
       mSeasonFromDir = seasonFromDir dir
       mSeasonFromFiles = seasonFromFiles videoFiles
       mSeason = mSeasonFromDir <|> mSeasonFromFiles
+
+      simpleInfo kind name =
+        DirectoryInfo
+          { directoryInfoKind = kind,
+            directoryInfoTitle = name,
+            directoryInfoImage = Nothing,
+            directoryInfoDifferentiator = Nothing,
+            directoryInfoDescription = Nothing,
+            directoryInfoImdb = Nothing,
+            directoryInfoTvdb = Nothing,
+            directoryInfoTmdb = Nothing
+          }
    in case (mSeason, nonEmpty videoFiles, nonEmpty directories) of
-        (Just season, Just actualFiles, _) ->
+        (Just _season, Just _actualFiles, _) ->
           Just
-            SeasonDirectory
-              { seasonSeriesTitle =
-                  if isJust mSeasonFromDir
-                    then niceDirNameT $ dirname $ parent dir
-                    else niceDirNameT $ dirname dir,
-                seasonEpisodes =
-                  let mkEpisodeInfo :: (Int, Path Rel File) -> EpisodeInfo
-                      mkEpisodeInfo (index, file) =
-                        EpisodeInfo
-                          { episodeSeason = if rawSeason == 0 then season else rawSeason,
-                            episodeNumber = mEpisodeFromFile `orElse` EpisodeNumber index,
-                            episodeSpecial = isSpecialFromFile file || rawSeason == 0,
-                            episodeFileName = file
-                          }
-                        where
-                          (mSeasonFromFile, mEpisodeFromFile) = episodeInfoFromFile file
-                          rawSeason = mSeasonFromFile `orElse` season
-                   in NE.sort $ mkEpisodeInfo <$> NE.zip (1 NE.:| [2 ..]) actualFiles
-              }
+            ( parent dir,
+              simpleInfo DirectoryKindSeries $
+                if isJust mSeasonFromDir
+                  then niceDirNameT $ parent dir
+                  else niceDirNameT dir
+            )
         (_, _, _)
           | isSeriesDir ->
               Just
-                SeriesDirectory
-                  { seriesTitle = niceDirNameT $ dirname dir
-                  }
-        (_, Just actualFiles, _) ->
+                ( dir,
+                  simpleInfo DirectoryKindSeries $ niceDirNameT dir
+                )
+        (_, Just _actualFiles, _) ->
           Just
-            MovieDirectory
-              { movieTitle = movieTitleFromDir dir,
-                movieYear = movieYearFromDir dir <|> movieYearFromFiles videoFiles,
-                movieFiles = NE.sort $ MovieInfo <$> actualFiles
-              }
+            ( dir,
+              let base = simpleInfo DirectoryKindMovie $ movieTitleFromDir dir
+               in base
+                    { directoryInfoDifferentiator = fmap (T.pack . show) $ movieYearFromDir dir <|> movieYearFromFiles videoFiles
+                    }
+            )
         _ -> Nothing
