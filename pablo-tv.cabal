@@ -79,8 +79,7 @@ test-suite pablo-tv-test
         FilesSpec
         TestUtils
     build-depends:
-        autodocodec
-      , autodocodec-yaml
+        autodocodec-yaml
       , bytestring
       , pablo-tv
       , path
