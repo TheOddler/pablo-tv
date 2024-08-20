@@ -36,7 +36,7 @@ data DirectoryInfo = DirectoryInfo
     directoryInfoTvdb :: Maybe Text,
     directoryInfoTmdb :: Maybe Text
   }
-  deriving (Generic)
+  deriving (Generic, Show, Eq)
 
 instance FromJSON DirectoryInfo where
   parseJSON = genericParseJSON $ prefixedDefaultOptions 13
@@ -47,7 +47,7 @@ instance ToJSON DirectoryInfo where
 data DirectoryKind
   = DirectoryKindMovie
   | DirectoryKindSeries
-  deriving (Generic)
+  deriving (Generic, Show, Eq)
 
 instance FromJSON DirectoryKind where
   parseJSON = genericParseJSON $ prefixedDefaultOptions 13
@@ -246,7 +246,9 @@ guessDirectoryInfo dir files directories =
    in case (mSeason, nonEmpty videoFiles, nonEmpty directories) of
         (Just _season, Just _actualFiles, _) ->
           Just
-            ( parent dir,
+            ( if isJust mSeasonFromDir
+                then parent dir
+                else dir,
               simpleInfo DirectoryKindSeries $
                 if isJust mSeasonFromDir
                   then niceDirNameT $ parent dir
