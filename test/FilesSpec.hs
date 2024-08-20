@@ -1,10 +1,12 @@
 module FilesSpec (spec) where
 
+import Data.ByteString.Char8 qualified as BS
 import Data.Text (Text)
 import Data.Text qualified as T
+import Data.Yaml (decodeThrow, encode)
 import Files
 import Path (File, Path, Rel, fromRelFile, parseRelDir, parseRelFile)
-import Test.Syd (Spec, describe, it, pureGoldenTextFile, shouldBe)
+import Test.Syd (Spec, describe, it, pureGoldenByteStringFile, pureGoldenTextFile, shouldBe)
 import TestUtils (labeledExpectationFailure)
 
 spec :: Spec
@@ -24,6 +26,83 @@ spec = do
             file <- forceRelFile <$> files,
             isVideoFile file
         ]
+  describe "Saving info files" $ do
+    it "basic info" $
+      pureGoldenByteStringFile "test/golden/basic-info.yaml" $
+        encode
+          DirectoryInfo
+            { directoryInfoKind = DirectoryKindSeries,
+              directoryInfoTitle = "Pabloland",
+              directoryInfoImage = Nothing,
+              directoryInfoDifferentiator = Nothing,
+              directoryInfoDescription = Nothing,
+              directoryInfoImdb = Nothing,
+              directoryInfoTvdb = Nothing,
+              directoryInfoTmdb = Nothing
+            }
+    it "with description" $
+      pureGoldenByteStringFile "test/golden/with-description.yaml" $
+        encode
+          DirectoryInfo
+            { directoryInfoKind = DirectoryKindSeries,
+              directoryInfoTitle = "Pabloland",
+              directoryInfoImage = Nothing,
+              directoryInfoDifferentiator = Nothing,
+              directoryInfoDescription = Just "Super interesting series with characters and stuff.",
+              directoryInfoImdb = Nothing,
+              directoryInfoTvdb = Nothing,
+              directoryInfoTmdb = Nothing
+            }
+    it "all info" $
+      pureGoldenByteStringFile "test/golden/basicOnfo.yaml" $
+        encode
+          DirectoryInfo
+            { directoryInfoKind = DirectoryKindSeries,
+              directoryInfoTitle = "Pabloland",
+              directoryInfoImage = Just "www.website/image.jpg",
+              directoryInfoDifferentiator = Just "UK",
+              directoryInfoDescription = Just "A description",
+              directoryInfoImdb = Just "tt1234567",
+              directoryInfoTvdb = Just "123",
+              directoryInfoTmdb = Just "abc"
+            }
+
+  it "Can decode info with missing fields" $ do
+    let example =
+          DirectoryInfo
+            { directoryInfoKind = DirectoryKindMovie,
+              directoryInfoTitle = "Master Movie",
+              directoryInfoImage = Nothing,
+              directoryInfoDifferentiator = Nothing,
+              directoryInfoDescription = Nothing,
+              directoryInfoImdb = Nothing,
+              directoryInfoTvdb = Nothing,
+              directoryInfoTmdb = Nothing
+            }
+    let encoded =
+          BS.unlines
+            [ "kind: movie",
+              "title: Master Movie",
+              "description: null"
+            ]
+    decoded <- decodeThrow encoded
+    decoded `shouldBe` example
+
+  it "Can round-trip info file" $ do
+    let example =
+          DirectoryInfo
+            { directoryInfoKind = DirectoryKindSeries,
+              directoryInfoTitle = "Pabloland",
+              directoryInfoImage = Just "www.website/image.jpg",
+              directoryInfoDifferentiator = Just "UK",
+              directoryInfoDescription = Just "A description",
+              directoryInfoImdb = Just "tt1234567",
+              directoryInfoTvdb = Just "123",
+              directoryInfoTmdb = Just "abc"
+            }
+    let encoded = encode example
+    decoded <- decodeThrow encoded
+    decoded `shouldBe` example
 
 forceRelFile :: FilePath -> Path Rel File
 forceRelFile file =

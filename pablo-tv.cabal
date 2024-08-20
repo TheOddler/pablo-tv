@@ -79,8 +79,10 @@ test-suite pablo-tv-test
         FilesSpec
         TestUtils
     build-depends:
-        pablo-tv
+        bytestring
+      , pablo-tv
       , path
       , sydtest
       , sydtest-discover
       , text
+      , yaml
