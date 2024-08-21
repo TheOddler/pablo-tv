@@ -33,7 +33,6 @@ spec = do
           DirectoryInfo
             { directoryInfoKind = DirectoryKindSeries,
               directoryInfoTitle = "Pabloland",
-              directoryInfoImage = Nothing,
               directoryInfoDifferentiator = Nothing,
               directoryInfoDescription = Nothing,
               directoryInfoImdb = Nothing,
@@ -46,7 +45,6 @@ spec = do
           DirectoryInfo
             { directoryInfoKind = DirectoryKindSeries,
               directoryInfoTitle = "Pabloland",
-              directoryInfoImage = Nothing,
               directoryInfoDifferentiator = Nothing,
               directoryInfoDescription = Just "Super interesting series with characters and stuff.",
               directoryInfoImdb = Nothing,
@@ -59,7 +57,6 @@ spec = do
           DirectoryInfo
             { directoryInfoKind = DirectoryKindSeries,
               directoryInfoTitle = "Pabloland",
-              directoryInfoImage = Just "www.website/image.jpg",
               directoryInfoDifferentiator = Just "UK",
               directoryInfoDescription = Just "A description",
               directoryInfoImdb = Just "tt1234567",
@@ -72,7 +69,6 @@ spec = do
           DirectoryInfo
             { directoryInfoKind = DirectoryKindMovie,
               directoryInfoTitle = "Master Movie",
-              directoryInfoImage = Nothing,
               directoryInfoDifferentiator = Nothing,
               directoryInfoDescription = Nothing,
               directoryInfoImdb = Nothing,
@@ -95,7 +91,6 @@ spec = do
           DirectoryInfo
             { directoryInfoKind = DirectoryKindMovie,
               directoryInfoTitle = "Master Movie",
-              directoryInfoImage = Nothing,
               directoryInfoDifferentiator = Nothing,
               directoryInfoDescription = Nothing,
               directoryInfoImdb = Nothing,
@@ -118,7 +113,6 @@ spec = do
           DirectoryInfo
             { directoryInfoKind = DirectoryKindMovie,
               directoryInfoTitle = "Master Movie",
-              directoryInfoImage = Nothing,
               directoryInfoDifferentiator = Nothing,
               directoryInfoDescription = Nothing,
               directoryInfoImdb = Nothing,
@@ -141,7 +135,6 @@ spec = do
           DirectoryInfo
             { directoryInfoKind = DirectoryKindSeries,
               directoryInfoTitle = "Pabloland",
-              directoryInfoImage = Just "www.website/image.jpg",
               directoryInfoDifferentiator = Just "UK",
               directoryInfoDescription = Just "A description",
               directoryInfoImdb = Just "tt1234567",
@@ -161,7 +154,7 @@ forceRelFile file =
     Right f -> f
 
 mkGuess :: DirectoryKind -> Text -> Maybe Text -> DirectoryInfo
-mkGuess kind title diff = DirectoryInfo kind title Nothing diff Nothing Nothing Nothing Nothing
+mkGuess kind title diff = DirectoryInfo kind title diff Nothing Nothing Nothing Nothing
 
 -- | Folder name, file names, expected results
 folderExamples :: [(FilePath, [FilePath], [FilePath], Maybe (FilePath, DirectoryInfo))]

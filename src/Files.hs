@@ -39,7 +39,6 @@ import Text.Regex.TDFA ((=~))
 data DirectoryInfo = DirectoryInfo
   { directoryInfoKind :: DirectoryKind,
     directoryInfoTitle :: Text,
-    directoryInfoImage :: Maybe Text,
     directoryInfoDifferentiator :: Maybe Text,
     directoryInfoDescription :: Maybe Text,
     directoryInfoImdb :: Maybe Text,
@@ -54,7 +53,6 @@ instance HasCodec DirectoryInfo where
       DirectoryInfo
         <$> requiredField "kind" "Is this a series or a movie?" .= directoryInfoKind
         <*> requiredField "title" "The title of this series or movie" .= directoryInfoTitle
-        <*> optionalFieldOrNull "image" "A URL to an image" .= directoryInfoImage
         <*> optionalFieldOrNull "differentiator" "A differentiator for when there are multiple series or movies with the same title" .= directoryInfoDifferentiator
         <*> optionalFieldOrNull "description" "The description of the series or movie" .= directoryInfoDescription
         <*> optionalFieldOrNull "imdb" "The IMDB ID" .= directoryInfoImdb
@@ -239,6 +237,8 @@ isVideoFile file =
     Just ext -> ext `elem` [".mp4", ".mkv", ".avi", ".webm"]
     Nothing -> False
 
+-- | This tries to guess some information based on the directory and file names.
+-- It also returns what it thinks is the root directory of this series or movie.
 guessDirectoryInfo :: Path a Dir -> [Path Rel File] -> [Path Rel Dir] -> Maybe (Path a Dir, DirectoryInfo)
 guessDirectoryInfo dir files directories =
   let videoFiles :: [Path Rel File]
@@ -254,7 +254,6 @@ guessDirectoryInfo dir files directories =
         DirectoryInfo
           { directoryInfoKind = kind,
             directoryInfoTitle = name,
-            directoryInfoImage = Nothing,
             directoryInfoDifferentiator = Nothing,
             directoryInfoDescription = Nothing,
             directoryInfoImdb = Nothing,
