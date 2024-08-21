@@ -24,6 +24,7 @@ import Network.Info (IPv4 (..), NetworkInterface (..), getNetworkInterfaces)
 import Network.Wai.Handler.Warp (run)
 import Path (Abs, Dir, File, Path, Rel, fileExtension, fromAbsDir, fromAbsFile, parent, parseAbsDir, parseRelFile, toFilePath, (</>))
 import System.Directory (doesFileExist, getHomeDirectory, listDirectory)
+import System.Environment (getEnv)
 import System.FilePath (combine, dropTrailingPathSeparator)
 import System.Process (callProcess)
 import Text.Hamlet (hamletFile)
@@ -35,6 +36,7 @@ import Yesod.WebSockets (sendTextData, webSockets)
 
 data App = App
   { appPort :: Int,
+    appTVDBToken :: String,
     appInputDevice :: Device,
     appTVState :: TVar TVState
   }
@@ -207,6 +209,9 @@ getReconnectingWebSocketJSR =
 
 main :: IO ()
 main = do
+  -- To get this token for now you can use your apiKey here https://thetvdb.github.io/v4-api/#/Login/post_login
+  tvdbToken <- getEnv "TVDB_TOKEN"
+
   inputDevice <- mkInputDevice
   tvState <- newTVarIO $ TVState MobileHomeR
 
@@ -225,6 +230,7 @@ main = do
     toWaiAppPlain
       App
         { appPort = port,
+          appTVDBToken = tvdbToken,
           appInputDevice = inputDevice,
           appTVState = tvState
         }
