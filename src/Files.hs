@@ -12,11 +12,11 @@ where
 import Autodocodec
   ( HasCodec (codec),
     object,
-    optionalFieldOrNull,
     requiredField,
     stringConstCodec,
     (.=),
   )
+import Autodocodec.Codec (optionalFieldWithDefaultWith)
 import Autodocodec.Yaml (eitherDecodeYamlViaCodec, encodeYamlViaCodec)
 import Control.Applicative ((<|>))
 import Data.ByteString qualified as BS
@@ -53,11 +53,16 @@ instance HasCodec DirectoryInfo where
       DirectoryInfo
         <$> requiredField "kind" "Is this a series or a movie?" .= directoryInfoKind
         <*> requiredField "title" "The title of this series or movie" .= directoryInfoTitle
-        <*> optionalFieldOrNull "differentiator" "A differentiator for when there are multiple series or movies with the same title" .= directoryInfoDifferentiator
-        <*> optionalFieldOrNull "description" "The description of the series or movie" .= directoryInfoDescription
-        <*> optionalFieldOrNull "imdb" "The IMDB ID" .= directoryInfoImdb
-        <*> optionalFieldOrNull "tvdb" "The TVDB ID" .= directoryInfoTvdb
-        <*> optionalFieldOrNull "tmdb" "The TMDB ID" .= directoryInfoTmdb
+        <*> optionalField' "differentiator" "A differentiator for when there are multiple series or movies with the same title" .= directoryInfoDifferentiator
+        <*> optionalField' "description" "The description of the series or movie" .= directoryInfoDescription
+        <*> optionalField' "imdb" "The IMDB ID" .= directoryInfoImdb
+        <*> optionalField' "tvdb" "The TVDB ID" .= directoryInfoTvdb
+        <*> optionalField' "tmdb" "The TMDB ID" .= directoryInfoTmdb
+    where
+      -- We use this instead of `optionalFieldOrNull` because this also writes a `null` when the field is `Nothing`
+      -- that way we get `null` values in new files and they serve as better templates, but we can still
+      -- remove the field from the file and they'll parse just fine.
+      optionalField' key = optionalFieldWithDefaultWith key codec Nothing
 
 data DirectoryKind
   = DirectoryKindMovie
@@ -73,52 +78,43 @@ instance HasCodec DirectoryKind where
 
 -- | The main function, gives a directory, tries to see if there's existing info,
 -- and if not tries to guess it and saves it.
-parseDirectory :: Path Abs Dir -> IO (Maybe DirectoryInfo, [(Text, Path Rel File)], [(Text, Path Rel Dir)])
-parseDirectory dir = do
+parseDirectory :: String -> Path Abs Dir -> IO (Maybe DirectoryInfo, [(Text, Path Rel File)], [(Text, Path Rel Dir)])
+parseDirectory _tvdbToken dir = do
   -- Read files and directories
   fileAndDirectoryNames <- listDirectory $ fromAbsDir dir
   (fileNames, directoryNames) <- partitionM (doesFileExist . combine (fromAbsDir dir)) fileAndDirectoryNames
   files <- sort . filter isVideoFile <$> mapM parseRelFile fileNames
   directories <- sort <$> mapM parseRelDir directoryNames
 
-  -- TODO: Make proper way of cleaning names, such as including season info if we have it
-  -- But for now we just use the filename
   let filesWithNames = map (\f -> (niceFileNameT f, f)) files
       directoriesWithNames = map (\d -> (niceDirNameT d, d)) directories
       -- Guess some info in case there's no info file
       mInfoGuess = guessDirectoryInfo dir files directories
 
-      handleNoExistingInfo rootDir info = do
-        -- Write the info, that way we have a template to fill in the data
-        -- TODO: Do a call to the TVDB or something to get better data
-        BS.writeFile (combine (fromAbsDir rootDir) "info.yaml") (encodeYamlViaCodec info)
-        pure (Just info, filesWithNames, directoriesWithNames)
-
   -- See if there's an info file
-  mInfoFile <- tryGetFile (== "info.yaml") dir
-
-  case mInfoFile of
+  mInfoFilePath <- tryGetFile (== "info.yaml") dir
+  mInfoFile <- case mInfoFilePath of
+    Nothing -> pure Nothing
     Just infoFile -> do
+      -- If there is, try and decode it
       decodedOrError <- eitherDecodeYamlViaCodec <$> BS.readFile (fromAbsFile infoFile)
       case decodedOrError of
-        Right info ->
-          -- We have a file and it coded correctly, so we use that
-          pure (Just info, filesWithNames, directoriesWithNames)
-        -- We have a file, but it failed to decode, so we use the guess
-        Left _ -> case mInfoGuess of
-          Nothing ->
-            -- Couldn't guess either, so I guess we have nothing
-            pure (Nothing, filesWithNames, directoriesWithNames)
-          Just (rootDir, info) -> do
-            -- The file failed to decode, but we do have a guess, so make a backup
-            -- and then save the guess
-            newName <- addExtension ".backup" infoFile
-            renameFile (fromAbsFile infoFile) (fromAbsFile newName)
-            handleNoExistingInfo rootDir info
-    Nothing ->
-      case mInfoGuess of
-        Nothing -> pure (Nothing, filesWithNames, directoriesWithNames)
-        Just (rootDir, info) -> handleNoExistingInfo rootDir info
+        Left err -> do
+          -- If there's an error, move it to a backup file, we'll guess info and create a new one later
+          putStrLn $ "Failed to decode info file: " ++ show err
+          newName <- addExtension ".backup" infoFile
+          renameFile (fromAbsFile infoFile) (fromAbsFile newName)
+          pure Nothing
+        Right info -> pure $ Just info
+
+  case (mInfoFile, mInfoGuess) of
+    (Just info, _) -> pure (Just info, filesWithNames, directoriesWithNames)
+    (Nothing, Nothing) -> pure (Nothing, filesWithNames, directoriesWithNames)
+    (Nothing, Just (rootDir, info)) -> do
+      -- Write the info, that way we have a template to fill in the data
+      -- TODO: Do a call to the TVDB or something to get better data
+      BS.writeFile (combine (fromAbsDir rootDir) "info.yaml") (encodeYamlViaCodec info)
+      pure (Just info, filesWithNames, directoriesWithNames)
 
 -- | This tries to guess some information based on the directory and file names.
 -- It also returns what it thinks is the root directory of this series or movie.

@@ -122,7 +122,8 @@ getPathFromSegments segments = do
 getDirectoryR :: [Text] -> Handler Html
 getDirectoryR segments = do
   absPath <- getPathFromSegments segments
-  (mInfo, filesWithNames, dirsWithNames) <- liftIO $ parseDirectory absPath
+  tvdbToken <- getsYesod appTVDBToken
+  (mInfo, filesWithNames, dirsWithNames) <- liftIO $ parseDirectory tvdbToken absPath
 
   -- Let the tv know what page we're on
   tvStateTVar <- getsYesod appTVState
