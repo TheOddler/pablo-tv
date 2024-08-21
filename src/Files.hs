@@ -120,6 +120,56 @@ parseDirectory dir = do
         Nothing -> pure (Nothing, filesWithNames, directoriesWithNames)
         Just (rootDir, info) -> handleNoExistingInfo rootDir info
 
+-- | This tries to guess some information based on the directory and file names.
+-- It also returns what it thinks is the root directory of this series or movie.
+guessDirectoryInfo :: Path a Dir -> [Path Rel File] -> [Path Rel Dir] -> Maybe (Path a Dir, DirectoryInfo)
+guessDirectoryInfo dir files directories =
+  let videoFiles :: [Path Rel File]
+      videoFiles = sort $ filter isVideoFile files
+
+      isSeriesDir = any (isJust . seasonFromDir) directories
+
+      mSeasonFromDir = seasonFromDir dir
+      mSeasonFromFiles = seasonFromFiles videoFiles
+      mSeason = mSeasonFromDir <|> mSeasonFromFiles
+
+      simpleInfo kind name =
+        DirectoryInfo
+          { directoryInfoKind = kind,
+            directoryInfoTitle = name,
+            directoryInfoDifferentiator = Nothing,
+            directoryInfoDescription = Nothing,
+            directoryInfoImdb = Nothing,
+            directoryInfoTvdb = Nothing,
+            directoryInfoTmdb = Nothing
+          }
+   in case (mSeason, nonEmpty videoFiles, nonEmpty directories) of
+        (Just _season, Just _actualFiles, _) ->
+          Just
+            ( if isJust mSeasonFromDir
+                then parent dir
+                else dir,
+              simpleInfo DirectoryKindSeries $
+                if isJust mSeasonFromDir
+                  then niceDirNameT $ parent dir
+                  else niceDirNameT dir
+            )
+        (_, _, _)
+          | isSeriesDir ->
+              Just
+                ( dir,
+                  simpleInfo DirectoryKindSeries $ niceDirNameT dir
+                )
+        (_, Just _actualFiles, _) ->
+          Just
+            ( dir,
+              let base = simpleInfo DirectoryKindMovie $ movieTitleFromDir dir
+               in base
+                    { directoryInfoDifferentiator = fmap (T.pack . show) $ movieYearFromDir dir <|> movieYearFromFiles videoFiles
+                    }
+            )
+        _ -> Nothing
+
 -- Some helpers
 
 readInt :: String -> Maybe Int
@@ -236,53 +286,3 @@ isVideoFile file =
   case fileExtension file of
     Just ext -> ext `elem` [".mp4", ".mkv", ".avi", ".webm"]
     Nothing -> False
-
--- | This tries to guess some information based on the directory and file names.
--- It also returns what it thinks is the root directory of this series or movie.
-guessDirectoryInfo :: Path a Dir -> [Path Rel File] -> [Path Rel Dir] -> Maybe (Path a Dir, DirectoryInfo)
-guessDirectoryInfo dir files directories =
-  let videoFiles :: [Path Rel File]
-      videoFiles = sort $ filter isVideoFile files
-
-      isSeriesDir = any (isJust . seasonFromDir) directories
-
-      mSeasonFromDir = seasonFromDir dir
-      mSeasonFromFiles = seasonFromFiles videoFiles
-      mSeason = mSeasonFromDir <|> mSeasonFromFiles
-
-      simpleInfo kind name =
-        DirectoryInfo
-          { directoryInfoKind = kind,
-            directoryInfoTitle = name,
-            directoryInfoDifferentiator = Nothing,
-            directoryInfoDescription = Nothing,
-            directoryInfoImdb = Nothing,
-            directoryInfoTvdb = Nothing,
-            directoryInfoTmdb = Nothing
-          }
-   in case (mSeason, nonEmpty videoFiles, nonEmpty directories) of
-        (Just _season, Just _actualFiles, _) ->
-          Just
-            ( if isJust mSeasonFromDir
-                then parent dir
-                else dir,
-              simpleInfo DirectoryKindSeries $
-                if isJust mSeasonFromDir
-                  then niceDirNameT $ parent dir
-                  else niceDirNameT dir
-            )
-        (_, _, _)
-          | isSeriesDir ->
-              Just
-                ( dir,
-                  simpleInfo DirectoryKindSeries $ niceDirNameT dir
-                )
-        (_, Just _actualFiles, _) ->
-          Just
-            ( dir,
-              let base = simpleInfo DirectoryKindMovie $ movieTitleFromDir dir
-               in base
-                    { directoryInfoDifferentiator = fmap (T.pack . show) $ movieYearFromDir dir <|> movieYearFromFiles videoFiles
-                    }
-            )
-        _ -> Nothing
