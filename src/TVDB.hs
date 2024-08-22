@@ -7,8 +7,11 @@ import Data.Aeson (FromJSON)
 import Data.ByteString qualified as BS
 import Data.Maybe (listToMaybe)
 import Data.Text (Text)
+import Data.Text qualified as T
 import GHC.Generics (Generic)
-import Network.HTTP.Req (GET (GET), NoReqBody (..), defaultHttpConfig, https, jsonResponse, oAuth2Bearer, req, responseBody, runReq, (/:), (=:))
+import Network.HTTP.Req (GET (GET), NoReqBody (..), bsResponse, defaultHttpConfig, https, jsonResponse, oAuth2Bearer, req, responseBody, runReq, useURI, (/:), (=:))
+import Path (Abs, File, Path, fromAbsFile)
+import Text.URI (mkURI)
 
 data TVDBResponse = TVDBResponse
   { tvdbResponseStatus :: Text,
@@ -65,3 +68,16 @@ tryGetInfo tvdbToken title type' year =
       "success" -> do
         pure $ listToMaybe $ tvdbResponseData body
       _ -> pure Nothing
+
+downloadImage :: Text -> Path Abs File -> IO ()
+downloadImage urlT savePath = do
+  case useURI =<< mkURI urlT of
+    Nothing -> putStrLn $ "Invalid URL: " <> T.unpack urlT
+    Just (Left httpUrl) -> downloadFrom httpUrl
+    Just (Right httpsUrl) -> downloadFrom httpsUrl
+  where
+    downloadFrom (url, options) = do
+      img <-
+        runReq defaultHttpConfig $
+          req GET url NoReqBody bsResponse options
+      BS.writeFile (fromAbsFile savePath) (responseBody img)

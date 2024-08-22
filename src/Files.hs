@@ -1,3 +1,5 @@
+{-# LANGUAGE TemplateHaskell #-}
+
 module Files
   ( DirectoryInfo (..),
     DirectoryKind (..),
@@ -119,17 +121,28 @@ parseDirectory tvdbToken dir = do
       let tvdbType = case directoryInfoKind info of
             DirectoryKindMovie -> TVDB.Movie
             DirectoryKindSeries -> TVDB.Series
-      mInfo <- TVDB.tryGetInfo tvdbToken (directoryInfoTitle info) tvdbType (directoryInfoYear info)
+      mTVDBData <- TVDB.tryGetInfo tvdbToken (directoryInfoTitle info) tvdbType (directoryInfoYear info)
 
-      let extendedInfo = case mInfo of
+      let extendedInfo = case mTVDBData of
             Nothing -> info
-            Just extraInfo ->
+            Just tvdbData ->
               info
-                { directoryInfoTitle = TVDB.tvdbResponseDataName extraInfo,
-                  directoryInfoDescription = Just $ TVDB.tvdbResponseDataDescription extraInfo,
-                  directoryInfoYear = readInt (TVDB.tvdbResponseDataYear extraInfo) <|> directoryInfoYear info
+                { directoryInfoTitle = TVDB.tvdbResponseDataName tvdbData,
+                  directoryInfoDescription = Just $ TVDB.tvdbResponseDataDescription tvdbData,
+                  directoryInfoYear = readInt (TVDB.tvdbResponseDataYear tvdbData) <|> directoryInfoYear info
                 }
-      -- TODO: Download image
+      case mTVDBData of
+        Nothing -> pure ()
+        Just tvdbData -> do
+          let url = TVDB.tvdbResponseDataImageUrl tvdbData
+              fileNameFromOriginal =
+                case snd $ T.breakOnEnd "/" url of
+                  "" -> Nothing
+                  t' -> Just t'
+              fileName :: Path Rel File
+              fileName = (parseRelFile . T.unpack =<< fileNameFromOriginal) `orElse` $(mkRelFile "poster.jpg")
+          print url
+          TVDB.downloadImage url (rootDir </> fileName)
 
       BS.writeFile (combine (fromAbsDir rootDir) "info.yaml") (encodeYamlViaCodec extendedInfo)
       pure (Just extendedInfo, filesWithNames, directoriesWithNames)
@@ -285,7 +298,7 @@ tryGetFile predicate startDir =
     tryGetFile' dir = do
       fileAndDirNames <- listDirectory $ fromAbsDir dir
       let matchingFileNames = filter predicate fileAndDirNames
-      foundFile <- listToMaybe <$> mapM parseRelFile matchingFileNames
+      let foundFile = listToMaybe =<< mapM parseRelFile matchingFileNames
       pure $ (dir </>) <$> foundFile
 
 niceDirNameT :: Path a Dir -> Text
