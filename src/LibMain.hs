@@ -10,6 +10,7 @@ module LibMain where
 
 import Actions (actionsWebSocket, mkInputDevice)
 import Control.Monad (filterM, join, when)
+import Data.ByteString.Char8 qualified as BS
 import Data.Char (toLower)
 import Data.List (foldl', isSuffixOf)
 import Data.String (fromString)
@@ -36,7 +37,7 @@ import Yesod.WebSockets (sendTextData, webSockets)
 
 data App = App
   { appPort :: Int,
-    appTVDBToken :: String,
+    appTVDBToken :: BS.ByteString,
     appInputDevice :: Device,
     appTVState :: TVar TVState
   }
@@ -231,7 +232,7 @@ main = do
     toWaiAppPlain
       App
         { appPort = port,
-          appTVDBToken = tvdbToken,
+          appTVDBToken = BS.pack tvdbToken,
           appInputDevice = inputDevice,
           appTVState = tvState
         }

@@ -33,6 +33,7 @@ spec = do
           DirectoryInfo
             { directoryInfoKind = DirectoryKindSeries,
               directoryInfoTitle = "Pabloland",
+              directoryInfoYear = Nothing,
               directoryInfoDifferentiator = Nothing,
               directoryInfoDescription = Nothing,
               directoryInfoImdb = Nothing,
@@ -45,6 +46,7 @@ spec = do
           DirectoryInfo
             { directoryInfoKind = DirectoryKindSeries,
               directoryInfoTitle = "Pabloland",
+              directoryInfoYear = Nothing,
               directoryInfoDifferentiator = Nothing,
               directoryInfoDescription = Just "Super interesting series with characters and stuff.",
               directoryInfoImdb = Nothing,
@@ -57,6 +59,7 @@ spec = do
           DirectoryInfo
             { directoryInfoKind = DirectoryKindSeries,
               directoryInfoTitle = "Pabloland",
+              directoryInfoYear = Just 1991,
               directoryInfoDifferentiator = Just "UK",
               directoryInfoDescription = Just "A description",
               directoryInfoImdb = Just "tt1234567",
@@ -69,6 +72,7 @@ spec = do
           DirectoryInfo
             { directoryInfoKind = DirectoryKindMovie,
               directoryInfoTitle = "Master Movie",
+              directoryInfoYear = Nothing,
               directoryInfoDifferentiator = Nothing,
               directoryInfoDescription = Nothing,
               directoryInfoImdb = Nothing,
@@ -91,6 +95,7 @@ spec = do
           DirectoryInfo
             { directoryInfoKind = DirectoryKindMovie,
               directoryInfoTitle = "Master Movie",
+              directoryInfoYear = Nothing,
               directoryInfoDifferentiator = Nothing,
               directoryInfoDescription = Nothing,
               directoryInfoImdb = Nothing,
@@ -113,6 +118,7 @@ spec = do
           DirectoryInfo
             { directoryInfoKind = DirectoryKindMovie,
               directoryInfoTitle = "Master Movie",
+              directoryInfoYear = Nothing,
               directoryInfoDifferentiator = Nothing,
               directoryInfoDescription = Nothing,
               directoryInfoImdb = Nothing,
@@ -135,6 +141,7 @@ spec = do
           DirectoryInfo
             { directoryInfoKind = DirectoryKindSeries,
               directoryInfoTitle = "Pabloland",
+              directoryInfoYear = Just 1991,
               directoryInfoDifferentiator = Just "UK",
               directoryInfoDescription = Just "A description",
               directoryInfoImdb = Just "tt1234567",
@@ -153,8 +160,8 @@ forceRelFile file =
     Left err -> labeledExpectationFailure "Failed forceRelFile" err
     Right f -> f
 
-mkGuess :: DirectoryKind -> Text -> Maybe Text -> DirectoryInfo
-mkGuess kind title diff = DirectoryInfo kind title diff Nothing Nothing Nothing Nothing
+mkGuess :: DirectoryKind -> Text -> Maybe Int -> DirectoryInfo
+mkGuess kind title year = DirectoryInfo kind title year Nothing Nothing Nothing Nothing Nothing
 
 -- | Folder name, file names, expected results
 folderExamples :: [(FilePath, [FilePath], [FilePath], Maybe (FilePath, DirectoryInfo))]
@@ -190,14 +197,14 @@ folderExamples =
         )
     ),
     ( -- Flemish support
-      "Vlaamschen Serie/Seizoen 1",
+      "Vlaamschen Serie (2021)/Seizoen 1",
       [ "Vlaamschen Serie - Aflevering 2.avi",
         "Vlaamschen Serie - Aflevering 4.avi"
       ],
       [],
       Just
-        ( "Vlaamschen Serie",
-          mkGuess DirectoryKindSeries "Vlaamschen Serie" Nothing
+        ( "Vlaamschen Serie (2021)",
+          mkGuess DirectoryKindSeries "Vlaamschen Serie" (Just 2021)
         )
     ),
     ( -- Flemish support
@@ -218,7 +225,7 @@ folderExamples =
       [],
       Just
         ( "Film Van Mijn Jeugd",
-          mkGuess DirectoryKindMovie "Film Van Mijn Jeugd" (Just "1991")
+          mkGuess DirectoryKindMovie "Film Van Mijn Jeugd" (Just 1991)
         )
     ),
     ( "Film Van Mijn Jeugd",
@@ -228,7 +235,7 @@ folderExamples =
       [],
       Just
         ( "Film Van Mijn Jeugd",
-          mkGuess DirectoryKindMovie "Film Van Mijn Jeugd" (Just "1991")
+          mkGuess DirectoryKindMovie "Film Van Mijn Jeugd" (Just 1991)
         )
     ),
     ( "Film (2023)",
@@ -237,7 +244,7 @@ folderExamples =
       [],
       Just
         ( "Film (2023)",
-          mkGuess DirectoryKindMovie "Film" (Just "2023")
+          mkGuess DirectoryKindMovie "Film" (Just 2023)
         )
     ),
     ( "Film",
@@ -255,7 +262,7 @@ folderExamples =
       [],
       Just
         ( "Japanese Movie (2023, Dubbed)",
-          mkGuess DirectoryKindMovie "Japanese Movie" (Just "2023")
+          mkGuess DirectoryKindMovie "Japanese Movie" (Just 2023)
         )
     )
   ]

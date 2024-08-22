@@ -33,12 +33,14 @@ import GHC.Utils.Monad (partitionM)
 import Path
 import System.Directory (doesFileExist, listDirectory, renameFile)
 import System.FilePath (combine, dropTrailingPathSeparator)
+import TVDB qualified
 import Text.Read (readMaybe)
 import Text.Regex.TDFA ((=~))
 
 data DirectoryInfo = DirectoryInfo
   { directoryInfoKind :: DirectoryKind,
     directoryInfoTitle :: Text,
+    directoryInfoYear :: Maybe Int,
     directoryInfoDifferentiator :: Maybe Text,
     directoryInfoDescription :: Maybe Text,
     directoryInfoImdb :: Maybe Text,
@@ -53,6 +55,7 @@ instance HasCodec DirectoryInfo where
       DirectoryInfo
         <$> requiredField "kind" "Is this a series or a movie?" .= directoryInfoKind
         <*> requiredField "title" "The title of this series or movie" .= directoryInfoTitle
+        <*> optionalField' "year" "The year this series or movie was released" .= directoryInfoYear
         <*> optionalField' "differentiator" "A differentiator for when there are multiple series or movies with the same title" .= directoryInfoDifferentiator
         <*> optionalField' "description" "The description of the series or movie" .= directoryInfoDescription
         <*> optionalField' "imdb" "The IMDB ID" .= directoryInfoImdb
@@ -78,8 +81,8 @@ instance HasCodec DirectoryKind where
 
 -- | The main function, gives a directory, tries to see if there's existing info,
 -- and if not tries to guess it and saves it.
-parseDirectory :: String -> Path Abs Dir -> IO (Maybe DirectoryInfo, [(Text, Path Rel File)], [(Text, Path Rel Dir)])
-parseDirectory _tvdbToken dir = do
+parseDirectory :: BS.ByteString -> Path Abs Dir -> IO (Maybe DirectoryInfo, [(Text, Path Rel File)], [(Text, Path Rel Dir)])
+parseDirectory tvdbToken dir = do
   -- Read files and directories
   fileAndDirectoryNames <- listDirectory $ fromAbsDir dir
   (fileNames, directoryNames) <- partitionM (doesFileExist . combine (fromAbsDir dir)) fileAndDirectoryNames
@@ -99,13 +102,13 @@ parseDirectory _tvdbToken dir = do
       -- If there is, try and decode it
       decodedOrError <- eitherDecodeYamlViaCodec <$> BS.readFile (fromAbsFile infoFile)
       case decodedOrError of
+        Right info -> pure $ Just info
         Left err -> do
           -- If there's an error, move it to a backup file, we'll guess info and create a new one later
           putStrLn $ "Failed to decode info file: " ++ show err
           newName <- addExtension ".backup" infoFile
           renameFile (fromAbsFile infoFile) (fromAbsFile newName)
           pure Nothing
-        Right info -> pure $ Just info
 
   case (mInfoFile, mInfoGuess) of
     (Just info, _) -> pure (Just info, filesWithNames, directoriesWithNames)
@@ -113,8 +116,23 @@ parseDirectory _tvdbToken dir = do
     (Nothing, Just (rootDir, info)) -> do
       -- Write the info, that way we have a template to fill in the data
       -- TODO: Do a call to the TVDB or something to get better data
-      BS.writeFile (combine (fromAbsDir rootDir) "info.yaml") (encodeYamlViaCodec info)
-      pure (Just info, filesWithNames, directoriesWithNames)
+      let tvdbType = case directoryInfoKind info of
+            DirectoryKindMovie -> TVDB.Movie
+            DirectoryKindSeries -> TVDB.Series
+      mInfo <- TVDB.tryGetInfo tvdbToken (directoryInfoTitle info) tvdbType (directoryInfoYear info)
+
+      let extendedInfo = case mInfo of
+            Nothing -> info
+            Just extraInfo ->
+              info
+                { directoryInfoTitle = TVDB.tvdbResponseDataName extraInfo,
+                  directoryInfoDescription = TVDB.tvdbResponseDataDescription extraInfo <|> directoryInfoDescription info,
+                  directoryInfoYear = (readInt =<< TVDB.tvdbResponseDataYear extraInfo) <|> directoryInfoYear info
+                }
+      -- TODO: Download image if it exists
+
+      BS.writeFile (combine (fromAbsDir rootDir) "info.yaml") (encodeYamlViaCodec extendedInfo)
+      pure (Just extendedInfo, filesWithNames, directoriesWithNames)
 
 -- | This tries to guess some information based on the directory and file names.
 -- It also returns what it thinks is the root directory of this series or movie.
@@ -133,6 +151,7 @@ guessDirectoryInfo dir files directories =
         DirectoryInfo
           { directoryInfoKind = kind,
             directoryInfoTitle = name,
+            directoryInfoYear = yearFromDir dir <|> yearFromFiles videoFiles,
             directoryInfoDifferentiator = Nothing,
             directoryInfoDescription = Nothing,
             directoryInfoImdb = Nothing,
@@ -141,28 +160,26 @@ guessDirectoryInfo dir files directories =
           }
    in case (mSeason, nonEmpty videoFiles, nonEmpty directories) of
         (Just _season, Just _actualFiles, _) ->
-          Just
-            ( if isJust mSeasonFromDir
-                then parent dir
-                else dir,
-              simpleInfo DirectoryKindSeries $
+          let relevantDir =
                 if isJust mSeasonFromDir
-                  then niceDirNameT $ parent dir
-                  else niceDirNameT dir
-            )
+                  then parent dir
+                  else dir
+           in Just
+                ( relevantDir,
+                  (simpleInfo DirectoryKindSeries $ titleFromDir relevantDir)
+                    { directoryInfoYear = yearFromDir relevantDir <|> yearFromFiles videoFiles
+                    }
+                )
         (_, _, _)
           | isSeriesDir ->
               Just
                 ( dir,
-                  simpleInfo DirectoryKindSeries $ niceDirNameT dir
+                  simpleInfo DirectoryKindSeries $ titleFromDir dir
                 )
         (_, Just _actualFiles, _) ->
           Just
             ( dir,
-              let base = simpleInfo DirectoryKindMovie $ movieTitleFromDir dir
-               in base
-                    { directoryInfoDifferentiator = fmap (T.pack . show) $ movieYearFromDir dir <|> movieYearFromFiles videoFiles
-                    }
+              simpleInfo DirectoryKindMovie $ titleFromDir dir
             )
         _ -> Nothing
 
@@ -242,20 +259,23 @@ episodeInfoFromFile file =
             Just a -> (Nothing, Just $ Left a)
             Nothing -> (Nothing, Nothing)
 
-movieYearFromDir :: Path a Dir -> Maybe Int
-movieYearFromDir dir =
+yearRegex :: String
+yearRegex = "((19|20)[0-9][0-9])"
+
+yearFromDir :: Path a Dir -> Maybe Int
+yearFromDir dir =
   -- Take fst because the regex parses doesn't support non-capturing groups
   -- so we capture two, but only use the first, and ignore the inner group
-  fst <$> tryRegex (dirname dir) expect2Ints "((19|20)[0-9][0-9])"
+  fst <$> tryRegex (dirname dir) expect2Ints yearRegex
 
-movieYearFromFiles :: [Path a File] -> Maybe Int
-movieYearFromFiles files =
+yearFromFiles :: [Path a File] -> Maybe Int
+yearFromFiles files =
   firstJusts (try <$> files)
   where
-    try file = fst <$> tryRegex file expect2Ints "((19|20)[0-9][0-9])"
+    try file = fst <$> tryRegex file expect2Ints yearRegex
 
-movieTitleFromDir :: Path a Dir -> Text
-movieTitleFromDir folder = strip . fst $ breakOn "(" (niceDirNameT folder)
+titleFromDir :: Path a Dir -> Text
+titleFromDir folder = strip . fst $ breakOn "(" (niceDirNameT folder)
 
 tryGetFile :: (FilePath -> Bool) -> Path Abs Dir -> IO (Maybe (Path Abs File))
 tryGetFile predicate startDir =
