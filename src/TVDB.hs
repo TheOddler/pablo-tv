@@ -26,9 +26,9 @@ instance HasCodec TVDBResponse where
 
 data TVDBResponseData = TVDBResponseData
   { tvdbResponseDataName :: Text,
-    tvdbResponseDataDescription :: Maybe Text, -- overview
-    tvdbResponseDataYear :: Maybe String, -- string so we can easily use `readInt` later
-    tvdbResponseDataImageUrl :: Maybe Text -- image_url
+    tvdbResponseDataDescription :: Text, -- overview
+    tvdbResponseDataYear :: String, -- string so we can easily use `readInt` later
+    tvdbResponseDataImageUrl :: Text -- image_url
   }
   deriving (Generic, Show, Eq)
   deriving (FromJSON) via Autodocodec TVDBResponseData
@@ -38,9 +38,9 @@ instance HasCodec TVDBResponseData where
     object "TVDBResponseData" $
       TVDBResponseData
         <$> requiredField "name" "The name of this series or movie" .= tvdbResponseDataName
-        <*> optionalFieldOrNull "overview" "The description" .= tvdbResponseDataDescription
-        <*> optionalFieldOrNull "year" "The year when the series or movie was released" .= tvdbResponseDataYear
-        <*> optionalFieldOrNull "image_url" "A link to a poster image" .= tvdbResponseDataImageUrl
+        <*> requiredField "overview" "The description" .= tvdbResponseDataDescription
+        <*> requiredField "year" "The year when the series or movie was released" .= tvdbResponseDataYear
+        <*> requiredField "image_url" "A link to a poster image" .= tvdbResponseDataImageUrl
 
 data TVDBType = Series | Movie
   deriving (Generic, Show, Eq)

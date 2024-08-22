@@ -126,10 +126,10 @@ parseDirectory tvdbToken dir = do
             Just extraInfo ->
               info
                 { directoryInfoTitle = TVDB.tvdbResponseDataName extraInfo,
-                  directoryInfoDescription = TVDB.tvdbResponseDataDescription extraInfo <|> directoryInfoDescription info,
-                  directoryInfoYear = (readInt =<< TVDB.tvdbResponseDataYear extraInfo) <|> directoryInfoYear info
+                  directoryInfoDescription = Just $ TVDB.tvdbResponseDataDescription extraInfo,
+                  directoryInfoYear = readInt (TVDB.tvdbResponseDataYear extraInfo) <|> directoryInfoYear info
                 }
-      -- TODO: Download image if it exists
+      -- TODO: Download image
 
       BS.writeFile (combine (fromAbsDir rootDir) "info.yaml") (encodeYamlViaCodec extendedInfo)
       pure (Just extendedInfo, filesWithNames, directoriesWithNames)
