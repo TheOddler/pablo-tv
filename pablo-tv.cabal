@@ -48,13 +48,13 @@ library
       , binary
       , bytestring
       , data-default
-      , directory
       , evdev
       , filepath
       , ghc
       , modern-uri
       , network-info
       , path
+      , path-io
       , process
       , regex-tdfa
       , req

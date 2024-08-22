@@ -9,10 +9,11 @@
 module LibMain where
 
 import Actions (actionsWebSocket, mkInputDevice)
-import Control.Monad (filterM, join, when)
+import Control.Monad (filterM, when)
 import Data.ByteString.Char8 qualified as BS
 import Data.Char (toLower)
-import Data.List (foldl', isSuffixOf)
+import Data.List (foldl')
+import Data.Maybe (fromMaybe)
 import Data.String (fromString)
 import Data.Text (Text, intercalate, unpack)
 import Data.Text qualified as T
@@ -23,10 +24,10 @@ import GHC.Data.Maybe (firstJustsM, listToMaybe)
 import IsDevelopment (isDevelopment)
 import Network.Info (IPv4 (..), NetworkInterface (..), getNetworkInterfaces)
 import Network.Wai.Handler.Warp (run)
-import Path (Abs, Dir, File, Path, Rel, fileExtension, fromAbsDir, fromAbsFile, parent, parseAbsDir, parseRelFile, toFilePath, (</>))
-import System.Directory (doesFileExist, getHomeDirectory, listDirectory)
+import Path (Abs, Dir, File, Path, Rel, fileExtension, fromAbsFile, mkRelDir, parent, parseRelDir, toFilePath, (</>))
+import Path.IO (doesFileExist, getHomeDir, listDir)
 import System.Environment (getEnv)
-import System.FilePath (combine, dropTrailingPathSeparator)
+import System.FilePath (dropTrailingPathSeparator)
 import System.Process (callProcess)
 import Text.Hamlet (hamletFile)
 import Text.Julius (Javascript, jsFile)
@@ -115,10 +116,10 @@ getKeyboardR =
   mobileLayout $(widgetFile "mobile/keyboard")
 
 getPathFromSegments :: [Text] -> Handler (Path Abs Dir)
-getPathFromSegments segments = do
-  home <- liftIO getHomeDirectory
-  let currentPath = combine home $ foldl' combine "Videos" (unpack <$> segments)
-  parseAbsDir currentPath
+getPathFromSegments segmentsT = do
+  home <- liftIO getHomeDir
+  segments <- mapM parseRelDir (unpack <$> segmentsT)
+  pure $ home </> foldl' (</>) $(mkRelDir "Videos") segments
 
 getDirectoryR :: [Text] -> Handler Html
 getDirectoryR segments = do
@@ -147,20 +148,21 @@ getImageR segments = do
   where
     tryGetImage :: Path Abs Dir -> Handler (Maybe (ContentType, Path Abs File))
     tryGetImage dir = do
-      fileAndDirNames <- liftIO $ listDirectory $ fromAbsDir dir
-      let hasImageExt :: FilePath -> Bool
-          hasImageExt file = any (`isSuffixOf` file) [".jpg", ".jpeg", ".png", ".gif"]
-          isImage :: FilePath -> IO Bool
+      (_dirs, files) <- liftIO $ listDir dir
+      let hasImageExt :: Path a File -> Bool
+          hasImageExt file =
+            let ext = fromMaybe "" (fileExtension file)
+             in ext `elem` [".jpg", ".jpeg", ".png", ".gif"]
+          isImage :: Path Abs File -> IO Bool
           isImage file =
             if not $ hasImageExt file
               then pure False
-              else doesFileExist $ combine (fromAbsDir dir) file
-      mImageFile <- liftIO $ join . mapM parseRelFile . listToMaybe <$> filterM isImage fileAndDirNames
+              else doesFileExist file
+      mImageFile <- liftIO $ listToMaybe <$> filterM isImage files
       case mImageFile of
         Nothing -> pure Nothing
-        Just imageFile -> do
-          let absPath = dir </> imageFile
-          ext <- fileExtension imageFile
+        Just absPath -> do
+          ext <- fileExtension absPath
           let cleanedExt = map toLower $
                 case ext of
                   '.' : e -> e
@@ -218,7 +220,7 @@ main = do
   tvState <- newTVarIO $ TVState MobileHomeR
 
   let port = 8080
-  let url = "http://localhost:" ++ show port `combine` "tv"
+  let url = "http://localhost:" ++ show port ++ "/tv"
   putStrLn $ "Running on port " ++ show port ++ " - " ++ url
   putStrLn $ "Development mode: " ++ show isDevelopment
 

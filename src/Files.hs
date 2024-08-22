@@ -31,9 +31,28 @@ import Data.Text qualified as T
 import GHC.Data.Maybe (firstJusts, firstJustsM, listToMaybe, orElse)
 import GHC.Exts (sortWith)
 import GHC.Generics (Generic)
-import GHC.Utils.Monad (partitionM)
 import Path
-import System.Directory (doesFileExist, listDirectory, renameFile)
+  ( Abs,
+    Dir,
+    File,
+    Path,
+    Rel,
+    addExtension,
+    dirname,
+    fileExtension,
+    filename,
+    fromAbsDir,
+    fromAbsFile,
+    fromRelDir,
+    fromRelFile,
+    mkRelFile,
+    parent,
+    parseRelFile,
+    splitExtension,
+    toFilePath,
+    (</>),
+  )
+import Path.IO (listDirRel, renameFile)
 import System.FilePath (combine, dropTrailingPathSeparator)
 import TVDB qualified
 import Text.Read (readMaybe)
@@ -86,10 +105,9 @@ instance HasCodec DirectoryKind where
 parseDirectory :: BS.ByteString -> Path Abs Dir -> IO (Maybe DirectoryInfo, [(Text, Path Rel File)], [(Text, Path Rel Dir)])
 parseDirectory tvdbToken dir = do
   -- Read files and directories
-  fileAndDirectoryNames <- listDirectory $ fromAbsDir dir
-  (fileNames, directoryNames) <- partitionM (doesFileExist . combine (fromAbsDir dir)) fileAndDirectoryNames
-  let files = sort . filter isVideoFile =<< mapM parseRelFile fileNames
-  let directories = sort =<< mapM parseRelDir directoryNames
+  (dirNames, fileNames) <- listDirRel dir
+  let files = sort $ filter isVideoFile fileNames
+  let directories = sort dirNames
 
   let filesWithNames = map (\f -> (niceFileNameT f, f)) files
       directoriesWithNames = map (\d -> (niceDirNameT d, d)) directories
@@ -97,7 +115,7 @@ parseDirectory tvdbToken dir = do
       mInfoGuess = guessDirectoryInfo dir files directories
 
   -- See if there's an info file
-  mInfoFilePath <- tryGetFile (== "info.yaml") dir
+  mInfoFilePath <- tryGetFile (== $(mkRelFile "info.yaml")) dir
   mInfoFile <- case mInfoFilePath of
     Nothing -> pure Nothing
     Just infoFile -> do
@@ -109,7 +127,7 @@ parseDirectory tvdbToken dir = do
           -- If there's an error, move it to a backup file, we'll guess info and create a new one later
           putStrLn $ "Failed to decode info file: " ++ show err
           newName <- addExtension ".backup" infoFile
-          renameFile (fromAbsFile infoFile) (fromAbsFile newName)
+          renameFile infoFile newName
           pure Nothing
 
   case (mInfoFile, mInfoGuess) of
@@ -290,16 +308,17 @@ yearFromFiles files =
 titleFromDir :: Path a Dir -> Text
 titleFromDir folder = strip . fst $ breakOn "(" (niceDirNameT folder)
 
-tryGetFile :: (FilePath -> Bool) -> Path Abs Dir -> IO (Maybe (Path Abs File))
+tryGetFile :: (Path Rel File -> Bool) -> Path Abs Dir -> IO (Maybe (Path Abs File))
 tryGetFile predicate startDir =
   -- Look up to X levels deep
   firstJustsM $ tryGetFile' <$> take 3 (iterate parent startDir)
   where
     tryGetFile' dir = do
-      fileAndDirNames <- listDirectory $ fromAbsDir dir
-      let matchingFileNames = filter predicate fileAndDirNames
-      let foundFile = listToMaybe =<< mapM parseRelFile matchingFileNames
-      pure $ (dir </>) <$> foundFile
+      (_dirNames, fileNames) <- listDirRel dir
+      let matchingFileNames = filter predicate fileNames
+      pure $ case listToMaybe matchingFileNames of
+        Nothing -> Nothing
+        Just foundFile -> Just (dir </> foundFile)
 
 niceDirNameT :: Path a Dir -> Text
 niceDirNameT = T.pack . dropTrailingPathSeparator . fromRelDir . dirname
