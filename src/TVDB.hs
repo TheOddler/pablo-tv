@@ -47,9 +47,6 @@ data TVDBType = Series | Movie
 
 tryGetInfo :: BS.ByteString -> Text -> TVDBType -> Maybe Int -> IO (Maybe TVDBResponseData)
 tryGetInfo tvdbToken title type' year =
-  -- curl -X 'GET' \
-  --   'https://api4.thetvdb.com/v4/search?query=Ghosts&type=series&limit=1' \
-  --   -H 'accept: application/json'
   runReq defaultHttpConfig $ do
     r <-
       req GET (https "api4.thetvdb.com" /: "v4" /: "search") NoReqBody jsonResponse $
