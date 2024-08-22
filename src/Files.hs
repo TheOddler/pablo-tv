@@ -88,8 +88,8 @@ parseDirectory tvdbToken dir = do
   -- Read files and directories
   fileAndDirectoryNames <- listDirectory $ fromAbsDir dir
   (fileNames, directoryNames) <- partitionM (doesFileExist . combine (fromAbsDir dir)) fileAndDirectoryNames
-  files <- sort . filter isVideoFile <$> mapM parseRelFile fileNames
-  directories <- sort <$> mapM parseRelDir directoryNames
+  let files = sort . filter isVideoFile =<< mapM parseRelFile fileNames
+  let directories = sort =<< mapM parseRelDir directoryNames
 
   let filesWithNames = map (\f -> (niceFileNameT f, f)) files
       directoriesWithNames = map (\d -> (niceDirNameT d, d)) directories
