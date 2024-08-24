@@ -1,6 +1,7 @@
 $newline never
 $doctype 5
-<html class="no-js" lang="en"> <!--<![endif]-->
+$# I set the language to DE because that's one of the very few languages supporting hyphenating for capitalised words, English does not by design (wtf): https://bugzilla.mozilla.org/show_bug.cgi?id=656879
+<html class="no-js" lang="de"> <!--<![endif]-->
   <head>
     <meta charset="UTF-8">
 

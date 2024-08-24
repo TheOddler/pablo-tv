@@ -2,11 +2,13 @@
   --red: rgb(210, 30, 45);
 }
 
-body {
+html {
   background: black;
   color: white;
   overflow-wrap: break-word;
   text-align: justify;
+  word-break: break-word;
+  hyphens: auto;
 }
 
 a {
