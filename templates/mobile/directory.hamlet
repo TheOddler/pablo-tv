@@ -22,11 +22,12 @@ $if (not $ null filesWithNames)
 
 
 $if (not $ null dirsWithNames)
-  $case (directoryInfoKind <$> mInfo)
-    $of Just DirectoryKindSeries
-      <h2>Seasons
-    $of _
-      <h2>Directories
+  $if (not $ null filesWithNames)
+    $case (directoryInfoKind <$> mInfo)
+      $of Just DirectoryKindSeries
+        <h2>Seasons
+      $of _
+        <h2>Directories
   <ul>
     $forall (name, path) <- dirsWithNames
       <li>
