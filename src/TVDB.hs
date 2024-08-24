@@ -8,8 +8,11 @@ module TVDB
 where
 
 import Autodocodec
+import Control.Applicative ((<|>))
 import Control.Exception (try)
 import Data.Aeson (FromJSON)
+import Data.Aeson.KeyMap (KeyMap)
+import Data.Aeson.KeyMap qualified as KeyMap
 import Data.ByteString qualified as BS
 import Data.Maybe (listToMaybe)
 import Data.Text (Text)
@@ -52,6 +55,7 @@ data RawResponseData = RawResponseData
   { rawResponseDataId :: Text,
     rawResponseDataName :: Text,
     rawResponseDataOverview :: Maybe Text,
+    rawResponseDataOverviews :: KeyMap Text,
     rawResponseDataYear :: String, -- string so we can easily use `readInt` later
     rawResponseDataImageUrl :: Text,
     rawResponseDataRemoteIds :: [RawResponseRemoteId]
@@ -65,6 +69,7 @@ instance HasCodec RawResponseData where
         <$> requiredField "id" "Unique identifier" .= rawResponseDataId
         <*> requiredField "name" "The name of this series or movie" .= rawResponseDataName
         <*> optionalField "overview" "The description" .= rawResponseDataOverview
+        <*> optionalFieldWithDefault "overviews" mempty "A mapping from language to descriptions" .= rawResponseDataOverviews
         <*> requiredField "year" "The year when the series or movie was released" .= rawResponseDataYear
         <*> requiredField "image_url" "A link to a poster image" .= rawResponseDataImageUrl
         <*> optionalFieldWithDefault "remote_ids" [] "A link to a poster image" .= rawResponseDataRemoteIds
@@ -125,7 +130,7 @@ getInfoFromTVDB tvdbToken title type' mYear = do
         Just $
           TVDBData
             { tvdbDataName = rawResponseDataName firstData,
-              tvdbDataDescription = rawResponseDataOverview firstData,
+              tvdbDataDescription = KeyMap.lookup "eng" firstData.rawResponseDataOverviews <|> rawResponseDataOverview firstData,
               tvdbDataYear = readMaybe $ rawResponseDataYear firstData,
               tvdbDataImage = case imgOrError of
                 Left _ -> Nothing
