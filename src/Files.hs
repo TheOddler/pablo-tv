@@ -150,7 +150,7 @@ parseDirectory tvdbToken dir = do
               Just tvdbData ->
                 DirectoryInfo
                   { directoryInfoKind = info.directoryInfoKind,
-                    directoryInfoTitle = if keepOriginal then info.directoryInfoTitle else tvdbData.tvdbDataName,
+                    directoryInfoTitle = info.directoryInfoTitle,
                     directoryInfoYear = select directoryInfoYear (tvdbData.tvdbDataYear <|> info.directoryInfoYear),
                     directoryInfoDescription = select directoryInfoDescription tvdbData.tvdbDataDescription,
                     directoryInfoImdb = select directoryInfoImdb tvdbData.tvdbDataImdb,

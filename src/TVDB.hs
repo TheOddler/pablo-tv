@@ -27,8 +27,7 @@ data TVDBType = TVDBTypeSeries | TVDBTypeMovie
   deriving (Show, Eq)
 
 data TVDBData = TVDBData
-  { tvdbDataName :: Text,
-    tvdbDataDescription :: Maybe Text,
+  { tvdbDataDescription :: Maybe Text,
     tvdbDataYear :: Maybe Int,
     tvdbDataImage :: Maybe (ContentType, BS.ByteString),
     tvdbDataId :: Text,
@@ -53,7 +52,6 @@ instance HasCodec RawResponse where
 
 data RawResponseData = RawResponseData
   { rawResponseDataId :: Text,
-    rawResponseDataName :: Text,
     rawResponseDataOverview :: Maybe Text,
     rawResponseDataOverviews :: KeyMap Text,
     rawResponseDataYear :: String, -- string so we can easily use `readInt` later
@@ -67,7 +65,6 @@ instance HasCodec RawResponseData where
     object "RawResponseData" $
       RawResponseData
         <$> requiredField "id" "Unique identifier" .= rawResponseDataId
-        <*> requiredField "name" "The name of this series or movie" .= rawResponseDataName
         <*> optionalField "overview" "The description" .= rawResponseDataOverview
         <*> optionalFieldWithDefault "overviews" mempty "A mapping from language to descriptions" .= rawResponseDataOverviews
         <*> requiredField "year" "The year when the series or movie was released" .= rawResponseDataYear
@@ -129,8 +126,7 @@ getInfoFromTVDB tvdbToken title type' mYear = do
       pure $
         Just $
           TVDBData
-            { tvdbDataName = rawResponseDataName firstData,
-              tvdbDataDescription = KeyMap.lookup "eng" firstData.rawResponseDataOverviews <|> rawResponseDataOverview firstData,
+            { tvdbDataDescription = KeyMap.lookup "eng" firstData.rawResponseDataOverviews <|> rawResponseDataOverview firstData,
               tvdbDataYear = readMaybe $ rawResponseDataYear firstData,
               tvdbDataImage = case imgOrError of
                 Left _ -> Nothing
