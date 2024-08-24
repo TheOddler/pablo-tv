@@ -146,7 +146,11 @@ parseDirectory tvdbToken dir = do
                 else tvdbValue
 
         let extendedInfo = case mTVDBData of
-              Nothing -> info
+              Nothing ->
+                info
+                  { -- Even when we don't find anything, remove this flag so we don't keep trying
+                    directoryInfoForceUpdate = Nothing
+                  }
               Just tvdbData ->
                 DirectoryInfo
                   { directoryInfoKind = info.directoryInfoKind,
