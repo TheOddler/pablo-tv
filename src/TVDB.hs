@@ -21,7 +21,7 @@ import Network.HTTP.Client (responseHeaders)
 import Network.HTTP.Req (GET (GET), HttpConfig, HttpException, HttpResponse (toVanillaResponse), NoReqBody (..), Option, Req, Url, bsResponse, defaultHttpConfig, https, jsonResponse, oAuth2Bearer, req, responseBody, runReq, useURI, (/:), (=:))
 import Text.Read (readMaybe)
 import Text.URI (mkURI)
-import Yesod (ContentType, liftIO)
+import Yesod (ContentType)
 
 data TVDBType = TVDBTypeSeries | TVDBTypeMovie
   deriving (Show, Eq)
@@ -103,7 +103,6 @@ getInfoFromTVDB tvdbToken title type' mYear = do
             "limit" =: (1 :: Int),
             oAuth2Bearer tvdbToken
           ]
-    liftIO $ print response
     pure $ listToMaybe $ rawResponseData $ responseBody response
 
   case response of
