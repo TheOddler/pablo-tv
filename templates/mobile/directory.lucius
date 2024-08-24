@@ -1,4 +1,28 @@
-img.header {
+html,
+body {
+  padding: 0;
+  margin: 0;
+  height: 100%;
   width: 100%;
-  height: auto;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+
+  >* {
+    flex-shrink: 0;
+  }
+}
+
+img.header {
+  flex-shrink: 1;
+  object-fit: contain;
+  min-height: 0;
+}
+
+ol,
+ul {
+  padding-left: 0.5em;
 }
