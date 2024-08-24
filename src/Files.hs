@@ -22,10 +22,11 @@ import Autodocodec.Codec (optionalFieldWithDefaultWith)
 import Autodocodec.Yaml (eitherDecodeYamlViaCodec, encodeYamlViaCodec)
 import Control.Applicative ((<|>))
 import Data.ByteString qualified as BS
+import Data.ByteString.Char8 qualified as BS8
 import Data.List (sort)
 import Data.List.NonEmpty (group, nonEmpty)
 import Data.List.NonEmpty qualified as NE
-import Data.Maybe (isJust, mapMaybe)
+import Data.Maybe (fromMaybe, isJust, mapMaybe)
 import Data.Text (Text, breakOn, replace, strip)
 import Data.Text qualified as T
 import GHC.Data.Maybe (firstJusts, firstJustsM, listToMaybe, orElse)
@@ -145,22 +146,24 @@ parseDirectory tvdbToken dir = do
             Nothing -> info
             Just tvdbData ->
               info
-                { directoryInfoTitle = TVDB.tvdbResponseDataName tvdbData,
-                  directoryInfoDescription = Just $ TVDB.tvdbResponseDataDescription tvdbData,
-                  directoryInfoYear = readInt (TVDB.tvdbResponseDataYear tvdbData) <|> directoryInfoYear info
+                { directoryInfoTitle = TVDB.tvdbDataName tvdbData,
+                  directoryInfoDescription = Just $ TVDB.tvdbDataDescription tvdbData,
+                  directoryInfoYear = TVDB.tvdbDataYear tvdbData <|> directoryInfoYear info
                 }
-      case mTVDBData of
+      case TVDB.tvdbDataImage =<< mTVDBData of
         Nothing -> pure ()
-        Just tvdbData -> do
-          let url = TVDB.tvdbResponseDataImageUrl tvdbData
-              fileNameFromOriginal =
-                case snd $ T.breakOnEnd "/" url of
-                  "" -> Nothing
-                  t' -> Just t'
-              fileName :: Path Rel File
-              fileName = (parseRelFile . T.unpack =<< fileNameFromOriginal) `orElse` $(mkRelFile "poster.jpg")
-          print url
-          TVDB.downloadImage url (rootDir </> fileName)
+        Just (contentType, image) -> do
+          let extension =
+                if BS.isPrefixOf "image/" contentType
+                  then Just $ BS.drop 6 contentType
+                  else Nothing
+              fallbackName = $(mkRelFile "poster.jpg")
+              name = fromMaybe fallbackName $ do
+                ext <- extension
+                parseRelFile $ BS8.unpack $ "poster." <> ext
+
+          let path = rootDir </> name
+          BS.writeFile (fromAbsFile path) image
 
       BS.writeFile (combine (fromAbsDir rootDir) "info.yaml") (encodeYamlViaCodec extendedInfo)
       pure (Just extendedInfo, filesWithNames, directoriesWithNames)

@@ -51,6 +51,7 @@ library
       , evdev
       , filepath
       , ghc
+      , http-client
       , modern-uri
       , network-info
       , path
