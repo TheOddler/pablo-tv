@@ -53,6 +53,7 @@ library
       , ghc
       , http-client
       , modern-uri
+      , natural-sort
       , network-info
       , path
       , path-io

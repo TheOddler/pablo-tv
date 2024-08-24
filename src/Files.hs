@@ -11,6 +11,7 @@ module Files
   )
 where
 
+import Algorithms.NaturalSort qualified as Natural
 import Autodocodec
   ( HasCodec (codec),
     object,
@@ -24,7 +25,8 @@ import Autodocodec.Yaml (eitherDecodeYamlViaCodec, encodeYamlViaCodec)
 import Control.Applicative ((<|>))
 import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BS8
-import Data.List (sort)
+import Data.Char (toLower)
+import Data.List (sortBy)
 import Data.List.NonEmpty (group, nonEmpty)
 import Data.List.NonEmpty qualified as NE
 import Data.Maybe (fromMaybe, isJust, mapMaybe)
@@ -108,8 +110,8 @@ parseDirectory :: BS.ByteString -> Path Abs Dir -> IO (Maybe DirectoryInfo, [(Te
 parseDirectory tvdbToken dir = do
   -- Read files and directories
   (dirNames, fileNames) <- listDirRel dir
-  let files = sort $ filter isVideoFile fileNames
-  let directories = sort dirNames
+  let files = smartPathSort $ filter isVideoFile fileNames
+  let directories = smartPathSort dirNames
 
   let filesWithNames = map (\f -> (niceFileNameT f, f)) files
       directoriesWithNames = map (\d -> (niceDirNameT d, d)) directories
@@ -193,7 +195,7 @@ parseDirectory tvdbToken dir = do
 guessDirectoryInfo :: Path a Dir -> [Path Rel File] -> [Path Rel Dir] -> Maybe (Path a Dir, DirectoryInfo)
 guessDirectoryInfo dir files directories =
   let videoFiles :: [Path Rel File]
-      videoFiles = sort $ filter isVideoFile files
+      videoFiles = smartPathSort $ filter isVideoFile files
 
       isSeriesDir = any (isJust . seasonFromDir) directories
 
@@ -339,7 +341,7 @@ tryGetFile predicate startDir =
     tryGetFile' dir = do
       (_dirNames, fileNames) <- listDirRel dir
       let matchingFileNames = filter predicate fileNames
-      pure $ case listToMaybe $ sort matchingFileNames of
+      pure $ case listToMaybe $ smartPathSort matchingFileNames of
         Nothing -> Nothing
         Just foundFile -> Just (dir </> foundFile)
 
@@ -357,3 +359,12 @@ isVideoFile file =
   case fileExtension file of
     Just ext -> ext `elem` [".mp4", ".mkv", ".avi", ".webm"]
     Nothing -> False
+
+-- | Sorts the paths, taking into account numbers properly
+smartPathSort :: [Path Rel a] -> [Path Rel a]
+smartPathSort = sortBy sorting
+  where
+    sorting a b =
+      Natural.compare
+        (toLower <$> toFilePath a)
+        (toLower <$> toFilePath b)
