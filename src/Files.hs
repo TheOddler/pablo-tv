@@ -64,7 +64,6 @@ data DirectoryInfo = DirectoryInfo
   { directoryInfoKind :: DirectoryKind,
     directoryInfoTitle :: Text,
     directoryInfoYear :: Maybe Int,
-    directoryInfoDifferentiator :: Maybe Text,
     directoryInfoDescription :: Maybe Text,
     directoryInfoImdb :: Maybe Text,
     directoryInfoTvdb :: Maybe Text,
@@ -80,7 +79,6 @@ instance HasCodec DirectoryInfo where
         <$> requiredField "kind" "Is this a series or a movie?" .= directoryInfoKind
         <*> requiredField "title" "The title of this series or movie" .= directoryInfoTitle
         <*> optionalField' "year" "The year this series or movie was released" .= directoryInfoYear
-        <*> optionalField' "differentiator" "A differentiator for when there are multiple series or movies with the same title" .= directoryInfoDifferentiator
         <*> optionalField' "description" "The description of the series or movie" .= directoryInfoDescription
         <*> optionalField' "imdb" "The IMDB ID" .= directoryInfoImdb
         <*> optionalField' "tvdb" "The TVDB ID" .= directoryInfoTvdb
@@ -154,7 +152,6 @@ parseDirectory tvdbToken dir = do
                   { directoryInfoKind = info.directoryInfoKind,
                     directoryInfoTitle = if keepOriginal then info.directoryInfoTitle else tvdbData.tvdbDataName,
                     directoryInfoYear = select directoryInfoYear (tvdbData.tvdbDataYear <|> info.directoryInfoYear),
-                    directoryInfoDifferentiator = info.directoryInfoDifferentiator,
                     directoryInfoDescription = select directoryInfoDescription tvdbData.tvdbDataDescription,
                     directoryInfoImdb = select directoryInfoImdb tvdbData.tvdbDataImdb,
                     directoryInfoTvdb = select directoryInfoTvdb (Just tvdbData.tvdbDataId),
@@ -205,7 +202,6 @@ guessDirectoryInfo dir files directories =
           { directoryInfoKind = kind,
             directoryInfoTitle = name,
             directoryInfoYear = yearFromDir dir <|> yearFromFiles videoFiles,
-            directoryInfoDifferentiator = Nothing,
             directoryInfoDescription = Nothing,
             directoryInfoImdb = Nothing,
             directoryInfoTvdb = Nothing,
