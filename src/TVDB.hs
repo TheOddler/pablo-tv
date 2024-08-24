@@ -8,13 +8,14 @@ module TVDB
 where
 
 import Autodocodec
+import Control.Exception (try)
 import Data.Aeson (FromJSON)
 import Data.ByteString qualified as BS
-import Data.Maybe (fromMaybe, listToMaybe)
+import Data.Maybe (listToMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Network.HTTP.Client (responseHeaders)
-import Network.HTTP.Req (GET (GET), HttpResponse (toVanillaResponse), NoReqBody (..), bsResponse, defaultHttpConfig, https, jsonResponse, oAuth2Bearer, req, responseBody, runReq, useURI, (/:), (=:))
+import Network.HTTP.Req (GET (GET), HttpConfig, HttpException, HttpResponse (toVanillaResponse), NoReqBody (..), Option, Req, Url, bsResponse, defaultHttpConfig, https, jsonResponse, oAuth2Bearer, req, responseBody, runReq, useURI, (/:), (=:))
 import Text.Read (readMaybe)
 import Text.URI (mkURI)
 import Yesod (ContentType)
@@ -81,9 +82,12 @@ instance HasCodec RawResponseRemoteId where
         <$> requiredField "id" "The remote id" .= rawResponseRemoteId
         <*> requiredField "sourceName" "Either `IMDB` or `TheMovieDB.com`, among other irrelevant ones for us" .= rawResponseRemoteSourceName
 
+safeReq :: HttpConfig -> Req r -> IO (Either HttpException r)
+safeReq c r = try $ runReq c r
+
 getInfoFromTVDB :: BS.ByteString -> Text -> TVDBType -> Maybe Int -> IO (Maybe TVDBData)
 getInfoFromTVDB tvdbToken title type' year = do
-  mFirstData <- runReq defaultHttpConfig $ do
+  response <- safeReq defaultHttpConfig $ do
     response <-
       req GET (https "api4.thetvdb.com" /: "v4" /: "search") NoReqBody jsonResponse $
         mconcat
@@ -97,9 +101,12 @@ getInfoFromTVDB tvdbToken title type' year = do
           ]
     pure $ listToMaybe $ rawResponseData $ responseBody response
 
-  case mFirstData of
-    Nothing -> pure Nothing
-    Just firstData -> do
+  case response of
+    Left err -> do
+      putStrLn $ "Failed TVDB request: " <> show err
+      pure Nothing
+    (Right Nothing) -> pure Nothing
+    (Right (Just firstData)) -> do
       let imgUrl = rawResponseDataImageUrl firstData
       let lookupRemoteId name =
             lookup
@@ -129,13 +136,24 @@ downloadImage :: Text -> IO (Either String (ContentType, BS.ByteString))
 downloadImage urlT = do
   case useURI =<< mkURI urlT of
     Nothing -> pure $ Left $ "Invalid URL: " <> T.unpack urlT
-    Just (Left httpUrl) -> Right <$> downloadFrom httpUrl
-    Just (Right httpsUrl) -> Right <$> downloadFrom httpsUrl
+    Just (Left httpUrl) -> downloadFrom httpUrl
+    Just (Right httpsUrl) -> downloadFrom httpsUrl
   where
+    downloadFrom :: (Url scheme, Option scheme) -> IO (Either String (ContentType, BS.ByteString))
     downloadFrom (url, options) = do
-      img <-
-        runReq defaultHttpConfig $
+      imgResponse <-
+        safeReq defaultHttpConfig $
           req GET url NoReqBody bsResponse options
-      let headers = responseHeaders $ toVanillaResponse img
-          contentType = fromMaybe "image/jpeg" $ lookup "Content-Type" headers
-      pure (contentType, responseBody img)
+      pure $ do
+        img <- mapLeft (\err -> "Failed downloading tvdb image: " <> show err) imgResponse
+        let headers = responseHeaders $ toVanillaResponse img
+        contentType <- lookupHeader "Content-Type" headers
+        pure (contentType, responseBody img)
+
+    mapLeft f (Left x) = Left $ f x
+    mapLeft _ (Right x) = Right x
+
+    lookupHeader :: (Eq a, Show a, Show b) => a -> [(a, b)] -> Either String b
+    lookupHeader x xs = case lookup x xs of
+      Just y -> Right y
+      Nothing -> Left $ "Failed to find " <> show x <> " in headers: " <> show xs
