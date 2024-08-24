@@ -55,7 +55,7 @@ import Path
   )
 import Path.IO (listDirRel, renameFile)
 import System.FilePath (combine, dropTrailingPathSeparator)
-import TVDB qualified
+import TVDB (TVDBData (..), TVDBType (..), getInfoFromTVDB)
 import Text.Read (readMaybe)
 import Text.Regex.TDFA ((=~))
 
@@ -138,19 +138,24 @@ parseDirectory tvdbToken dir = do
       -- Write the info, that way we have a template to fill in the data
       -- TODO: Do a call to the TVDB or something to get better data
       let tvdbType = case directoryInfoKind info of
-            DirectoryKindMovie -> TVDB.Movie
-            DirectoryKindSeries -> TVDB.Series
-      mTVDBData <- TVDB.tryGetInfo tvdbToken (directoryInfoTitle info) tvdbType (directoryInfoYear info)
+            DirectoryKindMovie -> TVDBTypeMovie
+            DirectoryKindSeries -> TVDBTypeSeries
+      mTVDBData <- getInfoFromTVDB tvdbToken (directoryInfoTitle info) tvdbType (directoryInfoYear info)
 
       let extendedInfo = case mTVDBData of
             Nothing -> info
             Just tvdbData ->
-              info
-                { directoryInfoTitle = TVDB.tvdbDataName tvdbData,
-                  directoryInfoDescription = Just $ TVDB.tvdbDataDescription tvdbData,
-                  directoryInfoYear = TVDB.tvdbDataYear tvdbData <|> directoryInfoYear info
+              DirectoryInfo
+                { directoryInfoKind = info.directoryInfoKind,
+                  directoryInfoTitle = tvdbData.tvdbDataName,
+                  directoryInfoYear = tvdbData.tvdbDataYear <|> directoryInfoYear info,
+                  directoryInfoDifferentiator = info.directoryInfoDifferentiator,
+                  directoryInfoDescription = Just tvdbData.tvdbDataDescription,
+                  directoryInfoImdb = tvdbData.tvdbDataImdb,
+                  directoryInfoTvdb = Just tvdbData.tvdbDataId,
+                  directoryInfoTmdb = tvdbData.tvdbDataTmdb
                 }
-      case TVDB.tvdbDataImage =<< mTVDBData of
+      case tvdbDataImage =<< mTVDBData of
         Nothing -> pure ()
         Just (contentType, image) -> do
           let extension =

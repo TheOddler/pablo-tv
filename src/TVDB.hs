@@ -3,7 +3,7 @@
 module TVDB
   ( TVDBData (..),
     TVDBType (..),
-    tryGetInfo,
+    getInfoFromTVDB,
   )
 where
 
@@ -19,14 +19,17 @@ import Text.Read (readMaybe)
 import Text.URI (mkURI)
 import Yesod (ContentType)
 
-data TVDBType = Series | Movie
+data TVDBType = TVDBTypeSeries | TVDBTypeMovie
   deriving (Show, Eq)
 
 data TVDBData = TVDBData
   { tvdbDataName :: Text,
     tvdbDataDescription :: Text,
     tvdbDataYear :: Maybe Int,
-    tvdbDataImage :: Maybe (ContentType, BS.ByteString)
+    tvdbDataImage :: Maybe (ContentType, BS.ByteString),
+    tvdbDataId :: Text,
+    tvdbDataImdb :: Maybe Text,
+    tvdbDataTmdb :: Maybe Text
   }
   deriving (Show, Eq)
 
@@ -45,7 +48,8 @@ instance HasCodec RawResponse where
         <*> requiredField "data" "A list of results" .= rawResponseData
 
 data RawResponseData = RawResponseData
-  { rawResponseDataName :: Text,
+  { rawResponseDataId :: Text,
+    rawResponseDataName :: Text,
     rawResponseDataOverview :: Text,
     rawResponseDataYear :: String, -- string so we can easily use `readInt` later
     rawResponseDataImageUrl :: Text,
@@ -57,7 +61,8 @@ instance HasCodec RawResponseData where
   codec =
     object "RawResponseData" $
       RawResponseData
-        <$> requiredField "name" "The name of this series or movie" .= rawResponseDataName
+        <$> requiredField "id" "Unique identifier" .= rawResponseDataId
+        <*> requiredField "name" "The name of this series or movie" .= rawResponseDataName
         <*> requiredField "overview" "The description" .= rawResponseDataOverview
         <*> requiredField "year" "The year when the series or movie was released" .= rawResponseDataYear
         <*> requiredField "image_url" "A link to a poster image" .= rawResponseDataImageUrl
@@ -76,16 +81,16 @@ instance HasCodec RawResponseRemoteId where
         <$> requiredField "id" "The remote id" .= rawResponseRemoteId
         <*> requiredField "sourceName" "Either `IMDB` or `TheMovieDB.com`, among other irrelevant ones for us" .= rawResponseRemoteSourceName
 
-tryGetInfo :: BS.ByteString -> Text -> TVDBType -> Maybe Int -> IO (Maybe TVDBData)
-tryGetInfo tvdbToken title type' year = do
+getInfoFromTVDB :: BS.ByteString -> Text -> TVDBType -> Maybe Int -> IO (Maybe TVDBData)
+getInfoFromTVDB tvdbToken title type' year = do
   mFirstData <- runReq defaultHttpConfig $ do
     response <-
       req GET (https "api4.thetvdb.com" /: "v4" /: "search") NoReqBody jsonResponse $
         mconcat
           [ "query" =: title,
             "type" =: case type' of
-              Series -> "series" :: Text
-              Movie -> "movie",
+              TVDBTypeSeries -> "series" :: Text
+              TVDBTypeMovie -> "movie",
             "year" =: year,
             "limit" =: (1 :: Int),
             oAuth2Bearer tvdbToken
@@ -96,6 +101,12 @@ tryGetInfo tvdbToken title type' year = do
     Nothing -> pure Nothing
     Just firstData -> do
       let imgUrl = rawResponseDataImageUrl firstData
+      let lookupRemoteId name =
+            lookup
+              name
+              [ (rawId.rawResponseRemoteSourceName, rawId.rawResponseRemoteId)
+                | rawId <- rawResponseDataRemoteIds firstData
+              ]
       imgOrError <- downloadImage imgUrl
       case imgOrError of
         Right _ -> pure ()
@@ -108,7 +119,10 @@ tryGetInfo tvdbToken title type' year = do
               tvdbDataYear = readMaybe $ rawResponseDataYear firstData,
               tvdbDataImage = case imgOrError of
                 Left _ -> Nothing
-                Right img -> Just img
+                Right img -> Just img,
+              tvdbDataId = rawResponseDataId firstData,
+              tvdbDataImdb = lookupRemoteId "IMDB",
+              tvdbDataTmdb = lookupRemoteId "TheMovieDB.com"
             }
 
 downloadImage :: Text -> IO (Either String (ContentType, BS.ByteString))
