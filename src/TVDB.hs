@@ -25,7 +25,7 @@ data TVDBType = TVDBTypeSeries | TVDBTypeMovie
 
 data TVDBData = TVDBData
   { tvdbDataName :: Text,
-    tvdbDataDescription :: Text,
+    tvdbDataDescription :: Maybe Text,
     tvdbDataYear :: Maybe Int,
     tvdbDataImage :: Maybe (ContentType, BS.ByteString),
     tvdbDataId :: Text,
@@ -51,7 +51,7 @@ instance HasCodec RawResponse where
 data RawResponseData = RawResponseData
   { rawResponseDataId :: Text,
     rawResponseDataName :: Text,
-    rawResponseDataOverview :: Text,
+    rawResponseDataOverview :: Maybe Text,
     rawResponseDataYear :: String, -- string so we can easily use `readInt` later
     rawResponseDataImageUrl :: Text,
     rawResponseDataRemoteIds :: [RawResponseRemoteId]
@@ -64,10 +64,10 @@ instance HasCodec RawResponseData where
       RawResponseData
         <$> requiredField "id" "Unique identifier" .= rawResponseDataId
         <*> requiredField "name" "The name of this series or movie" .= rawResponseDataName
-        <*> requiredField "overview" "The description" .= rawResponseDataOverview
+        <*> optionalField "overview" "The description" .= rawResponseDataOverview
         <*> requiredField "year" "The year when the series or movie was released" .= rawResponseDataYear
         <*> requiredField "image_url" "A link to a poster image" .= rawResponseDataImageUrl
-        <*> requiredField "remote_ids" "A link to a poster image" .= rawResponseDataRemoteIds
+        <*> optionalFieldWithDefault "remote_ids" [] "A link to a poster image" .= rawResponseDataRemoteIds
 
 data RawResponseRemoteId = RawResponseRemoteId
   { rawResponseRemoteId :: Text,
