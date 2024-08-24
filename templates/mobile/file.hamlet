@@ -1,0 +1,14 @@
+$case mInfo
+  $of Nothing
+    <h1>Videos
+  $of Just info
+    <img src=@{ImageR segments} alt="🖼️ Missing poster ☹️" class="header" onerror="this.style.display = 'none'">
+    <h1>#{directoryInfoTitle info}
+
+<div class="buttons">
+  <button class="xl">⏮️
+  <button class="xl">⏪
+  <button class="xxl">⏯️
+  <button class="xxl">⏹️
+  <button class="xl">⏩
+  <button class="xl">⏭️

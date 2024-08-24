@@ -40,3 +40,7 @@ pre {
 .xl {
   font-size: 300%;
 }
+
+.xxl {
+  font-size: 500%;
+}

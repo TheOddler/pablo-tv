@@ -25,7 +25,7 @@ import IsDevelopment (isDevelopment)
 import Network.Info (IPv4 (..), NetworkInterface (..), getNetworkInterfaces)
 import Network.Wai.Handler.Warp (run)
 import Path (Abs, Dir, File, Path, Rel, fileExtension, fromAbsFile, mkRelDir, parent, parseRelDir, toFilePath, (</>))
-import Path.IO (doesFileExist, getHomeDir, listDir)
+import Path.IO (doesDirExist, doesFileExist, getHomeDir, listDir)
 import System.Environment (getEnv)
 import System.FilePath (dropTrailingPathSeparator)
 import System.Process (callProcess)
@@ -60,6 +60,7 @@ mkYesod
 /keyboard KeyboardR GET
 /input InputR GET
 /dir/+Texts DirectoryR GET
+/file/+Texts FileR GET
 
 -- Routes for the 
 /tv TVHomeR GET
@@ -115,15 +116,24 @@ getKeyboardR :: Handler Html
 getKeyboardR =
   mobileLayout $(widgetFile "mobile/keyboard")
 
-getPathFromSegments :: [Text] -> Handler (Path Abs Dir)
-getPathFromSegments segmentsT = do
+-- | Gets the directory for the segments in the url, if it's a file the parent
+-- dir will be returned.
+-- Assumed the segments are either a valid file or directory. If not, this won't
+-- figure that out.
+getDirFromSegments :: [Text] -> Handler (Path Abs Dir)
+getDirFromSegments segmentsT = do
   home <- liftIO getHomeDir
   segments <- mapM parseRelDir (unpack <$> segmentsT)
-  pure $ home </> foldl' (</>) $(mkRelDir "Videos") segments
+  let path = home </> foldl' (</>) $(mkRelDir "Videos") segments
+  isDir <- doesDirExist path
+  pure $
+    if isDir
+      then path
+      else parent path -- we assume if it's not a dir, it's a file
 
 getDirectoryR :: [Text] -> Handler Html
 getDirectoryR segments = do
-  absPath <- getPathFromSegments segments
+  absPath <- getDirFromSegments segments
   tvdbToken <- getsYesod appTVDBToken
   (mInfo, filesWithNames, dirsWithNames) <- liftIO $ parseDirectory tvdbToken absPath
 
@@ -131,14 +141,30 @@ getDirectoryR segments = do
   tvStateTVar <- getsYesod appTVState
   liftIO $ atomically $ writeTVar tvStateTVar $ TVState $ DirectoryR segments
 
-  mobileLayout $(widgetFile "mobile/directory")
+  mobileLayout $ do
+    $(widgetFile "mobile/directory-and-file")
+    $(widgetFile "mobile/directory")
   where
     mkSegments :: Path Rel x -> [Text]
     mkSegments d = segments ++ [T.pack $ dropTrailingPathSeparator $ toFilePath d]
 
+getFileR :: [Text] -> Handler Html
+getFileR segments = do
+  absPath <- getDirFromSegments segments
+  tvdbToken <- getsYesod appTVDBToken
+  (mInfo, _filesWithNames, _dirsWithNames) <- liftIO $ parseDirectory tvdbToken absPath
+
+  -- Let the tv know what page we're on
+  tvStateTVar <- getsYesod appTVState
+  liftIO $ atomically $ writeTVar tvStateTVar $ TVState $ FileR segments
+
+  mobileLayout $ do
+    $(widgetFile "mobile/directory-and-file")
+    $(widgetFile "mobile/file")
+
 getImageR :: [Text] -> Handler Html
 getImageR segments = do
-  dir <- getPathFromSegments segments
+  dir <- getDirFromSegments segments
   mImg <- firstJustsM $ tryGetImage <$> take 3 (iterate parent dir)
   case mImg of
     Just (contentType, path) ->
