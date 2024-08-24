@@ -34,11 +34,11 @@ spec = do
             { directoryInfoKind = DirectoryKindSeries,
               directoryInfoTitle = "Pabloland",
               directoryInfoYear = Nothing,
-              directoryInfoDifferentiator = Nothing,
               directoryInfoDescription = Nothing,
               directoryInfoImdb = Nothing,
               directoryInfoTvdb = Nothing,
-              directoryInfoTmdb = Nothing
+              directoryInfoTmdb = Nothing,
+              directoryInfoForceUpdate = Nothing
             }
     it "with description" $
       pureGoldenByteStringFile "test/golden/with-description.yaml" $
@@ -47,11 +47,11 @@ spec = do
             { directoryInfoKind = DirectoryKindSeries,
               directoryInfoTitle = "Pabloland",
               directoryInfoYear = Nothing,
-              directoryInfoDifferentiator = Nothing,
               directoryInfoDescription = Just "Super interesting series with characters and stuff.",
               directoryInfoImdb = Nothing,
               directoryInfoTvdb = Nothing,
-              directoryInfoTmdb = Nothing
+              directoryInfoTmdb = Nothing,
+              directoryInfoForceUpdate = Nothing
             }
     it "all info" $
       pureGoldenByteStringFile "test/golden/all-info.yaml" $
@@ -60,11 +60,11 @@ spec = do
             { directoryInfoKind = DirectoryKindSeries,
               directoryInfoTitle = "Pabloland",
               directoryInfoYear = Just 1991,
-              directoryInfoDifferentiator = Just "UK",
               directoryInfoDescription = Just "A description",
               directoryInfoImdb = Just "tt1234567",
               directoryInfoTvdb = Just "123",
-              directoryInfoTmdb = Just "abc"
+              directoryInfoTmdb = Just "abc",
+              directoryInfoForceUpdate = Just True
             }
 
   it "Can decode info with missing fields" $ do
@@ -73,11 +73,11 @@ spec = do
             { directoryInfoKind = DirectoryKindMovie,
               directoryInfoTitle = "Master Movie",
               directoryInfoYear = Nothing,
-              directoryInfoDifferentiator = Nothing,
               directoryInfoDescription = Nothing,
               directoryInfoImdb = Nothing,
               directoryInfoTvdb = Nothing,
-              directoryInfoTmdb = Nothing
+              directoryInfoTmdb = Nothing,
+              directoryInfoForceUpdate = Nothing
             }
     let encoded =
           BS.unlines
@@ -96,11 +96,11 @@ spec = do
             { directoryInfoKind = DirectoryKindMovie,
               directoryInfoTitle = "Master Movie",
               directoryInfoYear = Nothing,
-              directoryInfoDifferentiator = Nothing,
               directoryInfoDescription = Nothing,
               directoryInfoImdb = Nothing,
               directoryInfoTvdb = Nothing,
-              directoryInfoTmdb = Nothing
+              directoryInfoTmdb = Nothing,
+              directoryInfoForceUpdate = Nothing
             }
     let encoded =
           BS.unlines
@@ -119,11 +119,11 @@ spec = do
             { directoryInfoKind = DirectoryKindMovie,
               directoryInfoTitle = "Master Movie",
               directoryInfoYear = Nothing,
-              directoryInfoDifferentiator = Nothing,
               directoryInfoDescription = Nothing,
               directoryInfoImdb = Nothing,
               directoryInfoTvdb = Nothing,
-              directoryInfoTmdb = Nothing
+              directoryInfoTmdb = Nothing,
+              directoryInfoForceUpdate = Nothing
             }
     let encoded =
           BS.unlines
@@ -142,11 +142,11 @@ spec = do
             { directoryInfoKind = DirectoryKindSeries,
               directoryInfoTitle = "Pabloland",
               directoryInfoYear = Just 1991,
-              directoryInfoDifferentiator = Just "UK",
               directoryInfoDescription = Just "A description",
               directoryInfoImdb = Just "tt1234567",
               directoryInfoTvdb = Just "123",
-              directoryInfoTmdb = Just "abc"
+              directoryInfoTmdb = Just "abc",
+              directoryInfoForceUpdate = Just True
             }
     let encoded = encodeYamlViaCodec example
     let decoded = eitherDecodeYamlViaCodec encoded
