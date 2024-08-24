@@ -14,6 +14,7 @@ where
 import Autodocodec
   ( HasCodec (codec),
     object,
+    optionalFieldWithDefault,
     requiredField,
     stringConstCodec,
     (.=),
@@ -67,7 +68,8 @@ data DirectoryInfo = DirectoryInfo
     directoryInfoDescription :: Maybe Text,
     directoryInfoImdb :: Maybe Text,
     directoryInfoTvdb :: Maybe Text,
-    directoryInfoTmdb :: Maybe Text
+    directoryInfoTmdb :: Maybe Text,
+    directoryInfoForceUpdate :: Bool
   }
   deriving (Generic, Show, Eq)
 
@@ -83,6 +85,7 @@ instance HasCodec DirectoryInfo where
         <*> optionalField' "imdb" "The IMDB ID" .= directoryInfoImdb
         <*> optionalField' "tvdb" "The TVDB ID" .= directoryInfoTvdb
         <*> optionalField' "tmdb" "The TMDB ID" .= directoryInfoTmdb
+        <*> optionalFieldWithDefault "force-update" False "This forces the system to try and download more information again. This can be used for when some of the data was wrong, you can remove the incorrect data, fill in what you know, set this flag to true, and it'll use the info you gave it to search for the rest." .= directoryInfoForceUpdate
     where
       -- We use this instead of `optionalFieldOrNull` because this also writes a `null` when the field is `Nothing`
       -- that way we get `null` values in new files and they serve as better templates, but we can still
@@ -119,59 +122,70 @@ parseDirectory tvdbToken dir = do
   mInfoFilePath <- tryGetFile (== $(mkRelFile "info.yaml")) dir
   mInfoFile <- case mInfoFilePath of
     Nothing -> pure Nothing
-    Just infoFile -> do
+    Just infoFilePath -> do
       -- If there is, try and decode it
-      decodedOrError <- eitherDecodeYamlViaCodec <$> BS.readFile (fromAbsFile infoFile)
+      decodedOrError <- eitherDecodeYamlViaCodec <$> BS.readFile (fromAbsFile infoFilePath)
       case decodedOrError of
-        Right info -> pure $ Just info
+        Right info -> pure $ Just (infoFilePath, info)
         Left err -> do
           -- If there's an error, move it to a backup file, we'll guess info and create a new one later
           putStrLn $ "Failed to decode info file: " ++ show err
-          newName <- addExtension ".backup" infoFile
-          renameFile infoFile newName
+          newName <- addExtension ".backup" infoFilePath
+          renameFile infoFilePath newName
           pure Nothing
 
+  let doUpdateWith rootDir info = do
+        let tvdbType = case directoryInfoKind info of
+              DirectoryKindMovie -> TVDBTypeMovie
+              DirectoryKindSeries -> TVDBTypeSeries
+        mTVDBData <- getInfoFromTVDB tvdbToken (directoryInfoTitle info) tvdbType (directoryInfoYear info)
+
+        -- If we're doing a force update, that means someone corrected it manually, so we do not want to overwrite
+        let keepOriginal = info.directoryInfoForceUpdate
+        let select infoField tvdbValue =
+              if keepOriginal && isJust (infoField info)
+                then infoField info
+                else tvdbValue
+
+        let extendedInfo = case mTVDBData of
+              Nothing -> info
+              Just tvdbData ->
+                DirectoryInfo
+                  { directoryInfoKind = info.directoryInfoKind,
+                    directoryInfoTitle = if keepOriginal then info.directoryInfoTitle else tvdbData.tvdbDataName,
+                    directoryInfoYear = select directoryInfoYear (tvdbData.tvdbDataYear <|> info.directoryInfoYear),
+                    directoryInfoDifferentiator = info.directoryInfoDifferentiator,
+                    directoryInfoDescription = select directoryInfoDescription tvdbData.tvdbDataDescription,
+                    directoryInfoImdb = select directoryInfoImdb tvdbData.tvdbDataImdb,
+                    directoryInfoTvdb = select directoryInfoTvdb (Just tvdbData.tvdbDataId),
+                    directoryInfoTmdb = select directoryInfoTmdb tvdbData.tvdbDataTmdb,
+                    directoryInfoForceUpdate = False
+                  }
+        case tvdbDataImage =<< mTVDBData of
+          Nothing -> pure ()
+          Just (contentType, image) -> do
+            let extension =
+                  if BS.isPrefixOf "image/" contentType
+                    then Just $ BS.drop 6 contentType
+                    else Nothing
+                fallbackName = $(mkRelFile "poster.jpg")
+                name = fromMaybe fallbackName $ do
+                  ext <- extension
+                  parseRelFile $ BS8.unpack $ "poster." <> ext
+
+            let path = rootDir </> name
+            BS.writeFile (fromAbsFile path) image
+
+        BS.writeFile (combine (fromAbsDir rootDir) "info.yaml") (encodeYamlViaCodec extendedInfo)
+        pure (Just extendedInfo, filesWithNames, directoriesWithNames)
+
   case (mInfoFile, mInfoGuess) of
-    (Just info, _) -> pure (Just info, filesWithNames, directoriesWithNames)
+    (Just (root, info), _)
+      | info.directoryInfoForceUpdate ->
+          doUpdateWith (parent root) info
+    (Just (_, info), _) -> pure (Just info, filesWithNames, directoriesWithNames)
     (Nothing, Nothing) -> pure (Nothing, filesWithNames, directoriesWithNames)
-    (Nothing, Just (rootDir, info)) -> do
-      -- Write the info, that way we have a template to fill in the data
-      -- TODO: Do a call to the TVDB or something to get better data
-      let tvdbType = case directoryInfoKind info of
-            DirectoryKindMovie -> TVDBTypeMovie
-            DirectoryKindSeries -> TVDBTypeSeries
-      mTVDBData <- getInfoFromTVDB tvdbToken (directoryInfoTitle info) tvdbType (directoryInfoYear info)
-
-      let extendedInfo = case mTVDBData of
-            Nothing -> info
-            Just tvdbData ->
-              DirectoryInfo
-                { directoryInfoKind = info.directoryInfoKind,
-                  directoryInfoTitle = tvdbData.tvdbDataName,
-                  directoryInfoYear = tvdbData.tvdbDataYear <|> directoryInfoYear info,
-                  directoryInfoDifferentiator = info.directoryInfoDifferentiator,
-                  directoryInfoDescription = tvdbData.tvdbDataDescription,
-                  directoryInfoImdb = tvdbData.tvdbDataImdb,
-                  directoryInfoTvdb = Just tvdbData.tvdbDataId,
-                  directoryInfoTmdb = tvdbData.tvdbDataTmdb
-                }
-      case tvdbDataImage =<< mTVDBData of
-        Nothing -> pure ()
-        Just (contentType, image) -> do
-          let extension =
-                if BS.isPrefixOf "image/" contentType
-                  then Just $ BS.drop 6 contentType
-                  else Nothing
-              fallbackName = $(mkRelFile "poster.jpg")
-              name = fromMaybe fallbackName $ do
-                ext <- extension
-                parseRelFile $ BS8.unpack $ "poster." <> ext
-
-          let path = rootDir </> name
-          BS.writeFile (fromAbsFile path) image
-
-      BS.writeFile (combine (fromAbsDir rootDir) "info.yaml") (encodeYamlViaCodec extendedInfo)
-      pure (Just extendedInfo, filesWithNames, directoriesWithNames)
+    (Nothing, Just (rootDir, info)) -> doUpdateWith rootDir info
 
 -- | This tries to guess some information based on the directory and file names.
 -- It also returns what it thinks is the root directory of this series or movie.
@@ -195,7 +209,8 @@ guessDirectoryInfo dir files directories =
             directoryInfoDescription = Nothing,
             directoryInfoImdb = Nothing,
             directoryInfoTvdb = Nothing,
-            directoryInfoTmdb = Nothing
+            directoryInfoTmdb = Nothing,
+            directoryInfoForceUpdate = False
           }
    in case (mSeason, nonEmpty videoFiles, nonEmpty directories) of
         (Just _season, Just _actualFiles, _) ->

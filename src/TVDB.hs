@@ -18,7 +18,7 @@ import Network.HTTP.Client (responseHeaders)
 import Network.HTTP.Req (GET (GET), HttpConfig, HttpException, HttpResponse (toVanillaResponse), NoReqBody (..), Option, Req, Url, bsResponse, defaultHttpConfig, https, jsonResponse, oAuth2Bearer, req, responseBody, runReq, useURI, (/:), (=:))
 import Text.Read (readMaybe)
 import Text.URI (mkURI)
-import Yesod (ContentType)
+import Yesod (ContentType, liftIO)
 
 data TVDBType = TVDBTypeSeries | TVDBTypeMovie
   deriving (Show, Eq)
@@ -86,7 +86,7 @@ safeReq :: HttpConfig -> Req r -> IO (Either HttpException r)
 safeReq c r = try $ runReq c r
 
 getInfoFromTVDB :: BS.ByteString -> Text -> TVDBType -> Maybe Int -> IO (Maybe TVDBData)
-getInfoFromTVDB tvdbToken title type' year = do
+getInfoFromTVDB tvdbToken title type' mYear = do
   response <- safeReq defaultHttpConfig $ do
     response <-
       req GET (https "api4.thetvdb.com" /: "v4" /: "search") NoReqBody jsonResponse $
@@ -95,10 +95,13 @@ getInfoFromTVDB tvdbToken title type' year = do
             "type" =: case type' of
               TVDBTypeSeries -> "series" :: Text
               TVDBTypeMovie -> "movie",
-            "year" =: year,
+            case mYear of
+              Just year -> "year" =: year
+              Nothing -> mempty,
             "limit" =: (1 :: Int),
             oAuth2Bearer tvdbToken
           ]
+    liftIO $ print response
     pure $ listToMaybe $ rawResponseData $ responseBody response
 
   case response of
