@@ -324,7 +324,7 @@ tryGetFile predicate startDir =
     tryGetFile' dir = do
       (_dirNames, fileNames) <- listDirRel dir
       let matchingFileNames = filter predicate fileNames
-      pure $ case listToMaybe matchingFileNames of
+      pure $ case listToMaybe $ sort matchingFileNames of
         Nothing -> Nothing
         Just foundFile -> Just (dir </> foundFile)
 
