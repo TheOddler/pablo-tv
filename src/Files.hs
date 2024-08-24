@@ -14,7 +14,7 @@ where
 import Autodocodec
   ( HasCodec (codec),
     object,
-    optionalFieldWithDefault,
+    optionalField,
     requiredField,
     stringConstCodec,
     (.=),
@@ -69,7 +69,7 @@ data DirectoryInfo = DirectoryInfo
     directoryInfoImdb :: Maybe Text,
     directoryInfoTvdb :: Maybe Text,
     directoryInfoTmdb :: Maybe Text,
-    directoryInfoForceUpdate :: Bool
+    directoryInfoForceUpdate :: Maybe Bool
   }
   deriving (Generic, Show, Eq)
 
@@ -85,7 +85,7 @@ instance HasCodec DirectoryInfo where
         <*> optionalField' "imdb" "The IMDB ID" .= directoryInfoImdb
         <*> optionalField' "tvdb" "The TVDB ID" .= directoryInfoTvdb
         <*> optionalField' "tmdb" "The TMDB ID" .= directoryInfoTmdb
-        <*> optionalFieldWithDefault "force-update" False "This forces the system to try and download more information again. This can be used for when some of the data was wrong, you can remove the incorrect data, fill in what you know, set this flag to true, and it'll use the info you gave it to search for the rest." .= directoryInfoForceUpdate
+        <*> optionalField "force-update" "This forces the system to try and download more information again. This can be used for when some of the data was wrong, you can remove the incorrect data, fill in what you know, set this flag to true, and it'll use the info you gave it to search for the rest." .= directoryInfoForceUpdate
     where
       -- We use this instead of `optionalFieldOrNull` because this also writes a `null` when the field is `Nothing`
       -- that way we get `null` values in new files and they serve as better templates, but we can still
@@ -141,7 +141,7 @@ parseDirectory tvdbToken dir = do
         mTVDBData <- getInfoFromTVDB tvdbToken (directoryInfoTitle info) tvdbType (directoryInfoYear info)
 
         -- If we're doing a force update, that means someone corrected it manually, so we do not want to overwrite
-        let keepOriginal = info.directoryInfoForceUpdate
+        let keepOriginal = fromMaybe False info.directoryInfoForceUpdate
         let select infoField tvdbValue =
               if keepOriginal && isJust (infoField info)
                 then infoField info
@@ -159,7 +159,7 @@ parseDirectory tvdbToken dir = do
                     directoryInfoImdb = select directoryInfoImdb tvdbData.tvdbDataImdb,
                     directoryInfoTvdb = select directoryInfoTvdb (Just tvdbData.tvdbDataId),
                     directoryInfoTmdb = select directoryInfoTmdb tvdbData.tvdbDataTmdb,
-                    directoryInfoForceUpdate = False
+                    directoryInfoForceUpdate = Nothing
                   }
         case tvdbDataImage =<< mTVDBData of
           Nothing -> pure ()
@@ -181,7 +181,7 @@ parseDirectory tvdbToken dir = do
 
   case (mInfoFile, mInfoGuess) of
     (Just (root, info), _)
-      | info.directoryInfoForceUpdate ->
+      | info.directoryInfoForceUpdate == Just True ->
           doUpdateWith (parent root) info
     (Just (_, info), _) -> pure (Just info, filesWithNames, directoriesWithNames)
     (Nothing, Nothing) -> pure (Nothing, filesWithNames, directoriesWithNames)
@@ -210,7 +210,7 @@ guessDirectoryInfo dir files directories =
             directoryInfoImdb = Nothing,
             directoryInfoTvdb = Nothing,
             directoryInfoTmdb = Nothing,
-            directoryInfoForceUpdate = False
+            directoryInfoForceUpdate = Nothing
           }
    in case (mSeason, nonEmpty videoFiles, nonEmpty directories) of
         (Just _season, Just _actualFiles, _) ->
