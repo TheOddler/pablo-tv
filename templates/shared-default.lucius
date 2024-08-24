@@ -6,6 +6,7 @@ body {
   background: black;
   color: white;
   overflow-wrap: break-word;
+  text-align: justify;
 }
 
 a {
