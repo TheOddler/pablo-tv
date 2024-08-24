@@ -105,11 +105,15 @@ getInfoFromTVDB tvdbToken title type' mYear = do
           ]
     pure $ listToMaybe $ rawResponseData $ responseBody response
 
+  let debugInfo = (title, type', mYear)
+
   case response of
     Left err -> do
-      putStrLn $ "Failed TVDB request: " <> show err
+      putStrLn $ "Failed TVDB request: " <> show err <> "; " <> show debugInfo
       pure Nothing
-    (Right Nothing) -> pure Nothing
+    (Right Nothing) -> do
+      putStrLn $ "TVDB request return nothing. " <> show debugInfo
+      pure Nothing
     (Right (Just firstData)) -> do
       let imgUrl = rawResponseDataImageUrl firstData
       let lookupRemoteId name =
