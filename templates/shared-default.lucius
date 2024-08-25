@@ -2,6 +2,10 @@
   --red: rgb(210, 30, 45);
 }
 
+* {
+  box-sizing: border-box;
+}
+
 html {
   background: black;
   color: white;
