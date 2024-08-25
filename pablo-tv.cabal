@@ -60,9 +60,11 @@ library
       , process
       , regex-tdfa
       , req
+      , scientific
       , shakespeare
       , template-haskell
       , text
+      , unordered-containers
       , warp
       , yesod
       , yesod-websockets
@@ -85,7 +87,7 @@ test-suite pablo-tv-test
         FilesSpec
         TestUtils
     build-depends:
-        aeson
+        autodocodec
       , autodocodec-yaml
       , bytestring
       , pablo-tv

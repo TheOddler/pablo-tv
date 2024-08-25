@@ -1,21 +1,23 @@
 module Actions where
 
+import Autodocodec (Discriminator, HasCodec (..), HasObjectCodec (..), ObjectCodec, discriminatedUnionCodec, eitherDecodeJSONViaCodec, mapToDecoder, mapToEncoder, object, pureCodec, requiredField', (.=))
 import Control.Monad (forever)
-import Data.Aeson qualified as JSON
 import Data.ByteString.Lazy (ByteString)
+import Data.HashMap.Strict qualified as HashMap
 import Data.Int (Int32)
 import Data.List (nub)
+import Data.Scientific (Scientific, scientific)
+import Data.Text (Text)
+import Data.Void (Void)
 import Evdev.Codes
 import Evdev.Uinput
-import GHC.Float (int2Float)
-import GHC.Generics (Generic)
-import SafeMaths (int32ToInt)
+import SafeMaths (int32ToInteger)
 import Yesod (MonadHandler, liftIO)
 import Yesod.WebSockets (WebSocketsT, receiveData)
 
 data Action
   = ClickMouse
-  | MoveMouse {x :: Int32, y :: Int32}
+  | MoveMouse Int32 Int32 -- x,y
   | -- | Point the mouse relative to the center of the screen
     -- So (0,0) is the center of the screen
     -- Then, assuming the screen is wider then high, (0, 1) means middle top
@@ -23,11 +25,35 @@ data Action
     -- so something like (1.6, 0) would be center outer right
     -- Does that make sense?
     -- It's meant to be used with the mouse pointer tool
-    PointMouse {leftRight :: Float, upDown :: Float}
-  | Write {text :: String}
-  deriving (Generic, Show, Eq)
+    PointMouse Scientific Scientific -- leftRight, upDown
+  | Write String
+  deriving (Show, Eq)
 
-instance JSON.FromJSON Action
+instance HasCodec Action where
+  codec = object "Action" objectCodec
+
+instance HasObjectCodec Action where
+  objectCodec = discriminatedUnionCodec "tag" enc dec
+    where
+      xyCodec = (,) <$> requiredField' "x" .= fst <*> requiredField' "y" .= snd
+      leftRightUpDownCodec = (,) <$> requiredField' "leftRight" .= fst <*> requiredField' "upDown" .= snd
+      textFieldCodec = requiredField' "text"
+      nothingCodec = pureCodec ()
+
+      enc :: Action -> (Discriminator, ObjectCodec a ())
+      enc = \case
+        ClickMouse -> ("ClickMouse", mapToEncoder () nothingCodec)
+        MoveMouse x y -> ("MoveMouse", mapToEncoder (x, y) xyCodec)
+        PointMouse lr ud -> ("PointMouse", mapToEncoder (lr, ud) leftRightUpDownCodec)
+        Write t -> ("Write", mapToEncoder t textFieldCodec)
+      dec :: HashMap.HashMap Discriminator (Text, ObjectCodec Void Action)
+      dec =
+        HashMap.fromList
+          [ ("ClickMouse", ("ClickMouse", mapToDecoder (const ClickMouse) nothingCodec)),
+            ("MoveMouse", ("MoveMouse", mapToDecoder (uncurry MoveMouse) xyCodec)),
+            ("PointMouse", ("PointMouse", mapToDecoder (uncurry PointMouse) leftRightUpDownCodec)),
+            ("Write", ("Write", mapToDecoder Write textFieldCodec))
+          ]
 
 actionsWebSocket :: (MonadHandler m) => Device -> WebSocketsT m ()
 actionsWebSocket inputDevice = forever $ do
@@ -35,7 +61,7 @@ actionsWebSocket inputDevice = forever $ do
   liftIO $ decodeAndPerformAction inputDevice d
 
 decodeAndPerformAction :: Device -> ByteString -> IO ()
-decodeAndPerformAction inputDevice websocketData = case JSON.eitherDecode websocketData of
+decodeAndPerformAction inputDevice websocketData = case eitherDecodeJSONViaCodec websocketData of
   Left err -> putStrLn $ "Error decoding action: " <> err
   Right action -> performAction inputDevice action
 
@@ -57,10 +83,10 @@ performAction inputDevice = \case
       ]
   PointMouse lr ud -> do
     let -- I assume the screen is in landscape mode
-        int32ToFloat = int2Float . int32ToInt
-        screenHalfSize = int32ToFloat screenHeight / 2
-        centerX = int32ToFloat screenWidth / 2
-        centerY = int32ToFloat screenHeight / 2
+        fromInt32 int32 = scientific (int32ToInteger int32) 0
+        screenHalfSize = fromInt32 screenHeight / 2
+        centerX = fromInt32 screenWidth / 2
+        centerY = fromInt32 screenHeight / 2
         pointerX = floor $ centerX + lr * screenHalfSize
         pointerY = floor $ centerY + ud * screenHalfSize
     writeBatch
