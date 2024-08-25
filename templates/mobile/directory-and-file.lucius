@@ -26,6 +26,7 @@ img.header {
 ol,
 ul {
   padding: 0 1.5em;
+  margin: 0;
 
   li {
     margin: 1em 0;
