@@ -25,7 +25,7 @@ data Action
     -- It's meant to be used with the mouse pointer tool
     PointMouse {leftRight :: Float, upDown :: Float}
   | Write {text :: String}
-  deriving (Generic, Show)
+  deriving (Generic, Show, Eq)
 
 instance JSON.FromJSON Action
 

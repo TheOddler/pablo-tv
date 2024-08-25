@@ -81,10 +81,12 @@ test-suite pablo-tv-test
     main-is:          Spec.hs
     type:             exitcode-stdio-1.0
     other-modules:
+        ActionsSpec
         FilesSpec
         TestUtils
     build-depends:
-        autodocodec-yaml
+        aeson
+      , autodocodec-yaml
       , bytestring
       , pablo-tv
       , path
