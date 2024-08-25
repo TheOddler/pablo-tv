@@ -19,7 +19,7 @@ body {
 img.header {
   flex-shrink: 1;
   object-fit: contain;
-  min-height: 0;
+  min-height: 40svh;
   max-width: 100dvw;
 }
 
