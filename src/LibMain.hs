@@ -18,7 +18,7 @@ import Data.String (fromString)
 import Data.Text (Text, intercalate, unpack)
 import Data.Text qualified as T
 import Evdev.Uinput (Device)
-import Files (DirectoryInfo (..), DirectoryKind (..), parseDirectory)
+import Files (DirectoryInfo (..), DirectoryKind (..), niceFileNameT, parseDirectory)
 import GHC.Conc (TVar, atomically, newTVarIO, writeTVar)
 import GHC.Data.Maybe (firstJustsM, listToMaybe)
 import IsDevelopment (isDevelopment)
@@ -186,12 +186,10 @@ getDirectoryR segments = do
 
 getFileR :: [Text] -> Handler Html
 getFileR segments = do
-  filePath <-
+  (_dir, fileName) <-
     parseSegments segments >>= \case
-      Just (dir, Just path) -> pure $ dir </> path
+      Just (dir, Just path) -> pure (dir, path)
       _ -> redirect $ DirectoryR $ removeLast segments
-  tvdbToken <- getsYesod appTVDBToken
-  (mInfo, _filesWithNames, _dirsWithNames) <- liftIO $ parseDirectory tvdbToken $ parent filePath
 
   -- Let the tv know what page we're on
   tvStateTVar <- getsYesod appTVState

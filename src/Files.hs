@@ -4,10 +4,10 @@ module Files
   ( DirectoryInfo (..),
     DirectoryKind (..),
     parseDirectory,
+    niceFileNameT,
     -- Exports for testing
     guessDirectoryInfo,
     isVideoFile,
-    niceFileNameT,
   )
 where
 

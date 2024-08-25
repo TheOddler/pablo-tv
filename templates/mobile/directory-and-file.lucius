@@ -54,6 +54,7 @@ h2 {
   text-align: center;
   overflow: hidden;
   font-size: min(1rem, 3dvw);
+  margin: 1.5em 0;
 
   >* {
     flex-shrink: 1;

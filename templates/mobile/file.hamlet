@@ -1,9 +1,5 @@
-$case mInfo
-  $of Nothing
-    <h1>Videos
-  $of Just info
-    <img src=@{ImageR segments} alt="🖼️ Missing poster ☹️" class="header" onerror="this.style.display = 'none'">
-    <h1>#{directoryInfoTitle info}
+<img src=@{ImageR segments} alt="🖼️ Missing poster ☹️" class="header" onerror="this.style.display = 'none'">
+<h2>#{niceFileNameT fileName}
 
 <div class="buttons">
   <button class="xl">⏮️
