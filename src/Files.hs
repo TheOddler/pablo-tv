@@ -134,30 +134,41 @@ parseDirectory tvdbToken dir = do
           renameFile infoFilePath newName
           pure Nothing
 
-  let doUpdateWith rootDir info = do
-        let tvdbType = case directoryInfoKind info of
+  let doUpdateWith rootDir startingInfo = do
+        let tvdbType = case directoryInfoKind startingInfo of
               DirectoryKindMovie -> TVDBTypeMovie
               DirectoryKindSeries -> TVDBTypeSeries
-        mTVDBData <- getInfoFromTVDB tvdbToken (directoryInfoTitle info) tvdbType (directoryInfoYear info)
+        (usedInfo, mTVDBData) <- do
+          let getInfoForYear = getInfoFromTVDB tvdbToken (directoryInfoTitle startingInfo) tvdbType
+          attemptWithYear <- getInfoForYear startingInfo.directoryInfoYear
+          case attemptWithYear of
+            Just d -> pure (startingInfo, Just d)
+            -- Fallback to not using the year in case we guessed it wrong.
+            -- I had this happen when a series had a special episode that had a year in the name, but that was the year
+            -- the special was made, not the series.
+            Nothing | isJust startingInfo.directoryInfoYear -> do
+              attemptWithoutYear <- getInfoForYear Nothing
+              pure (startingInfo {directoryInfoYear = Nothing}, attemptWithoutYear)
+            Nothing -> pure (startingInfo, Nothing)
 
         -- If we're doing a force update, that means someone corrected it manually, so we do not want to overwrite
-        let keepOriginal = fromMaybe False info.directoryInfoForceUpdate
+        let keepOriginal = fromMaybe False usedInfo.directoryInfoForceUpdate
         let select infoField tvdbValue =
-              if keepOriginal && isJust (infoField info)
-                then infoField info
+              if keepOriginal && isJust (infoField usedInfo)
+                then infoField usedInfo
                 else tvdbValue
 
         let extendedInfo = case mTVDBData of
               Nothing ->
-                info
+                usedInfo
                   { -- Even when we don't find anything, remove this flag so we don't keep trying
                     directoryInfoForceUpdate = Nothing
                   }
               Just tvdbData ->
                 DirectoryInfo
-                  { directoryInfoKind = info.directoryInfoKind,
-                    directoryInfoTitle = info.directoryInfoTitle,
-                    directoryInfoYear = select directoryInfoYear (tvdbData.tvdbDataYear <|> info.directoryInfoYear),
+                  { directoryInfoKind = usedInfo.directoryInfoKind,
+                    directoryInfoTitle = usedInfo.directoryInfoTitle,
+                    directoryInfoYear = select directoryInfoYear (tvdbData.tvdbDataYear <|> usedInfo.directoryInfoYear),
                     directoryInfoDescription = select directoryInfoDescription tvdbData.tvdbDataDescription,
                     directoryInfoImdb = select directoryInfoImdb tvdbData.tvdbDataImdb,
                     directoryInfoTvdb = select directoryInfoTvdb (Just tvdbData.tvdbDataId),
