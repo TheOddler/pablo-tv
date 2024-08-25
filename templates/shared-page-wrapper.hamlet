@@ -12,6 +12,5 @@ $doctype 5
     <meta content="width=device-width, initial-scale=1.0" name="viewport">
 
     ^{pageHead pc}
-  $# I set the language to DE because that's one of the very few languages supporting hyphenating for capitalised words, English does not by design (wtf): https://bugzilla.mozilla.org/show_bug.cgi?id=656879, keep lang="en" on the html tag so the browser doesn't ask to translate.
-  <body lang="de">
+  <body>
     ^{pageBody pc}
