@@ -17,8 +17,8 @@ import Yesod (MonadHandler, liftIO)
 import Yesod.WebSockets (WebSocketsT, receiveData)
 
 data Action
-  = ClickMouse
-  | MoveMouse Int32 Int32 -- x,y
+  = ActionClickMouse
+  | ActionMoveMouse Int32 Int32 -- x,y
   | -- | Point the mouse relative to the center of the screen
     -- So (0,0) is the center of the screen
     -- Then, assuming the screen is wider then high, (0, 1) means middle top
@@ -26,8 +26,8 @@ data Action
     -- so something like (1.6, 0) would be center outer right
     -- Does that make sense?
     -- It's meant to be used with the mouse pointer tool
-    PointMouse Scientific Scientific -- leftRight, upDown
-  | Write String
+    ActionPointMouse Scientific Scientific -- leftRight, upDown
+  | ActionWrite String
   deriving (Show, Eq, Generic)
 
 instance HasCodec Action where
@@ -51,17 +51,17 @@ instance HasObjectCodec Action where
 
       enc :: Action -> (Discriminator, ObjectCodec a ())
       enc = \case
-        ClickMouse -> ("ClickMouse", noFieldEncoder)
-        MoveMouse x y -> ("MoveMouse", twoFieldEncoder "x" x "y" y)
-        PointMouse lr ud -> ("PointMouse", twoFieldEncoder "leftRight" lr "upDown" ud)
-        Write t -> ("Write", oneFieldEncoder "text" t)
+        ActionClickMouse -> ("ClickMouse", noFieldEncoder)
+        ActionMoveMouse x y -> ("MoveMouse", twoFieldEncoder "x" x "y" y)
+        ActionPointMouse lr ud -> ("PointMouse", twoFieldEncoder "leftRight" lr "upDown" ud)
+        ActionWrite t -> ("Write", oneFieldEncoder "text" t)
       dec :: HashMap.HashMap Discriminator (Text, ObjectCodec Void Action)
       dec =
         HashMap.fromList
-          [ ("ClickMouse", ("ClickMouse", noFieldDecoder ClickMouse)),
-            ("MoveMouse", ("MoveMouse", twoFieldDecoder MoveMouse "x" "y")),
-            ("PointMouse", ("PointMouse", twoFieldDecoder PointMouse "leftRight" "upDown")),
-            ("Write", ("Write", oneFieldDecoder Write "text"))
+          [ ("ClickMouse", ("ActionClickMouse", noFieldDecoder ActionClickMouse)),
+            ("MoveMouse", ("ActionMoveMouse", twoFieldDecoder ActionMoveMouse "x" "y")),
+            ("PointMouse", ("ActionPointMouse", twoFieldDecoder ActionPointMouse "leftRight" "upDown")),
+            ("Write", ("ActionWrite", oneFieldDecoder ActionWrite "text"))
           ]
 
 actionsWebSocket :: (MonadHandler m) => Device -> WebSocketsT m ()
@@ -76,7 +76,7 @@ decodeAndPerformAction inputDevice websocketData = case eitherDecodeJSONViaCodec
 
 performAction :: Device -> Action -> IO ()
 performAction inputDevice = \case
-  ClickMouse ->
+  ActionClickMouse ->
     writeBatch
       inputDevice
       [ KeyEvent BtnLeft Pressed,
@@ -84,13 +84,13 @@ performAction inputDevice = \case
         KeyEvent BtnLeft Released
         -- Batch automatically adds a sync at the end too
       ]
-  MoveMouse x y ->
+  ActionMoveMouse x y ->
     writeBatch
       inputDevice
       [ RelativeEvent RelX $ EventValue x,
         RelativeEvent RelY $ EventValue y
       ]
-  PointMouse lr ud -> do
+  ActionPointMouse lr ud -> do
     let -- I assume the screen is in landscape mode
         fromInt32 int32 = scientific (int32ToInteger int32) 0
         screenHalfSize = fromInt32 screenHeight / 2
@@ -103,7 +103,7 @@ performAction inputDevice = \case
       [ AbsoluteEvent AbsX $ EventValue pointerX,
         AbsoluteEvent AbsY $ EventValue pointerY
       ]
-  Write text -> do
+  ActionWrite text -> do
     let clickKeyCombo keys =
           map (`KeyEvent` Pressed) keys
             ++ [SyncEvent SynReport]

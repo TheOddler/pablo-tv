@@ -30,24 +30,24 @@ decodeSpec (json, action) =
 decodeExamples :: [(BS.ByteString, Action)]
 decodeExamples =
   [ ( "{\"tag\":\"ClickMouse\"}",
-      ClickMouse
+      ActionClickMouse
     ),
     ( "{\"tag\":\"MoveMouse\",\"x\":1,\"y\":2}",
-      MoveMouse 1 2
+      ActionMoveMouse 1 2
     ),
     ( "{\"y\":34,\"x\":-12,\"tag\":\"MoveMouse\"}",
-      MoveMouse (-12) 34
+      ActionMoveMouse (-12) 34
     ),
     ( "{\"tag\":\"PointMouse\",\"leftRight\":1.2,\"upDown\":3.4}",
-      PointMouse 1.2 3.4
+      ActionPointMouse 1.2 3.4
     ),
     ( "{\"upDown\":76.5,\"leftRight\":-0.98,\"tag\":\"PointMouse\"}",
-      PointMouse (-0.98) 76.5
+      ActionPointMouse (-0.98) 76.5
     ),
     ( "{\"tag\":\"Write\",\"text\":\"Hello\"}",
-      Write "Hello"
+      ActionWrite "Hello"
     ),
     ( "{\"tag\":\"Write\",\"text\":\"w () r |_ |}\"}",
-      Write "w () r |_ |}"
+      ActionWrite "w () r |_ |}"
     )
   ]
