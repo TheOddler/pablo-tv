@@ -11,6 +11,7 @@ import Data.Text (Text)
 import Data.Void (Void)
 import Evdev.Codes
 import Evdev.Uinput
+import GHC.Generics (Generic)
 import SafeMaths (int32ToInteger)
 import Yesod (MonadHandler, liftIO)
 import Yesod.WebSockets (WebSocketsT, receiveData)
@@ -27,7 +28,7 @@ data Action
     -- It's meant to be used with the mouse pointer tool
     PointMouse Scientific Scientific -- leftRight, upDown
   | Write String
-  deriving (Show, Eq)
+  deriving (Show, Eq, Generic)
 
 instance HasCodec Action where
   codec = object "Action" objectCodec
@@ -35,24 +36,32 @@ instance HasCodec Action where
 instance HasObjectCodec Action where
   objectCodec = discriminatedUnionCodec "tag" enc dec
     where
-      xyCodec = (,) <$> requiredField' "x" .= fst <*> requiredField' "y" .= snd
-      leftRightUpDownCodec = (,) <$> requiredField' "leftRight" .= fst <*> requiredField' "upDown" .= snd
-      textFieldCodec = requiredField' "text"
       nothingCodec = pureCodec ()
+      twoFieldCodec first second = (,) <$> requiredField' first .= fst <*> requiredField' second .= snd
+
+      noFieldEncoder = mapToEncoder () nothingCodec
+      oneFieldEncoder name value = mapToEncoder value (requiredField' name)
+      twoFieldEncoder firstName first secondName second =
+        mapToEncoder (first, second) (twoFieldCodec firstName secondName)
+
+      noFieldDecoder constructor = mapToDecoder (const constructor) nothingCodec
+      oneFieldDecoder constructor name = mapToDecoder constructor (requiredField' name)
+      twoFieldDecoder constructor firstName secondName =
+        mapToDecoder (uncurry constructor) (twoFieldCodec firstName secondName)
 
       enc :: Action -> (Discriminator, ObjectCodec a ())
       enc = \case
-        ClickMouse -> ("ClickMouse", mapToEncoder () nothingCodec)
-        MoveMouse x y -> ("MoveMouse", mapToEncoder (x, y) xyCodec)
-        PointMouse lr ud -> ("PointMouse", mapToEncoder (lr, ud) leftRightUpDownCodec)
-        Write t -> ("Write", mapToEncoder t textFieldCodec)
+        ClickMouse -> ("ClickMouse", noFieldEncoder)
+        MoveMouse x y -> ("MoveMouse", twoFieldEncoder "x" x "y" y)
+        PointMouse lr ud -> ("PointMouse", twoFieldEncoder "leftRight" lr "upDown" ud)
+        Write t -> ("Write", oneFieldEncoder "text" t)
       dec :: HashMap.HashMap Discriminator (Text, ObjectCodec Void Action)
       dec =
         HashMap.fromList
-          [ ("ClickMouse", ("ClickMouse", mapToDecoder (const ClickMouse) nothingCodec)),
-            ("MoveMouse", ("MoveMouse", mapToDecoder (uncurry MoveMouse) xyCodec)),
-            ("PointMouse", ("PointMouse", mapToDecoder (uncurry PointMouse) leftRightUpDownCodec)),
-            ("Write", ("Write", mapToDecoder Write textFieldCodec))
+          [ ("ClickMouse", ("ClickMouse", noFieldDecoder ClickMouse)),
+            ("MoveMouse", ("MoveMouse", twoFieldDecoder MoveMouse "x" "y")),
+            ("PointMouse", ("PointMouse", twoFieldDecoder PointMouse "leftRight" "upDown")),
+            ("Write", ("Write", oneFieldDecoder Write "text"))
           ]
 
 actionsWebSocket :: (MonadHandler m) => Device -> WebSocketsT m ()
