@@ -12,7 +12,7 @@ import Actions (actionsWebSocket, mkInputDevice)
 import Control.Monad (filterM, when)
 import Data.ByteString.Char8 qualified as BS
 import Data.Char (toLower)
-import Data.List (foldl')
+import Data.List (foldl', uncons)
 import Data.Maybe (fromMaybe)
 import Data.String (fromString)
 import Data.Text (Text, intercalate, unpack)
@@ -24,7 +24,7 @@ import GHC.Data.Maybe (firstJustsM, listToMaybe)
 import IsDevelopment (isDevelopment)
 import Network.Info (IPv4 (..), NetworkInterface (..), getNetworkInterfaces)
 import Network.Wai.Handler.Warp (run)
-import Path (Abs, Dir, File, Path, Rel, fileExtension, fromAbsFile, mkRelDir, parent, parseRelDir, toFilePath, (</>))
+import Path (Abs, Dir, File, Path, Rel, fileExtension, fromAbsFile, mkRelDir, parent, parseRelDir, parseRelFile, toFilePath, (</>))
 import Path.IO (doesDirExist, doesFileExist, getHomeDir, listDir)
 import System.Environment (getEnv)
 import System.FilePath (dropTrailingPathSeparator)
@@ -116,24 +116,53 @@ getKeyboardR :: Handler Html
 getKeyboardR =
   mobileLayout $(widgetFile "mobile/keyboard")
 
--- | Gets the directory for the segments in the url, if it's a file the parent
--- dir will be returned.
--- Assumed the segments are either a valid file or directory. If not, this won't
--- figure that out.
-getDirFromSegments :: [Text] -> Handler (Path Abs Dir)
-getDirFromSegments segmentsT = do
+-- | Turn the segments into a directory path and optionally a filename
+-- Also checks if the file/directory actually exists, if not, return Nothing
+parseSegments :: [Text] -> Handler (Maybe (Path Abs Dir, Maybe (Path Rel File)))
+parseSegments segmentsT = do
   home <- liftIO getHomeDir
-  segments <- mapM parseRelDir (unpack <$> segmentsT)
-  let path = home </> foldl' (</>) $(mkRelDir "Videos") segments
-  isDir <- doesDirExist path
-  pure $
-    if isDir
-      then path
-      else parent path -- we assume if it's not a dir, it's a file
+  let videoDirName = $(mkRelDir "Videos")
+  case unsnoc segmentsT of
+    Nothing -> pure $ Just (home </> videoDirName, Nothing)
+    Just (parentSegments, dirOfFileT) -> do
+      segments <- mapM parseRelDir (unpack <$> parentSegments)
+      let parentPath = home </> foldl' (</>) videoDirName segments
+          dirOfFile = T.unpack dirOfFileT
+          dirName :: Maybe (Path Rel Dir)
+          dirName = parseRelDir dirOfFile
+          fileName :: Maybe (Path Rel File)
+          fileName = parseRelFile dirOfFile
+
+          tryDir =
+            case dirName of
+              Nothing -> pure Nothing
+              Just dn -> do
+                dirExists <- liftIO $ doesDirExist $ parentPath </> dn
+                if dirExists
+                  then pure $ Just (parentPath </> dn, Nothing)
+                  else pure Nothing
+
+      case fileName of
+        Just fn -> do
+          fileExists <- liftIO $ doesFileExist $ parentPath </> fn
+          if fileExists
+            then pure $ Just (parentPath, Just fn)
+            else tryDir
+        Nothing -> tryDir
+
+-- | Not yet available in the base I use, but should be replaceable in a later version
+unsnoc :: [a] -> Maybe ([a], a)
+unsnoc xs = (\(hd, tl) -> (reverse tl, hd)) <$> uncons (reverse xs)
+
+removeLast :: [a] -> [a]
+removeLast = reverse . drop 1 . reverse
 
 getDirectoryR :: [Text] -> Handler Html
 getDirectoryR segments = do
-  absPath <- getDirFromSegments segments
+  absPath <-
+    parseSegments segments >>= \case
+      Just (p, Nothing) -> pure p
+      _ -> redirect $ DirectoryR $ removeLast segments
   tvdbToken <- getsYesod appTVDBToken
   (mInfo, filesWithNames, dirsWithNames) <- liftIO $ parseDirectory tvdbToken absPath
 
@@ -150,9 +179,12 @@ getDirectoryR segments = do
 
 getFileR :: [Text] -> Handler Html
 getFileR segments = do
-  absPath <- getDirFromSegments segments
+  filePath <-
+    parseSegments segments >>= \case
+      Just (dir, Just path) -> pure $ dir </> path
+      _ -> redirect $ DirectoryR $ removeLast segments
   tvdbToken <- getsYesod appTVDBToken
-  (mInfo, _filesWithNames, _dirsWithNames) <- liftIO $ parseDirectory tvdbToken absPath
+  (mInfo, _filesWithNames, _dirsWithNames) <- liftIO $ parseDirectory tvdbToken $ parent filePath
 
   -- Let the tv know what page we're on
   tvStateTVar <- getsYesod appTVState
@@ -164,7 +196,10 @@ getFileR segments = do
 
 getImageR :: [Text] -> Handler Html
 getImageR segments = do
-  dir <- getDirFromSegments segments
+  dir <-
+    parseSegments segments >>= \case
+      Just (d, _) -> pure d
+      _ -> notFound
   mImg <- firstJustsM $ tryGetImage <$> take 3 (iterate parent dir)
   case mImg of
     Just (contentType, path) ->
