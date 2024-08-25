@@ -166,6 +166,13 @@ getDirectoryR segments = do
   tvdbToken <- getsYesod appTVDBToken
   (mInfo, filesWithNames, dirsWithNames) <- liftIO $ parseDirectory tvdbToken absPath
 
+  -- If there's one file, this is a movie, and there are no other sub-directories, redirect to the file page
+  case filesWithNames of
+    [(_niceBame, name)]
+      | (directoryInfoKind <$> mInfo) == Just DirectoryKindMovie && null dirsWithNames ->
+          redirect $ FileR $ mkSegments name
+    _ -> pure ()
+
   -- Let the tv know what page we're on
   tvStateTVar <- getsYesod appTVState
   liftIO $ atomically $ writeTVar tvStateTVar $ TVState $ DirectoryR segments
