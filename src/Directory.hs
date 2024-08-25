@@ -1,6 +1,6 @@
 {-# LANGUAGE TemplateHaskell #-}
 
-module Files
+module Directory
   ( DirectoryInfo (..),
     DirectoryKind (..),
     parseDirectory,

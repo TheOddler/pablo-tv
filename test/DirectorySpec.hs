@@ -1,10 +1,10 @@
-module FilesSpec (spec) where
+module DirectorySpec (spec) where
 
 import Autodocodec.Yaml (eitherDecodeYamlViaCodec, encodeYamlViaCodec)
 import Data.ByteString.Char8 qualified as BS
 import Data.Text (Text)
 import Data.Text qualified as T
-import Files
+import Directory
 import Path (File, Path, Rel, fromRelFile, parseRelDir, parseRelFile)
 import Test.Syd (Spec, describe, expectationFailure, it, pureGoldenByteStringFile, pureGoldenTextFile, shouldBe)
 import TestUtils (labeledExpectationFailure)

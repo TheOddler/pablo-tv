@@ -33,7 +33,7 @@ library
     hs-source-dirs:   src
     exposed-modules:
         Actions
-        Files
+        Directory
         IsDevelopment
         LibMain
         SafeMaths
@@ -84,7 +84,7 @@ test-suite pablo-tv-test
     type:             exitcode-stdio-1.0
     other-modules:
         ActionsSpec
-        FilesSpec
+        DirectorySpec
         TestUtils
     build-depends:
         autodocodec
