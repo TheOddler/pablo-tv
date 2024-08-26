@@ -60,7 +60,7 @@ instance HasObjectCodec Action where
         ActionMoveMouse x y -> ("MoveMouse", twoFieldEncoder "x" x "y" y)
         ActionPointMouse lr ud -> ("PointMouse", twoFieldEncoder "leftRight" lr "upDown" ud)
         ActionWrite t -> ("Write", oneFieldEncoder "text" t)
-        ActionMPV MPVCommandTogglePaused -> ("TogglePaused", noFieldEncoder)
+        ActionMPV MPVCommandTogglePlay -> ("TogglePlay", noFieldEncoder)
         ActionMPV (MPVCommandChangeVolume change) -> ("ChangeVolume", oneFieldEncoder "change" change)
         ActionMPV (MPVCommandSeek change) -> ("Seek", oneFieldEncoder "change" change)
         ActionMPV (MPVCommandOpenFile path) -> ("OpenFile", mapToEncoder path $ filePathFieldCodec "path")
@@ -71,7 +71,7 @@ instance HasObjectCodec Action where
             ("MoveMouse", ("ActionMoveMouse", twoFieldDecoder ActionMoveMouse "x" "y")),
             ("PointMouse", ("ActionPointMouse", twoFieldDecoder ActionPointMouse "leftRight" "upDown")),
             ("Write", ("ActionWrite", oneFieldDecoder ActionWrite "text")),
-            ("TogglePaused", ("ActionMPV TogglePaused", noFieldDecoder (ActionMPV MPVCommandTogglePaused))),
+            ("TogglePlay", ("ActionMPV TogglePlay", noFieldDecoder (ActionMPV MPVCommandTogglePlay))),
             ("ChangeVolume", ("ActionMPV ChangeVolume", oneFieldDecoder (ActionMPV . MPVCommandChangeVolume) "change")),
             ("Seek", ("ActionMPV Seek", oneFieldDecoder (ActionMPV . MPVCommandSeek) "change")),
             ("OpenFile", ("ActionMPV OpenFile", mapToDecoder (ActionMPV . MPVCommandOpenFile) (filePathFieldCodec "path")))

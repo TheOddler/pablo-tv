@@ -37,15 +37,16 @@ data MPVInfo = MPVInfo
   }
 
 data MPVCommand
-  = MPVCommandTogglePaused
+  = MPVCommandTogglePlay
   | MPVCommandChangeVolume Int
   | MPVCommandSeek Int -- seconds
   | MPVCommandOpenFile (Path Abs File)
+  -- TODO: Add MPVClose
   deriving (Show, Eq, Generic)
 
 commandToMessages :: MPVCommand -> [BS.ByteString]
 commandToMessages = \case
-  MPVCommandTogglePaused -> singleton [i|{ "command": ["cycle", "pause"] }|]
+  MPVCommandTogglePlay -> singleton [i|{ "command": ["cycle", "pause"] }|]
   MPVCommandChangeVolume change ->
     singleton [i|{ "command": ["add", "volume", #{change}] }|]
   MPVCommandSeek change ->
