@@ -1,5 +1,5 @@
 <form class="tools-list">
-  <button formaction=@{TrackpadR} class="round">🖱️
+  <button formaction=@{TrackpadR} class="rounded">🖱️
   <button formaction=@{MousePointerR} class="rounded">🔫
   <button formaction="https://www.google.com" class="rounded red">
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
