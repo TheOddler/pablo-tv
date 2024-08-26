@@ -45,7 +45,6 @@ data MPVCommand
 
 commandToMessages :: MPVCommand -> [BS.ByteString]
 commandToMessages = \case
-  -- MPVCommandPause -> "{ "command": ["set_property", "pause", true] }"
   MPVCommandTogglePaused -> singleton [i|{ "command": ["cycle", "pause"] }|]
   MPVCommandChangeVolume change ->
     singleton [i|{ "command": ["add", "volume", #{change}] }|]
