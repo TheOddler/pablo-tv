@@ -90,10 +90,10 @@ withMPVInfo mpv startIfNotRunning action = modifyMVar_ mpv $ \existingInfo -> do
     Nothing -> pure False
     Just info -> isNothing <$> getProcessExitCode info.mpvProcessHandler
 
-  mInfo <-
-    if not processIsRunning && startIfNotRunning
-      then Just <$> startAndConnectToMPV
-      else pure existingInfo
+  mInfo <- case (processIsRunning, startIfNotRunning) of
+    (False, False) -> pure Nothing
+    (False, True) -> Just <$> startAndConnectToMPV
+    (True, _) -> pure existingInfo
 
   for_ mInfo action
 
