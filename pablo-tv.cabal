@@ -70,6 +70,7 @@ library
       , unordered-containers
       , warp
       , yesod
+      , yesod-static
       , yesod-websockets
 
 executable pablo-tv

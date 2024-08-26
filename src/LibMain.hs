@@ -32,10 +32,11 @@ import System.Environment (getEnv)
 import System.FilePath (dropTrailingPathSeparator)
 import System.Process (callProcess)
 import Text.Hamlet (hamletFile)
-import Text.Julius (Javascript (..), RawJavascript (..), jsFile)
+import Text.Julius (RawJavascript (..))
 import Util (networkInterfacesShortList, onChanges, removeLast, toUrl, unsnoc, widgetFile)
 import Yesod hiding (defaultLayout)
 import Yesod qualified
+import Yesod.EmbeddedStatic
 import Yesod.WebSockets (sendTextData, webSockets)
 
 data App = App
@@ -43,7 +44,8 @@ data App = App
     appTVDBToken :: BS.ByteString,
     appInputDevice :: Device,
     appTVState :: TVar TVState,
-    appMPV :: MPV
+    appMPV :: MPV,
+    appGetStatic :: EmbeddedStatic
   }
 
 newtype TVState = TVState
@@ -52,6 +54,13 @@ newtype TVState = TVState
 
 instance (Eq (Route App)) => Eq TVState where
   TVState a == TVState b = a == b
+
+mkEmbeddedStatic
+  False
+  "embeddedStatic"
+  [ embedFile "static/reconnecting-websocket.js",
+    embedFile "static/fontawesome/all.min.css"
+  ]
 
 mkYesod
   "App"
@@ -71,10 +80,11 @@ mkYesod
 
 -- Other
 /image/+Texts ImageR GET
-/reconnecting-websocket.js ReconnectingWebSocketJSR GET
+/static StaticR EmbeddedStatic appGetStatic
 |]
 
 instance Yesod App where
+  addStaticContent = embedStaticContent appGetStatic StaticR Right
   defaultLayout :: Widget -> Handler Html
   defaultLayout widget = do
     -- We break up the default layout into two components:
@@ -84,7 +94,8 @@ instance Yesod App where
     -- you to use normal widget features in default-layout.
     pc <- widgetToPageContent $ do
       when isDevelopment $ addScriptRemote "https://pabloproductions.be/LiveJS/live.js"
-      addScript ReconnectingWebSocketJSR
+      addScript $ StaticR static_reconnecting_websocket_js
+      addStylesheet $ StaticR static_fontawesome_all_min_css
       $(widgetFile "shared-default")
     withUrlRenderer $
       $(hamletFile "templates/shared-page-wrapper.hamlet")
@@ -276,10 +287,6 @@ getAllIPsR = do
         then ""
         else show a
 
-getReconnectingWebSocketJSR :: Handler Javascript
-getReconnectingWebSocketJSR =
-  withUrlRenderer $(jsFile "templates/reconnecting-websocket.js")
-
 main :: IO ()
 main = do
   -- To get this token for now you can use your apiKey here https://thetvdb.github.io/v4-api/#/Login/post_login
@@ -307,7 +314,8 @@ main = do
             appTVDBToken = BS.pack tvdbToken,
             appInputDevice = inputDevice,
             appTVState = tvState,
-            appMPV = mpv
+            appMPV = mpv,
+            appGetStatic = embeddedStatic
           }
     run port $ defaultMiddlewaresNoLogging app
 
