@@ -18,6 +18,7 @@ import Data.List (singleton)
 import Data.Maybe (isNothing)
 import Data.String.Interpolate (i)
 import Data.Text (Text)
+import Data.Text.Encoding qualified as T
 import GHC.Generics (Generic)
 import Network.Socket (Family (AF_UNIX), SockAddr (SockAddrUnix), Socket, SocketType (Stream), close, connect, socket)
 import Network.Socket.ByteString (sendAll)
@@ -45,24 +46,37 @@ data MPVCommand
   | MPVCommandQuit
   deriving (Show, Eq, Generic)
 
-commandToMessages :: MPVCommand -> [BS.ByteString]
-commandToMessages = \case
-  MPVCommandTogglePlay -> singleton [i|{ "command": ["osd-msg-bar", "cycle", "pause"] }|]
+mpvCommands :: MPVCommand -> [BS.ByteString]
+mpvCommands = \case
+  MPVCommandTogglePlay ->
+    oneCommand ["cycle", "pause"]
   MPVCommandChangeVolume change ->
-    singleton [i|{ "command": ["osd-msg-bar", "add", "volume", #{change}] }|]
+    oneCommand ["add", "volume", showBS change]
   MPVCommandSeek change ->
-    singleton [i|{ "command": ["osd-msg-bar", "seek", #{change}] }|]
+    oneCommand ["seek", showBS change]
   MPVCommandOpenFile path ->
-    [ [i|{ "command": ["osd-msg-bar", "loadfile", "#{path}"] }|],
-      [i|{ "command": ["set", "fullscreen", "yes"] }|],
-      [i|{ "command": ["osd-msg-bar", "set", "pause", "no"] }|]
+    [ mkCommand ["loadfile", fromT path],
+      mkCommand ["set", "fullscreen", "yes"],
+      mkCommand ["set", "pause", "no"]
     ]
-  MPVCommandQuit -> singleton [i|{ "command": ["quit"] }|]
+  MPVCommandQuit ->
+    oneCommand ["quit"]
+  where
+    -- \| This includes `osd-msg-bar` prefix so the commands show something on screen
+    mkCommand :: [BS.ByteString] -> BS.ByteString
+    mkCommand parts = [i|{ "command": #{"osd-msg-bar" : parts} }|]
+
+    oneCommand = singleton . mkCommand
+
+    showBS :: (Show a) => a -> BS.ByteString
+    showBS = BS8.pack . show
+
+    fromT = T.encodeUtf8
 
 sendCommand :: MPV -> MPVCommand -> IO ()
 sendCommand mpv command =
   withMPVInfo mpv mpvMustBeRunning $ \MPVInfo {mpvSocket = soc} -> do
-    let payload = BS8.unlines $ commandToMessages command
+    let payload = BS8.unlines $ mpvCommands command
     BS.putStr $ "Sending command(s):\n" <> payload
     sendAll soc payload
   where
