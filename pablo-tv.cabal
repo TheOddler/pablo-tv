@@ -36,6 +36,7 @@ library
         Directory
         IsDevelopment
         LibMain
+        MPV
         SafeMaths
         TVDB
         Util
@@ -49,11 +50,13 @@ library
       , bytestring
       , data-default
       , evdev
+      , extra
       , filepath
       , ghc
       , http-client
       , modern-uri
       , natural-sort
+      , network
       , network-info
       , path
       , path-io

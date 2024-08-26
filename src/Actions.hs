@@ -1,6 +1,6 @@
 module Actions where
 
-import Autodocodec (Discriminator, HasCodec (..), HasObjectCodec (..), ObjectCodec, discriminatedUnionCodec, eitherDecodeJSONViaCodec, mapToDecoder, mapToEncoder, object, pureCodec, requiredField', (.=))
+import Autodocodec (Discriminator, HasCodec (..), HasObjectCodec (..), ObjectCodec, bimapCodec, discriminatedUnionCodec, eitherDecodeJSONViaCodec, mapToDecoder, mapToEncoder, object, pureCodec, requiredField', (.=))
 import Control.Monad (forever)
 import Data.ByteString.Lazy (ByteString)
 import Data.HashMap.Strict qualified as HashMap
@@ -12,7 +12,10 @@ import Data.Void (Void)
 import Evdev.Codes
 import Evdev.Uinput
 import GHC.Generics (Generic)
+import MPV (MPV, MPVCommand (..), sendCommand)
+import Path (fromAbsFile, parseAbsFile)
 import SafeMaths (int32ToInteger)
+import Util (mapLeft)
 import Yesod (MonadHandler, liftIO)
 import Yesod.WebSockets (WebSocketsT, receiveData)
 
@@ -28,6 +31,7 @@ data Action
     -- It's meant to be used with the mouse pointer tool
     ActionPointMouse Scientific Scientific -- leftRight, upDown
   | ActionWrite String
+  | ActionMPV MPVCommand
   deriving (Show, Eq, Generic)
 
 instance HasCodec Action where
@@ -38,6 +42,7 @@ instance HasObjectCodec Action where
     where
       nothingCodec = pureCodec ()
       twoFieldCodec first second = (,) <$> requiredField' first .= fst <*> requiredField' second .= snd
+      filePathFieldCodec fieldName = bimapCodec (mapLeft show . parseAbsFile) fromAbsFile (requiredField' fieldName)
 
       noFieldEncoder = mapToEncoder () nothingCodec
       oneFieldEncoder name value = mapToEncoder value (requiredField' name)
@@ -55,27 +60,35 @@ instance HasObjectCodec Action where
         ActionMoveMouse x y -> ("MoveMouse", twoFieldEncoder "x" x "y" y)
         ActionPointMouse lr ud -> ("PointMouse", twoFieldEncoder "leftRight" lr "upDown" ud)
         ActionWrite t -> ("Write", oneFieldEncoder "text" t)
+        ActionMPV MPVCommandTogglePaused -> ("TogglePaused", noFieldEncoder)
+        ActionMPV (MPVCommandChangeVolume change) -> ("ChangeVolume", oneFieldEncoder "change" change)
+        ActionMPV (MPVCommandSeek change) -> ("Seek", oneFieldEncoder "change" change)
+        ActionMPV (MPVCommandOpenFile path) -> ("OpenFile", mapToEncoder path $ filePathFieldCodec "path")
       dec :: HashMap.HashMap Discriminator (Text, ObjectCodec Void Action)
       dec =
         HashMap.fromList
           [ ("ClickMouse", ("ActionClickMouse", noFieldDecoder ActionClickMouse)),
             ("MoveMouse", ("ActionMoveMouse", twoFieldDecoder ActionMoveMouse "x" "y")),
             ("PointMouse", ("ActionPointMouse", twoFieldDecoder ActionPointMouse "leftRight" "upDown")),
-            ("Write", ("ActionWrite", oneFieldDecoder ActionWrite "text"))
+            ("Write", ("ActionWrite", oneFieldDecoder ActionWrite "text")),
+            ("TogglePaused", ("ActionMPV TogglePaused", noFieldDecoder (ActionMPV MPVCommandTogglePaused))),
+            ("ChangeVolume", ("ActionMPV ChangeVolume", oneFieldDecoder (ActionMPV . MPVCommandChangeVolume) "change")),
+            ("Seek", ("ActionMPV Seek", oneFieldDecoder (ActionMPV . MPVCommandSeek) "change")),
+            ("OpenFile", ("ActionMPV OpenFile", mapToDecoder (ActionMPV . MPVCommandOpenFile) (filePathFieldCodec "path")))
           ]
 
-actionsWebSocket :: (MonadHandler m) => Device -> WebSocketsT m ()
-actionsWebSocket inputDevice = forever $ do
+actionsWebSocket :: (MonadHandler m) => Device -> MPV -> WebSocketsT m ()
+actionsWebSocket inputDevice mpv = forever $ do
   d <- receiveData
-  liftIO $ decodeAndPerformAction inputDevice d
+  liftIO $ decodeAndPerformAction inputDevice mpv d
 
-decodeAndPerformAction :: Device -> ByteString -> IO ()
-decodeAndPerformAction inputDevice websocketData = case eitherDecodeJSONViaCodec websocketData of
+decodeAndPerformAction :: Device -> MPV -> ByteString -> IO ()
+decodeAndPerformAction inputDevice mpv websocketData = case eitherDecodeJSONViaCodec websocketData of
   Left err -> putStrLn $ "Error decoding action: " <> err
-  Right action -> performAction inputDevice action
+  Right action -> performAction inputDevice mpv action
 
-performAction :: Device -> Action -> IO ()
-performAction inputDevice = \case
+performAction :: Device -> MPV -> Action -> IO ()
+performAction inputDevice mpv = \case
   ActionClickMouse ->
     writeBatch
       inputDevice
@@ -111,6 +124,7 @@ performAction inputDevice = \case
             ++ [SyncEvent SynReport]
         events = concatMap (clickKeyCombo . charToKey) text
     writeBatch inputDevice events
+  ActionMPV command -> sendCommand mpv command
 
 charToKey :: Char -> [Key]
 charToKey = \case

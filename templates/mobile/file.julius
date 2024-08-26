@@ -1,0 +1,15 @@
+const playFileMessage = {
+  tag: 'OpenFile',
+  path: '#{cleanAbsFilePath}'
+};
+
+console.log(playFileMessage);
+
+const webSocket = getWebSocket();
+if (webSocket.readyState === WebSocket.OPEN) {
+  sendWebSocketMessage(playFileMessage);
+} else {
+  webSocket.onopen = function () {
+    sendWebSocketMessage(playFileMessage);
+  }
+}

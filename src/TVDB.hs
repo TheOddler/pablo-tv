@@ -21,6 +21,7 @@ import Network.HTTP.Client (responseHeaders)
 import Network.HTTP.Req (GET (GET), HttpConfig, HttpException, HttpResponse (toVanillaResponse), NoReqBody (..), Option, Req, Url, bsResponse, defaultHttpConfig, https, jsonResponse, oAuth2Bearer, req, responseBody, runReq, useURI, (/:), (=:))
 import Text.Read (readMaybe)
 import Text.URI (mkURI)
+import Util (mapLeft)
 import Yesod (ContentType)
 
 data TVDBType = TVDBTypeSeries | TVDBTypeMovie
@@ -156,9 +157,6 @@ downloadImage urlT = do
         let headers = responseHeaders $ toVanillaResponse img
         contentType <- lookupHeader "Content-Type" headers
         pure (contentType, responseBody img)
-
-    mapLeft f (Left x) = Left $ f x
-    mapLeft _ (Right x) = Right x
 
     lookupHeader :: (Eq a, Show a, Show b) => a -> [(a, b)] -> Either String b
     lookupHeader x xs = case lookup x xs of

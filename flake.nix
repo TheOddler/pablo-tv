@@ -11,6 +11,17 @@
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = nixpkgs.legacyPackages.${system};
+        buildInputs = with pkgs; [
+          cabal-install
+          haskell-language-server
+          hlint
+          watchexec
+          nil
+        ];
+        runtimeInputs = with pkgs; [
+          libevdev
+          mpv
+        ];
       in
       rec {
         devShells.default = pkgs.haskellPackages.shellFor {
@@ -18,14 +29,7 @@
             # Use the base version because it doesn't have optimisations enabled
             packages.pablo-tv-base
           ];
-          buildInputs = with pkgs; [
-            cabal-install
-            haskell-language-server
-            hlint
-            watchexec
-            libevdev
-            nil
-          ];
+          buildInputs = buildInputs ++ runtimeInputs;
           inherit (checks.pre-commit-check) shellHook;
         };
 
@@ -59,12 +63,12 @@
             modifier = drv:
               drv.overrideAttrs
                 (oldAttrs: {
-                  nativeBuildInputs = oldAttrs.nativeBuildInputs ++ [ pkgs.makeWrapper pkgs.libevdev ];
+                  nativeBuildInputs = oldAttrs.nativeBuildInputs ++ [ pkgs.makeWrapper ] ++ runtimeInputs;
                   postInstall =
                     (oldAttrs.postInstall or "")
                     + ''
                       wrapProgram $out/bin/pablo-tv \
-                        --suffix PATH : ${pkgs.lib.makeBinPath [pkgs.libevdev]}
+                        --suffix PATH : ${pkgs.lib.makeBinPath runtimeInputs}
                     '';
                 });
           };

@@ -6,6 +6,7 @@ import Data.ByteString.Lazy qualified as LBS
 import Data.Default (def)
 import Data.List (isPrefixOf)
 import GHC.Conc (TVar, atomically, readTVar, readTVarIO, retry)
+import GHC.List (uncons)
 import IsDevelopment (isDevelopment)
 import Language.Haskell.TH.Syntax (Exp, Q)
 import Network.Info (NetworkInterface (..))
@@ -60,3 +61,14 @@ toUrl route = do
   let (segments, parameters) = renderRoute route
   let root = getApprootText approot site request
   pure $ toLazyByteString $ joinPath site root segments parameters
+
+mapLeft :: (t -> a) -> Either t b -> Either a b
+mapLeft f (Left x) = Left $ f x
+mapLeft _ (Right x) = Right x
+
+-- | Not yet available in the base I use, but should be replaceable in a later version
+unsnoc :: [a] -> Maybe ([a], a)
+unsnoc xs = (\(hd, tl) -> (reverse tl, hd)) <$> uncons (reverse xs)
+
+removeLast :: [a] -> [a]
+removeLast = reverse . drop 1 . reverse

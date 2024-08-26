@@ -15,9 +15,15 @@ function clickMouse() {
 }
 
 // Websocket stuff
-const webSocket = new ReconnectingWebSocket('@{MobileHomeR}');
-
+var _webSocket; // Use var so it gets hoisted
+function getWebSocket() {
+  if (!_webSocket) {
+    _webSocket = new ReconnectingWebSocket('@{MobileHomeR}');
+  }
+  return _webSocket;
+}
 function sendWebSocketMessage(message) {
+  const webSocket = getWebSocket();
   if (webSocket.readyState === WebSocket.OPEN) {
     // console.log('Sending message:', message);
     webSocket.send(JSON.stringify(message));

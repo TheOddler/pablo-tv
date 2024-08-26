@@ -12,16 +12,18 @@ import Actions (actionsWebSocket, mkInputDevice)
 import Control.Monad (filterM, when)
 import Data.ByteString.Char8 qualified as BS
 import Data.Char (toLower)
-import Data.List (foldl', uncons)
+import Data.List (foldl')
 import Data.Maybe (fromMaybe)
 import Data.String (fromString)
 import Data.Text (Text, intercalate, unpack)
 import Data.Text qualified as T
+import Data.Text.Lazy.Builder (fromText)
 import Directory (DirectoryInfo (..), DirectoryKind (..), niceFileNameT, parseDirectory)
 import Evdev.Uinput (Device)
 import GHC.Conc (TVar, atomically, newTVarIO, writeTVar)
 import GHC.Data.Maybe (firstJustsM, listToMaybe)
 import IsDevelopment (isDevelopment)
+import MPV (MPV, withMPV)
 import Network.Info (IPv4 (..), NetworkInterface (..), getNetworkInterfaces)
 import Network.Wai.Handler.Warp (run)
 import Path (Abs, Dir, File, Path, Rel, fileExtension, fromAbsFile, mkRelDir, parent, parseRelDir, parseRelFile, toFilePath, (</>))
@@ -30,8 +32,8 @@ import System.Environment (getEnv)
 import System.FilePath (dropTrailingPathSeparator)
 import System.Process (callProcess)
 import Text.Hamlet (hamletFile)
-import Text.Julius (Javascript, jsFile)
-import Util (networkInterfacesShortList, onChanges, toUrl, widgetFile)
+import Text.Julius (Javascript (..), RawJavascript (..), jsFile)
+import Util (networkInterfacesShortList, onChanges, removeLast, toUrl, unsnoc, widgetFile)
 import Yesod hiding (defaultLayout)
 import Yesod qualified
 import Yesod.WebSockets (sendTextData, webSockets)
@@ -40,7 +42,8 @@ data App = App
   { appPort :: Int,
     appTVDBToken :: BS.ByteString,
     appInputDevice :: Device,
-    appTVState :: TVar TVState
+    appTVState :: TVar TVState,
+    appMPV :: MPV
   }
 
 newtype TVState = TVState
@@ -101,7 +104,8 @@ mobileLayout widget = Yesod.defaultLayout $ do
 getMobileHomeR :: Handler Html
 getMobileHomeR = do
   inputDevice <- getsYesod appInputDevice
-  webSockets $ actionsWebSocket inputDevice
+  mpv <- getsYesod appMPV
+  webSockets $ actionsWebSocket inputDevice mpv
   mobileLayout $(widgetFile "mobile/home")
 
 getTrackpadR :: Handler Html
@@ -150,13 +154,6 @@ parseSegments segmentsT = do
             else tryDir
         Nothing -> tryDir
 
--- | Not yet available in the base I use, but should be replaceable in a later version
-unsnoc :: [a] -> Maybe ([a], a)
-unsnoc xs = (\(hd, tl) -> (reverse tl, hd)) <$> uncons (reverse xs)
-
-removeLast :: [a] -> [a]
-removeLast = reverse . drop 1 . reverse
-
 getDirectoryR :: [Text] -> Handler Html
 getDirectoryR segments = do
   absPath <-
@@ -186,7 +183,7 @@ getDirectoryR segments = do
 
 getFileR :: [Text] -> Handler Html
 getFileR segments = do
-  (_dir, fileName) <-
+  (dir, fileName) <-
     parseSegments segments >>= \case
       Just (dir, Just path) -> pure (dir, path)
       _ -> redirect $ DirectoryR $ removeLast segments
@@ -194,6 +191,9 @@ getFileR segments = do
   -- Let the tv know what page we're on
   tvStateTVar <- getsYesod appTVState
   liftIO $ atomically $ writeTVar tvStateTVar $ TVState $ FileR segments
+
+  let absFilePath = dir </> fileName
+  let cleanAbsFilePath = RawJavascript . fromText . T.pack $ fromAbsFile absFilePath
 
   mobileLayout $ do
     $(widgetFile "mobile/directory-and-file")
@@ -296,12 +296,14 @@ main = do
     let (path, _params) = renderRoute TVHomeR
     callProcess "xdg-open" [url ++ unpack (intercalate "/" path)]
 
-  app <-
-    toWaiAppPlain
-      App
-        { appPort = port,
-          appTVDBToken = BS.pack tvdbToken,
-          appInputDevice = inputDevice,
-          appTVState = tvState
-        }
-  run port $ defaultMiddlewaresNoLogging app
+  withMPV $ \mpv -> do
+    app <-
+      toWaiAppPlain
+        App
+          { appPort = port,
+            appTVDBToken = BS.pack tvdbToken,
+            appInputDevice = inputDevice,
+            appTVState = tvState,
+            appMPV = mpv
+          }
+    run port $ defaultMiddlewaresNoLogging app
