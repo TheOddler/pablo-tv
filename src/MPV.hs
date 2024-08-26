@@ -1,3 +1,4 @@
+{-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE TemplateHaskell #-}
 
 module MPV
@@ -13,7 +14,9 @@ import Control.Exception (bracket)
 import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BS8
 import Data.Foldable (for_)
+import Data.List (singleton)
 import Data.Maybe (isNothing)
+import Data.String.Interpolate (i)
 import GHC.Generics (Generic)
 import Network.Socket (Family (AF_UNIX), SockAddr (SockAddrUnix), Socket, SocketType (Stream), close, connect, socket)
 import Network.Socket.ByteString (sendAll)
@@ -40,33 +43,25 @@ data MPVCommand
   | MPVCommandOpenFile (Path Abs File)
   deriving (Show, Eq, Generic)
 
-commandToMessage :: MPVCommand -> BS.ByteString
-commandToMessage = \case
-  -- MPVCommandPause -> "{ \"command\": [\"set_property\", \"pause\", true] }"
-  MPVCommandTogglePaused -> "{ \"command\": [\"cycle\", \"pause\"] }"
+commandToMessages :: MPVCommand -> [BS.ByteString]
+commandToMessages = \case
+  -- MPVCommandPause -> "{ "command": ["set_property", "pause", true] }"
+  MPVCommandTogglePaused -> singleton [i|{ "command": ["cycle", "pause"] }|]
   MPVCommandChangeVolume change ->
-    mconcat
-      [ "{ \"command\": [\"add\", \"volume\", ",
-        BS8.pack (show change),
-        "] }"
-      ]
+    singleton [i|{ "command": ["add", "volume", #{change}] }|]
   MPVCommandSeek change ->
-    mconcat
-      [ "{ \"command\": [\"seek\", ",
-        BS8.pack (show change),
-        "] }"
-      ]
+    singleton [i|{ "command": ["seek", #{change}] }|]
   MPVCommandOpenFile path ->
-    mconcat
-      [ "{ \"command\": [\"loadfile\", \"",
-        BS8.pack (fromAbsFile path),
-        "\"] }"
-      ]
+    [ [i|{ "command": ["loadfile", "#{fromAbsFile path}"] }|],
+      [i|{ "command": ["set_property", "pause", false] }|]
+    ]
 
 sendCommand :: MPV -> MPVCommand -> IO ()
 sendCommand mpv command =
-  withMPVInfo mpv mpvMustBeRunning $ \MPVInfo {mpvSocket = soc} ->
-    sendAll soc (commandToMessage command <> "\n")
+  withMPVInfo mpv mpvMustBeRunning $ \MPVInfo {mpvSocket = soc} -> do
+    let payload = BS8.unlines $ commandToMessages command
+    BS.putStr $ "Sending command(s):\n" <> payload
+    sendAll soc payload
   where
     -- Only when opening a file we want to ensure that the mpv process is running
     -- all other commands will just be no-ops if mpv is not running
@@ -114,7 +109,7 @@ withMPVInfo mpv startIfNotRunning action = modifyMVar_ mpv $ \existingInfo -> do
       handler <-
         spawnProcess
           "mpv"
-          ["--force-window", "--idle", "--msg-level=all=debug", "--input-ipc-server=" ++ fromAbsFile socketPath]
+          ["--force-window", "--idle", "--msg-level=all=status", "--input-ipc-server=" ++ fromAbsFile socketPath]
 
       soc <- socket AF_UNIX Stream 0
       -- Give MPV some time to start and create the socket on it's end before we try to connect to it

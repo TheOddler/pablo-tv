@@ -65,6 +65,7 @@ library
       , req
       , scientific
       , shakespeare
+      , string-interpolate
       , template-haskell
       , text
       , unordered-containers
