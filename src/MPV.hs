@@ -41,20 +41,21 @@ data MPVCommand
   | MPVCommandChangeVolume Int
   | MPVCommandSeek Int -- seconds
   | MPVCommandOpenFile (Path Abs File)
-  -- TODO: Add MPVClose
+  | MPVCommandQuit
   deriving (Show, Eq, Generic)
 
 commandToMessages :: MPVCommand -> [BS.ByteString]
 commandToMessages = \case
-  MPVCommandTogglePlay -> singleton [i|{ "command": ["cycle", "pause"] }|]
+  MPVCommandTogglePlay -> singleton [i|{ "command": ["osd-msg-bar", "cycle", "pause"] }|]
   MPVCommandChangeVolume change ->
-    singleton [i|{ "command": ["add", "volume", #{change}] }|]
+    singleton [i|{ "command": ["osd-msg-bar", "add", "volume", #{change}] }|]
   MPVCommandSeek change ->
-    singleton [i|{ "command": ["seek", #{change}] }|]
+    singleton [i|{ "command": ["osd-msg-bar", "seek", #{change}] }|]
   MPVCommandOpenFile path ->
-    [ [i|{ "command": ["loadfile", "#{fromAbsFile path}"] }|],
+    [ [i|{ "command": ["osd-msg-bar", "loadfile", "#{fromAbsFile path}"] }|],
       [i|{ "command": ["set_property", "pause", false] }|]
     ]
+  MPVCommandQuit -> singleton [i|{ "command": ["quit"] }|]
 
 sendCommand :: MPV -> MPVCommand -> IO ()
 sendCommand mpv command =

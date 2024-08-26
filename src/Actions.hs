@@ -64,6 +64,7 @@ instance HasObjectCodec Action where
         ActionMPV (MPVCommandChangeVolume change) -> ("ChangeVolume", oneFieldEncoder "change" change)
         ActionMPV (MPVCommandSeek change) -> ("Seek", oneFieldEncoder "change" change)
         ActionMPV (MPVCommandOpenFile path) -> ("OpenFile", mapToEncoder path $ filePathFieldCodec "path")
+        ActionMPV MPVCommandQuit -> ("CloseMPV", noFieldEncoder)
       dec :: HashMap.HashMap Discriminator (Text, ObjectCodec Void Action)
       dec =
         HashMap.fromList
@@ -74,7 +75,8 @@ instance HasObjectCodec Action where
             ("TogglePlay", ("ActionMPV TogglePlay", noFieldDecoder (ActionMPV MPVCommandTogglePlay))),
             ("ChangeVolume", ("ActionMPV ChangeVolume", oneFieldDecoder (ActionMPV . MPVCommandChangeVolume) "change")),
             ("Seek", ("ActionMPV Seek", oneFieldDecoder (ActionMPV . MPVCommandSeek) "change")),
-            ("OpenFile", ("ActionMPV OpenFile", mapToDecoder (ActionMPV . MPVCommandOpenFile) (filePathFieldCodec "path")))
+            ("OpenFile", ("ActionMPV OpenFile", mapToDecoder (ActionMPV . MPVCommandOpenFile) (filePathFieldCodec "path"))),
+            ("CloseMPV", ("ActionMPV Quit", noFieldDecoder $ ActionMPV MPVCommandQuit))
           ]
 
 actionsWebSocket :: (MonadHandler m) => Device -> MPV -> WebSocketsT m ()
