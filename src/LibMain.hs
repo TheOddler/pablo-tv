@@ -307,3 +307,5 @@ main = do
             appMPV = mpv
           }
     run port $ defaultMiddlewaresNoLogging app
+
+  putStrLn "Server quite."
