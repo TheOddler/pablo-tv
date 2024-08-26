@@ -17,6 +17,7 @@ import Data.Foldable (for_)
 import Data.List (singleton)
 import Data.Maybe (isNothing)
 import Data.String.Interpolate (i)
+import Data.Text (Text)
 import GHC.Generics (Generic)
 import Network.Socket (Family (AF_UNIX), SockAddr (SockAddrUnix), Socket, SocketType (Stream), close, connect, socket)
 import Network.Socket.ByteString (sendAll)
@@ -40,7 +41,7 @@ data MPVCommand
   = MPVCommandTogglePlay
   | MPVCommandChangeVolume Int
   | MPVCommandSeek Int -- seconds
-  | MPVCommandOpenFile (Path Abs File)
+  | MPVCommandOpenFile Text
   | MPVCommandQuit
   deriving (Show, Eq, Generic)
 
@@ -52,9 +53,9 @@ commandToMessages = \case
   MPVCommandSeek change ->
     singleton [i|{ "command": ["osd-msg-bar", "seek", #{change}] }|]
   MPVCommandOpenFile path ->
-    [ [i|{ "command": ["osd-msg-bar", "loadfile", "#{fromAbsFile path}"] }|],
-      [i|{ "command": ["set_property", "fullscreen", true] }|],
-      [i|{ "command": ["set_property", "pause", false] }|]
+    [ [i|{ "command": ["osd-msg-bar", "loadfile", "#{path}"] }|],
+      [i|{ "command": ["set", "fullscreen", "yes"] }|],
+      [i|{ "command": ["osd-msg-bar", "set", "pause", "no"] }|]
     ]
   MPVCommandQuit -> singleton [i|{ "command": ["quit"] }|]
 

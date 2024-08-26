@@ -1,6 +1,6 @@
 module Actions where
 
-import Autodocodec (Discriminator, HasCodec (..), HasObjectCodec (..), ObjectCodec, bimapCodec, discriminatedUnionCodec, eitherDecodeJSONViaCodec, mapToDecoder, mapToEncoder, object, pureCodec, requiredField', (.=))
+import Autodocodec (Discriminator, HasCodec (..), HasObjectCodec (..), ObjectCodec, discriminatedUnionCodec, eitherDecodeJSONViaCodec, mapToDecoder, mapToEncoder, object, pureCodec, requiredField', (.=))
 import Control.Monad (forever)
 import Data.ByteString.Lazy (ByteString)
 import Data.HashMap.Strict qualified as HashMap
@@ -13,9 +13,7 @@ import Evdev.Codes
 import Evdev.Uinput
 import GHC.Generics (Generic)
 import MPV (MPV, MPVCommand (..), sendCommand)
-import Path (fromAbsFile, parseAbsFile)
 import SafeMaths (int32ToInteger)
-import Util (mapLeft)
 import Yesod (MonadHandler, liftIO)
 import Yesod.WebSockets (WebSocketsT, receiveData)
 
@@ -42,7 +40,6 @@ instance HasObjectCodec Action where
     where
       nothingCodec = pureCodec ()
       twoFieldCodec first second = (,) <$> requiredField' first .= fst <*> requiredField' second .= snd
-      filePathFieldCodec fieldName = bimapCodec (mapLeft show . parseAbsFile) fromAbsFile (requiredField' fieldName)
 
       noFieldEncoder = mapToEncoder () nothingCodec
       oneFieldEncoder name value = mapToEncoder value (requiredField' name)
@@ -63,7 +60,7 @@ instance HasObjectCodec Action where
         ActionMPV MPVCommandTogglePlay -> ("TogglePlay", noFieldEncoder)
         ActionMPV (MPVCommandChangeVolume change) -> ("ChangeVolume", oneFieldEncoder "change" change)
         ActionMPV (MPVCommandSeek change) -> ("Seek", oneFieldEncoder "change" change)
-        ActionMPV (MPVCommandOpenFile path) -> ("OpenFile", mapToEncoder path $ filePathFieldCodec "path")
+        ActionMPV (MPVCommandOpenFile path) -> ("OpenFile", oneFieldEncoder "path" path)
         ActionMPV MPVCommandQuit -> ("CloseMPV", noFieldEncoder)
       dec :: HashMap.HashMap Discriminator (Text, ObjectCodec Void Action)
       dec =
@@ -75,7 +72,7 @@ instance HasObjectCodec Action where
             ("TogglePlay", ("ActionMPV TogglePlay", noFieldDecoder (ActionMPV MPVCommandTogglePlay))),
             ("ChangeVolume", ("ActionMPV ChangeVolume", oneFieldDecoder (ActionMPV . MPVCommandChangeVolume) "change")),
             ("Seek", ("ActionMPV Seek", oneFieldDecoder (ActionMPV . MPVCommandSeek) "change")),
-            ("OpenFile", ("ActionMPV OpenFile", mapToDecoder (ActionMPV . MPVCommandOpenFile) (filePathFieldCodec "path"))),
+            ("OpenFile", ("ActionMPV OpenFile", oneFieldDecoder (ActionMPV . MPVCommandOpenFile) "path")),
             ("CloseMPV", ("ActionMPV Quit", noFieldDecoder $ ActionMPV MPVCommandQuit))
           ]
 
