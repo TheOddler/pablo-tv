@@ -10,25 +10,22 @@ function throttle(func, timeout = 50) {
   };
 }
 
-function clickMouse() {
-  sendWebSocketMessage({ tag: "ClickMouse" });
-}
-
-// Websocket stuff
-var _webSocket; // Use var so it gets hoisted
-function getWebSocket() {
-  if (!_webSocket) {
-    _webSocket = new ReconnectingWebSocket('@{MobileHomeR}');
-  }
-  return _webSocket;
-}
-function sendWebSocketMessage(message) {
-  const webSocket = getWebSocket();
+function sendActionWS(webSocket, action) {
   if (webSocket.readyState === WebSocket.OPEN) {
-    // console.log('Sending message:', message);
-    webSocket.send(JSON.stringify(message));
+    // console.log('Sending action:', action);
+    webSocket.send(JSON.stringify(action));
   }
   else {
-    console.log('WebSocket is not open. Message not sent:', message);
+    console.log('WebSocket is not open. Action not sent:', action);
   }
+}
+
+function sendAction(action) {
+  fetch("@{MobileHomeR}", {
+    method: "POST",
+    body: JSON.stringify(action),
+    headers: {
+      "Content-type": "application/json; charset=UTF-8"
+    }
+  });
 }

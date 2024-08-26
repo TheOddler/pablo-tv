@@ -8,7 +8,7 @@
 
 module LibMain where
 
-import Actions (actionsWebSocket, mkInputDevice)
+import Actions (Action, actionsWebSocket, mkInputDevice, performAction)
 import Control.Monad (filterM, when)
 import Data.ByteString.Char8 qualified as BS
 import Data.Char (toLower)
@@ -57,7 +57,7 @@ mkYesod
   "App"
   [parseRoutes|
 -- Routes for the mobile app
-/ MobileHomeR GET
+/ MobileHomeR GET POST
 /trackpad TrackpadR GET
 /pointer MousePointerR GET
 /keyboard KeyboardR GET
@@ -95,10 +95,10 @@ mobileLayout widget = Yesod.defaultLayout $ do
     addScriptRemote "//cdn.jsdelivr.net/npm/eruda" -- Console for mobile
     toWidgetBody
       [julius|
-          window.onload = function() {
-            eruda.init();
-          };
-        |]
+        window.onload = function() {
+          eruda.init();
+        };
+      |]
   $(widgetFile "mobile/default")
 
 getMobileHomeR :: Handler Html
@@ -107,6 +107,13 @@ getMobileHomeR = do
   mpv <- getsYesod appMPV
   webSockets $ actionsWebSocket inputDevice mpv
   mobileLayout $(widgetFile "mobile/home")
+
+postMobileHomeR :: Handler ()
+postMobileHomeR = do
+  (action :: Action) <- requireCheckJsonBody
+  inputDevice <- getsYesod appInputDevice
+  mpv <- getsYesod appMPV
+  liftIO $ performAction inputDevice mpv action
 
 getTrackpadR :: Handler Html
 getTrackpadR =
@@ -163,23 +170,19 @@ getDirectoryR segments = do
   tvdbToken <- getsYesod appTVDBToken
   (mInfo, filesWithNames, dirsWithNames) <- liftIO $ parseDirectory tvdbToken absPath
 
-  -- If there's one file, this is a movie, and there are no other sub-directories, redirect to the file page
-  case filesWithNames of
-    [(_niceBame, name)]
-      | (directoryInfoKind <$> mInfo) == Just DirectoryKindMovie && null dirsWithNames ->
-          redirect $ FileR $ mkSegments name
-    _ -> pure ()
-
   -- Let the tv know what page we're on
   tvStateTVar <- getsYesod appTVState
   liftIO $ atomically $ writeTVar tvStateTVar $ TVState $ DirectoryR segments
 
+  let mkSegments :: Path Rel x -> [Text]
+      mkSegments d = segments ++ [T.pack $ dropTrailingPathSeparator $ toFilePath d]
+
+      mkAbsFilePath :: Path Rel File -> String
+      mkAbsFilePath filename = fromAbsFile $ absPath </> filename
+
   mobileLayout $ do
     $(widgetFile "mobile/directory-and-file")
     $(widgetFile "mobile/directory")
-  where
-    mkSegments :: Path Rel x -> [Text]
-    mkSegments d = segments ++ [T.pack $ dropTrailingPathSeparator $ toFilePath d]
 
 getFileR :: [Text] -> Handler Html
 getFileR segments = do

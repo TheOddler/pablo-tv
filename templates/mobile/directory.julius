@@ -1,0 +1,11 @@
+function start(path) {
+  sendAction({ tag: "OpenFile", path });
+}
+
+// document.getElementById("toggle-play").onclick = () => sendAction({ tag: "TogglePlay" });
+// document.getElementById("stop").onclick = () => sendAction({ tag: "CloseMPV" });
+
+// document.getElementById("seek-back-a-lot").onclick = () => sendAction({ tag: "Seek", change: -60 });
+// document.getElementById("seek-back").onclick = () => sendAction({ tag: "Seek", change: -10 });
+// document.getElementById("seek-forward").onclick = () => sendAction({ tag: "Seek", change: 10 });
+// document.getElementById("seek-forward-a-lot").onclick = () => sendAction({ tag: "Seek", change: 60 });

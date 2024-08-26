@@ -1,3 +1,5 @@
+const webSocket = new ReconnectingWebSocket('@{MobileHomeR}');
+
 // Trackpad
 const trackpad = document.getElementById("trackpad");
 let previousTouch;
@@ -5,7 +7,7 @@ const handleTouchMove = throttle((event) => {
   const touch = event.touches[0];
   const x = touch.pageX - previousTouch.pageX;
   const y = touch.pageY - previousTouch.pageY;
-  sendWebSocketMessage({ tag: "MoveMouse", x, y });
+  sendActionWS(webSocket, { tag: "MoveMouse", x, y });
   previousTouch = touch;
 });
 trackpad.addEventListener("touchstart", e => previousTouch = e.touches[0]);
@@ -73,7 +75,7 @@ document.getElementById("right").addEventListener("click", clickMouse);
   };
 
   const sendOrientation = throttle((value) => {
-    sendWebSocketMessage({
+    sendActionWS(webSocket, {
       tag: "PointMouse",
       leftRight: -value.leftRight * scalingFactor,
       upDown: -value.upDown * scalingFactor,
@@ -98,5 +100,5 @@ document.getElementById("right").addEventListener("click", clickMouse);
 // Keyboard
 document.getElementById("keyboard").addEventListener("click", () => {
   const text = prompt("Enter text");
-  if (text !== null) sendWebSocketMessage({ tag: "Write", text });
+  if (text !== null) sendAction({ tag: "Write", text });
 });

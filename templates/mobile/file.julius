@@ -2,19 +2,15 @@ const playFileMessage = {
   tag: 'OpenFile',
   path: '#{cleanAbsFilePath}'
 };
-const webSocket = getWebSocket();
-if (webSocket.readyState === WebSocket.OPEN) {
-  sendWebSocketMessage(playFileMessage);
-} else {
-  webSocket.onopen = function () {
-    sendWebSocketMessage(playFileMessage);
-  }
-}
 
-document.getElementById("toggle-play").onclick = () => sendWebSocketMessage({ tag: "TogglePlay" });
-document.getElementById("stop").onclick = () => sendWebSocketMessage({ tag: "CloseMPV" });
+window.onload = function () {
+  sendAction(playFileMessage);
+};
 
-document.getElementById("seek-back-a-lot").onclick = () => sendWebSocketMessage({ tag: "Seek", change: -60 });
-document.getElementById("seek-back").onclick = () => sendWebSocketMessage({ tag: "Seek", change: -10 });
-document.getElementById("seek-forward").onclick = () => sendWebSocketMessage({ tag: "Seek", change: 10 });
-document.getElementById("seek-forward-a-lot").onclick = () => sendWebSocketMessage({ tag: "Seek", change: 60 });
+document.getElementById("toggle-play").onclick = () => sendAction({ tag: "TogglePlay" });
+document.getElementById("stop").onclick = () => sendAction({ tag: "CloseMPV" });
+
+document.getElementById("seek-back-a-lot").onclick = () => sendAction({ tag: "Seek", change: -60 });
+document.getElementById("seek-back").onclick = () => sendAction({ tag: "Seek", change: -10 });
+document.getElementById("seek-forward").onclick = () => sendAction({ tag: "Seek", change: 10 });
+document.getElementById("seek-forward-a-lot").onclick = () => sendAction({ tag: "Seek", change: 60 });

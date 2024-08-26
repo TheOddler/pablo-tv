@@ -1,3 +1,5 @@
+const webSocket = new ReconnectingWebSocket('@{MobileHomeR}');
+
 let previousTouch;
 
 const handleTouchMove = throttle((event) => {
@@ -6,7 +8,7 @@ const handleTouchMove = throttle((event) => {
   if (previousTouch) {
     const x = touch.pageX - previousTouch.pageX;
     const y = touch.pageY - previousTouch.pageY;
-    sendWebSocketMessage({ tag: "MoveMouse", x, y });
+    sendActionWS(webSocket, { tag: "MoveMouse", x, y });
   }
 
   previousTouch = touch;

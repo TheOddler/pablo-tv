@@ -1,6 +1,8 @@
+{-# LANGUAGE DerivingVia #-}
+
 module Actions where
 
-import Autodocodec (Discriminator, HasCodec (..), HasObjectCodec (..), ObjectCodec, discriminatedUnionCodec, eitherDecodeJSONViaCodec, mapToDecoder, mapToEncoder, object, pureCodec, requiredField', (.=))
+import Autodocodec (Autodocodec (..), Discriminator, HasCodec (..), HasObjectCodec (..), ObjectCodec, discriminatedUnionCodec, eitherDecodeJSONViaCodec, mapToDecoder, mapToEncoder, object, pureCodec, requiredField', (.=))
 import Control.Monad (forever)
 import Data.ByteString.Lazy (ByteString)
 import Data.HashMap.Strict qualified as HashMap
@@ -14,7 +16,7 @@ import Evdev.Uinput
 import GHC.Generics (Generic)
 import MPV (MPV, MPVCommand (..), sendCommand)
 import SafeMaths (int32ToInteger)
-import Yesod (MonadHandler, liftIO)
+import Yesod (FromJSON, MonadHandler, liftIO)
 import Yesod.WebSockets (WebSocketsT, receiveData)
 
 data Action
@@ -31,6 +33,7 @@ data Action
   | ActionWrite String
   | ActionMPV MPVCommand
   deriving (Show, Eq, Generic)
+  deriving (FromJSON) via (Autodocodec Action)
 
 instance HasCodec Action where
   codec = object "Action" objectCodec
