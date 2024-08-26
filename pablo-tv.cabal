@@ -50,7 +50,6 @@ library
       , bytestring
       , data-default
       , evdev
-      , extra
       , filepath
       , ghc
       , http-client
