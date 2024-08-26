@@ -1,5 +1,10 @@
 const webSocket = new ReconnectingWebSocket('@{MobileHomeR}');
 
+// Helper
+function clickMouse() {
+  sendActionWS(webSocket, { tag: "ClickMouse" });
+}
+
 // Trackpad
 const trackpad = document.getElementById("trackpad");
 let previousTouch;
@@ -57,6 +62,8 @@ document.getElementById("right").addEventListener("click", clickMouse);
       leftRight: event.alpha, // [0, 360[
       upDown: event.beta, // [-180, 180]
     };
+
+    console.log(active);
 
     if (!active) return;
     if (!center) center = raw;

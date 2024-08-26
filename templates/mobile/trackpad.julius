@@ -14,6 +14,10 @@ const handleTouchMove = throttle((event) => {
   previousTouch = touch;
 });
 
+function clickMouse() {
+  sendActionWS(webSocket, { tag: "ClickMouse" });
+}
+
 document.addEventListener("touchstart", e => previousTouch = e.touches[0]);
 document.addEventListener("touchmove", handleTouchMove);
 document.addEventListener("click", clickMouse);
