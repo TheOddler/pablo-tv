@@ -2,9 +2,6 @@ const playFileMessage = {
   tag: 'OpenFile',
   path: '#{cleanAbsFilePath}'
 };
-
-console.log(playFileMessage);
-
 const webSocket = getWebSocket();
 if (webSocket.readyState === WebSocket.OPEN) {
   sendWebSocketMessage(playFileMessage);
@@ -13,3 +10,11 @@ if (webSocket.readyState === WebSocket.OPEN) {
     sendWebSocketMessage(playFileMessage);
   }
 }
+
+document.getElementById("toggle-play").onclick = () => sendWebSocketMessage({ tag: "TogglePlay" });
+document.getElementById("stop").onclick = () => sendWebSocketMessage({ tag: "CloseMPV" });
+
+document.getElementById("seek-back-a-lot").onclick = () => sendWebSocketMessage({ tag: "Seek", change: -60 });
+document.getElementById("seek-back").onclick = () => sendWebSocketMessage({ tag: "Seek", change: -10 });
+document.getElementById("seek-forward").onclick = () => sendWebSocketMessage({ tag: "Seek", change: 10 });
+document.getElementById("seek-forward-a-lot").onclick = () => sendWebSocketMessage({ tag: "Seek", change: 60 });

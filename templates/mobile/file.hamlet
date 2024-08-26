@@ -2,9 +2,9 @@
 <h2>#{niceFileNameT fileName}
 
 <div class="buttons">
-  <button class="xl">⏮️
-  <button class="xl">⏪
-  <button class="xxl">⏯️
-  <button class="xxl">⏹️
-  <button class="xl">⏩
-  <button class="xl">⏭️
+  <button id="seek-back-a-lot" class="xl">⏮️
+  <button id="seek-back" class="xl">⏪
+  <button id="toggle-play" class="xxl">⏯️
+  <button id="stop" class="xxl">⏹️
+  <button id="seek-forward" class="xl">⏩
+  <button id="seek-forward-a-lot" class="xl">⏭️
