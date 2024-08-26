@@ -8,11 +8,12 @@ module MPV
   )
 where
 
-import Control.Concurrent (threadDelay)
-import Control.Exception (bracket, finally)
+import Control.Concurrent (MVar, modifyMVar_, newMVar, takeMVar, threadDelay)
+import Control.Exception (bracket)
 import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BS8
-import GHC.Conc (TVar, atomically, newTVarIO, readTVar, retry, writeTVar)
+import Data.Foldable (for_)
+import Data.Maybe (isNothing)
 import GHC.Generics (Generic)
 import Network.Socket (Family (AF_UNIX), SockAddr (SockAddrUnix), Socket, SocketType (Stream), close, connect, socket)
 import Network.Socket.ByteString (sendAll)
@@ -20,17 +21,9 @@ import Path (Abs, File, Path, fromAbsFile, mkAbsFile, parent)
 import Path.IO (ensureDir)
 import System.Process (ProcessHandle, getProcessExitCode, spawnProcess, terminateProcess)
 
-type MPV = TVar MPVState
+type MPV = MVar (Maybe MPVInfo)
 
-data MPVState
-  = MPVUninitialised
-  | -- | Make sure to retry whatever you're doing when the state is `InUse`
-    -- otherwise you might f stuff up.
-    -- This might be an indication I should use an MVar, not sure
-    MPVInUse
-  | MPVAvailable MPVAvailableInfo
-
-data MPVAvailableInfo = MPVAvailableInfo
+data MPVInfo = MPVInfo
   { mpvSocketAddress :: SockAddr,
     mpvSocketPath :: Path Abs File,
     mpvSocket :: Socket,
@@ -72,7 +65,7 @@ commandToMessage = \case
 
 sendCommand :: MPV -> MPVCommand -> IO ()
 sendCommand mpv command =
-  withMPVAvailable mpv mpvMustBeRunning $ \MPVAvailableInfo {mpvSocket = soc} ->
+  withMPVInfo mpv mpvMustBeRunning $ \MPVInfo {mpvSocket = soc} ->
     sendAll soc (commandToMessage command <> "\n")
   where
     -- Only when opening a file we want to ensure that the mpv process is running
@@ -85,56 +78,37 @@ withMPV :: (MPV -> IO ()) -> IO ()
 withMPV = bracket start cleanup
   where
     start :: IO MPV
-    start = newTVarIO MPVUninitialised
+    start = newMVar Nothing
 
     cleanup :: MPV -> IO ()
-    cleanup mpv = do
-      processInfo <- atomically $ do
-        value <- readTVar mpv
-        -- Can't use Eq as ProcessHandle doesn't have it derived
-        case value of
-          MPVInUse -> retry
-          _ -> pure ()
-        writeTVar mpv MPVUninitialised
-        pure value
-
-      case processInfo of
-        MPVAvailable info -> do
+    cleanup mpv =
+      takeMVar mpv >>= \case
+        Nothing -> pure ()
+        Just info -> do
           close info.mpvSocket
           terminateProcess info.mpvProcessHandler
-        _ -> pure ()
 
 -- | Run an action with the MPV process info
--- Optionally starts MPV if it's not running, if this is not wanted the action
--- is not run when MPV was uninitialised.
--- If MPV is in use, we wait until we can run the action.
-withMPVAvailable :: MPV -> Bool -> (MPVAvailableInfo -> IO ()) -> IO ()
-withMPVAvailable mpv createIfUninitialised action = do
-  processInfo <- atomically $ do
-    value <- readTVar mpv
-    writeTVar mpv MPVInUse
-    case value of
-      MPVInUse -> retry
-      MPVUninitialised -> pure Nothing
-      MPVAvailable info -> pure $ Just info
+-- Optionally starts MPV if it's not running, otherwise doesn't run the action
+withMPVInfo :: MPV -> Bool -> (MPVInfo -> IO ()) -> IO ()
+withMPVInfo mpv startIfNotRunning action = modifyMVar_ mpv $ \existingInfo -> do
+  processIsRunning <- case existingInfo of
+    Nothing -> pure False
+    Just info -> isNothing <$> getProcessExitCode info.mpvProcessHandler
 
-  case processInfo of
-    -- MPV was uninitialised
-    Nothing | createIfUninitialised -> do
-      newInfo <- startAndConnectToMPV
-      action newInfo `finally` atomically (writeTVar mpv (MPVAvailable newInfo))
-    Nothing -> atomically (writeTVar mpv MPVUninitialised)
-    Just existingInfo -> do
-      mExitCode <- getProcessExitCode existingInfo.mpvProcessHandler
-      info <- case mExitCode of
-        Nothing -> pure existingInfo
-        Just _ -> startAndConnectToMPV
-      action info `finally` atomically (writeTVar mpv (MPVAvailable info))
+  mInfo <-
+    if not processIsRunning && startIfNotRunning
+      then Just <$> startAndConnectToMPV
+      else pure existingInfo
+
+  for_ mInfo action
+
+  pure mInfo
   where
     socketPath = $(mkAbsFile "/tmp/pablo-tv/mpv.soc")
     socketUnix = SockAddrUnix $ fromAbsFile socketPath
 
-    startAndConnectToMPV :: IO MPVAvailableInfo
+    startAndConnectToMPV :: IO MPVInfo
     startAndConnectToMPV = do
       ensureDir $ parent socketPath
       handler <-
@@ -148,7 +122,7 @@ withMPVAvailable mpv createIfUninitialised action = do
       connect soc socketUnix
 
       pure
-        MPVAvailableInfo
+        MPVInfo
           { mpvSocketAddress = socketUnix,
             mpvProcessHandler = handler,
             mpvSocket = soc,
