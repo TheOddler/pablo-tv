@@ -53,6 +53,7 @@ commandToMessages = \case
     singleton [i|{ "command": ["osd-msg-bar", "seek", #{change}] }|]
   MPVCommandOpenFile path ->
     [ [i|{ "command": ["osd-msg-bar", "loadfile", "#{fromAbsFile path}"] }|],
+      [i|{ "command": ["set_property", "fullscreen", true] }|],
       [i|{ "command": ["set_property", "pause", false] }|]
     ]
   MPVCommandQuit -> singleton [i|{ "command": ["quit"] }|]
