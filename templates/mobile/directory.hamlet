@@ -15,10 +15,15 @@ $if (not $ null filesWithNames)
     $of Just DirectoryKindMovie
       $if (length filesWithNames > 1)
         <h2>Parts
-  <ul>
+  
+  <div class="list">
+    <div id="play-all" class="item" onclick="playAll()">
+      <i class="fa-solid fa-play">
+      <span>Play All
     $forall (name, path) <- filesWithNames
-      <li>
-        <button onclick="start('#{mkAbsFilePath path}')">#{name}
+      <div class="item" onclick="playPath('#{mkAbsFilePath path}')">
+        <i class="fa-solid fa-play">
+        <span>#{name}
 
 
 $if (not $ null dirsWithNames)

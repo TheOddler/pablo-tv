@@ -1,5 +1,5 @@
 const playFileMessage = {
-  tag: 'OpenFile',
+  tag: 'PlayPath',
   path: '#{cleanAbsFilePath}'
 };
 

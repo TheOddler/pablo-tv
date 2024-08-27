@@ -18,12 +18,13 @@ import Data.List (singleton)
 import Data.Maybe (isNothing)
 import Data.String.Interpolate (i)
 import Data.Text (Text)
+import Data.Text qualified as T
 import Data.Text.Encoding qualified as T
 import GHC.Generics (Generic)
 import Network.Socket (Family (AF_UNIX), SockAddr (SockAddrUnix), Socket, SocketType (Stream), close, connect, socket)
 import Network.Socket.ByteString (sendAll)
-import Path (Abs, File, Path, fromAbsFile, mkAbsFile, parent)
-import Path.IO (ensureDir)
+import Path (Abs, File, Path, fromAbsFile, mkAbsFile, parent, parseAbsDir)
+import Path.IO (doesDirExist, ensureDir)
 import System.Process (ProcessHandle, getProcessExitCode, spawnProcess, terminateProcess)
 
 type MPV = MVar (Maybe MPVInfo)
@@ -42,11 +43,11 @@ data MPVCommand
   = MPVCommandTogglePlay
   | MPVCommandChangeVolume Int
   | MPVCommandSeek Int -- seconds
-  | MPVCommandOpenFile Text
+  | MPVCommandPlayPath Text
   | MPVCommandQuit
   deriving (Show, Eq, Generic)
 
-mpvCommands :: MPVCommand -> [BS.ByteString]
+mpvCommands :: MPVCommand -> IO [BS.ByteString]
 mpvCommands = \case
   MPVCommandTogglePlay ->
     oneCommand ["cycle", "pause"]
@@ -54,11 +55,22 @@ mpvCommands = \case
     oneCommand ["add", "volume", showBS change]
   MPVCommandSeek change ->
     oneCommand ["seek", showBS change]
-  MPVCommandOpenFile path ->
-    [ mkCommand ["loadfile", fromT path],
-      mkCommand ["set", "fullscreen", "yes"],
-      mkCommand ["set", "pause", "no"]
-    ]
+  MPVCommandPlayPath path -> do
+    isDir <- case parseAbsDir (T.unpack path) of
+      Just dirPath -> doesDirExist dirPath
+      Nothing -> pure False
+    let isYoutubeList =
+          "youtube.com" `T.isInfixOf` path
+            && "list=" `T.isInfixOf` path
+    let mainCommand =
+          if isDir || isYoutubeList
+            then mkCommand ["loadlist", fromT path]
+            else mkCommand ["loadfile", fromT path]
+    pure
+      [ mainCommand,
+        mkCommand ["set", "fullscreen", "yes"],
+        mkCommand ["set", "pause", "no"]
+      ]
   MPVCommandQuit ->
     oneCommand ["quit"]
   where
@@ -66,7 +78,7 @@ mpvCommands = \case
     mkCommand :: [BS.ByteString] -> BS.ByteString
     mkCommand parts = [i|{ "command": #{"osd-msg-bar" : parts} }|]
 
-    oneCommand = singleton . mkCommand
+    oneCommand = pure . singleton . mkCommand
 
     showBS :: (Show a) => a -> BS.ByteString
     showBS = BS8.pack . show
@@ -76,14 +88,14 @@ mpvCommands = \case
 sendCommand :: MPV -> MPVCommand -> IO ()
 sendCommand mpv command =
   withMPVInfo mpv mpvMustBeRunning $ \MPVInfo {mpvSocket = soc} -> do
-    let payload = BS8.unlines $ mpvCommands command
+    payload <- BS8.unlines <$> mpvCommands command
     BS.putStr $ "Sending command(s):\n" <> payload
     sendAll soc payload
   where
     -- Only when opening a file we want to ensure that the mpv process is running
     -- all other commands will just be no-ops if mpv is not running
     mpvMustBeRunning = case command of
-      MPVCommandOpenFile _ -> True
+      MPVCommandPlayPath _ -> True
       _ -> False
 
 withMPV :: (MPV -> IO ()) -> IO ()

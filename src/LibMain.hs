@@ -194,6 +194,9 @@ getDirectoryR segments = do
   let mkSegments :: Path Rel x -> [Text]
       mkSegments d = segments ++ [T.pack $ dropTrailingPathSeparator $ toFilePath d]
 
+      absPathJS :: RawJavascript
+      absPathJS = RawJavascript . fromText . T.pack $ toFilePath absPath
+
       mkAbsFilePath :: Path Rel File -> String
       mkAbsFilePath filename = fromAbsFile $ absPath </> filename
 
