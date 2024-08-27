@@ -19,6 +19,7 @@ header {
   }
 }
 
-#header-space-keeper {
-  height: 3em;
+body {
+  /* Reserve some space for the top menu */
+  padding-top: 3em;
 }
