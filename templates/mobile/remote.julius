@@ -1,12 +1,3 @@
-const playFileMessage = {
-  tag: 'PlayPath',
-  path: '#{cleanAbsFilePath}'
-};
-
-window.onload = function () {
-  sendAction(playFileMessage);
-};
-
 document.getElementById("toggle-play").onclick = () => sendAction({ tag: "TogglePlay" });
 document.getElementById("stop").onclick = () => sendAction({ tag: "CloseMPV" });
 

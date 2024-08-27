@@ -18,7 +18,7 @@ import Data.String (fromString)
 import Data.Text (Text, intercalate, unpack)
 import Data.Text qualified as T
 import Data.Text.Lazy.Builder (fromText)
-import Directory (DirectoryInfo (..), DirectoryKind (..), niceFileNameT, parseDirectory)
+import Directory (DirectoryInfo (..), DirectoryKind (..), parseDirectory)
 import Evdev.Uinput (Device)
 import GHC.Conc (TVar, atomically, newTVarIO, writeTVar)
 import GHC.Data.Maybe (firstJustsM, listToMaybe)
@@ -77,8 +77,8 @@ mkYesod
 /pointer MousePointerR GET
 /keyboard KeyboardR GET
 /input InputR GET
+/remote RemoteR GET
 /dir/+Texts DirectoryR GET
-/file/+Texts FileR GET
 
 -- Routes for the 
 /tv TVHomeR GET
@@ -200,27 +200,11 @@ getDirectoryR segments = do
       mkAbsFilePath :: Path Rel File -> String
       mkAbsFilePath filename = fromAbsFile $ absPath </> filename
 
-  mobileLayout $ do
-    $(widgetFile "mobile/directory-and-file")
-    $(widgetFile "mobile/directory")
+  mobileLayout $(widgetFile "mobile/directory")
 
-getFileR :: [Text] -> Handler Html
-getFileR segments = do
-  (dir, fileName) <-
-    parseSegments segments >>= \case
-      Just (dir, Just path) -> pure (dir, path)
-      _ -> redirect $ DirectoryR $ removeLast segments
-
-  -- Let the tv know what page we're on
-  tvStateTVar <- getsYesod appTVState
-  liftIO $ atomically $ writeTVar tvStateTVar $ TVState $ FileR segments
-
-  let absFilePath = dir </> fileName
-  let cleanAbsFilePath = RawJavascript . fromText . T.pack $ fromAbsFile absFilePath
-
-  mobileLayout $ do
-    $(widgetFile "mobile/directory-and-file")
-    $(widgetFile "mobile/file")
+getRemoteR :: Handler Html
+getRemoteR = do
+  mobileLayout $(widgetFile "mobile/remote")
 
 getImageR :: [Text] -> Handler Html
 getImageR segments = do

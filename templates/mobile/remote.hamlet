@@ -1,6 +1,3 @@
-<img src=@{ImageR segments} alt="🖼️ Missing poster ☹️" class="header" onerror="this.style.display = 'none'">
-<h2>#{niceFileNameT fileName}
-
 <div class="buttons">
   <button id="seek-back-a-lot" class="xl">⏮️
   <button id="seek-back" class="xl">⏪
