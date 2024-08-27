@@ -37,13 +37,13 @@ pre {
 }
 
 .large {
-  font-size: 200%;
+  font-size: 1.25em;
 }
 
 .xl {
-  font-size: 300%;
+  font-size: 2em;
 }
 
 .xxl {
-  font-size: 500%;
+  font-size: 4em;
 }

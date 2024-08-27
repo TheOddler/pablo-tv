@@ -16,12 +16,12 @@ $if (not $ null filesWithNames)
       $if (length filesWithNames > 1)
         <h2>Parts
   
-  <div class="list">
-    <div id="play-all" class="item" onclick="playAll()">
+  <ul>
+    <li id="play-all" class="large" onclick="playAll()">
       <i class="fa-solid fa-play">
       <span>Play All
     $forall (name, path) <- filesWithNames
-      <div class="item" onclick="playPath('#{mkAbsFilePath path}')">
+      <li onclick="playPath('#{mkAbsFilePath path}')">
         <i class="fa-solid fa-play">
         <span>#{name}
 
