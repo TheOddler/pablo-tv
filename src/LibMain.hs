@@ -59,7 +59,13 @@ mkEmbeddedStatic
   False
   "embeddedStatic"
   [ embedFile "static/reconnecting-websocket.js",
-    embedFile "static/fontawesome/all.min.css"
+    embedFile "static/fontawesome/css/all.min.css",
+    embedFile "static/fontawesome/webfonts/fa-brands-400.ttf",
+    embedFile "static/fontawesome/webfonts/fa-brands-400.woff2",
+    embedFile "static/fontawesome/webfonts/fa-regular-400.ttf",
+    embedFile "static/fontawesome/webfonts/fa-regular-400.woff2",
+    embedFile "static/fontawesome/webfonts/fa-solid-900.ttf",
+    embedFile "static/fontawesome/webfonts/fa-solid-900.woff2"
   ]
 
 mkYesod
@@ -95,7 +101,7 @@ instance Yesod App where
     pc <- widgetToPageContent $ do
       when isDevelopment $ addScriptRemote "https://pabloproductions.be/LiveJS/live.js"
       addScript $ StaticR static_reconnecting_websocket_js
-      addStylesheet $ StaticR static_fontawesome_all_min_css
+      addStylesheet $ StaticR static_fontawesome_css_all_min_css
       $(widgetFile "shared-default")
     withUrlRenderer $
       $(hamletFile "templates/shared-page-wrapper.hamlet")
