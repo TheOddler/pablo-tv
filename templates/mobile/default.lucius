@@ -1,0 +1,24 @@
+header {
+  width: 100dvw;
+  position: fixed;
+  top: 0;
+
+  display: flex;
+  background-color: rgba(0, 0, 0, 0.75);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+
+  a,
+  a:visited {
+    color: white;
+    text-decoration: none;
+    padding: 0.5em 1em;
+  }
+
+  .separator-grow {
+    flex-grow: 1;
+  }
+}
+
+#header-space-keeper {
+  height: 3em;
+}
