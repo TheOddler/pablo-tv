@@ -1,7 +1,6 @@
-<h1>#{title}
 $if isJust mInfo
   <img src=@{ImageR segments} alt="🖼️ Missing poster ☹️" class="header" onerror="this.style.display = 'none'">
-
+<h1>#{title}
 
 $if (not $ null filesWithNames)
   $case (directoryInfoKind <$> mInfo)
