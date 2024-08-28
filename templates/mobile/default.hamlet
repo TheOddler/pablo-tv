@@ -1,7 +1,6 @@
 <header>
-  $if Just parentRoute /= currentRoute
-    <a href=@{parentRoute}>
-      <i class="fa-solid fa-chevron-left">
+  <a href="javascript:history.back()">
+    <i class="fa-solid fa-chevron-left">
   <div class="separator-grow">
   <a href=@{InputR}>
     <i class="fa-solid fa-wand-magic-sparkles">

@@ -106,8 +106,8 @@ instance Yesod App where
     withUrlRenderer $
       $(hamletFile "templates/shared-page-wrapper.hamlet")
 
-mobileLayout :: Html -> Route App -> Widget -> Handler Html
-mobileLayout title parentRoute widget = Yesod.defaultLayout $ do
+mobileLayout :: Html -> Widget -> Handler Html
+mobileLayout title widget = Yesod.defaultLayout $ do
   when isDevelopment $ do
     addScriptRemote "//cdn.jsdelivr.net/npm/eruda" -- Console for mobile
     toWidgetBody
@@ -116,7 +116,6 @@ mobileLayout title parentRoute widget = Yesod.defaultLayout $ do
           eruda.init();
         };
       |]
-  currentRoute <- getCurrentRoute
   setTitle $ title <> " - Pablo TV"
   $(widgetFile "mobile/default")
 
@@ -125,7 +124,7 @@ getMobileHomeR = do
   inputDevice <- getsYesod appInputDevice
   mpv <- getsYesod appMPV
   webSockets $ actionsWebSocket inputDevice mpv
-  mobileLayout "Home" MobileHomeR $(widgetFile "mobile/home")
+  mobileLayout "Home" $(widgetFile "mobile/home")
 
 postMobileHomeR :: Handler ()
 postMobileHomeR = do
@@ -136,15 +135,15 @@ postMobileHomeR = do
 
 getTrackpadR :: Handler Html
 getTrackpadR =
-  mobileLayout "Trackpad" MobileHomeR $(widgetFile "mobile/trackpad")
+  mobileLayout "Trackpad" $(widgetFile "mobile/trackpad")
 
 getMousePointerR :: Handler Html
 getMousePointerR =
-  mobileLayout "Pointer" MobileHomeR $(widgetFile "mobile/mouse-pointer")
+  mobileLayout "Pointer" $(widgetFile "mobile/mouse-pointer")
 
 getKeyboardR :: Handler Html
 getKeyboardR =
-  mobileLayout "Keyboard" MobileHomeR $(widgetFile "mobile/keyboard")
+  mobileLayout "Keyboard" $(widgetFile "mobile/keyboard")
 
 -- | Turn the segments into a directory path and optionally a filename
 -- Also checks if the file/directory actually exists, if not, return Nothing
@@ -203,12 +202,11 @@ getDirectoryR segments = do
       mkAbsFilePath filename = fromAbsFile $ absPath </> filename
 
   let title = toHtml $ (directoryInfoTitle <$> mInfo) `orElse` "Videos"
-  let parentRoute = maybe MobileHomeR DirectoryR $ removeLast segments
-  mobileLayout title parentRoute $(widgetFile "mobile/directory")
+  mobileLayout title $(widgetFile "mobile/directory")
 
 getRemoteR :: Handler Html
 getRemoteR = do
-  mobileLayout "Remote" MobileHomeR $(widgetFile "mobile/remote")
+  mobileLayout "Remote" $(widgetFile "mobile/remote")
 
 getImageR :: [Text] -> Handler Html
 getImageR segments = do
@@ -248,7 +246,7 @@ getImageR segments = do
 
 getInputR :: Handler Html
 getInputR =
-  mobileLayout "Input" MobileHomeR $(widgetFile "mobile/input")
+  mobileLayout "Input" $(widgetFile "mobile/input")
 
 tvLayout :: Html -> Widget -> Handler Html
 tvLayout title widget = Yesod.defaultLayout $ do
