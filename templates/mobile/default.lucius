@@ -18,6 +18,15 @@ header {
     color: white;
     text-decoration: none;
     padding: 0.5em 1em;
+    height: 3em;
+
+    >svg {
+      margin-top: -0.15em;
+      width: 2.4em;
+      height: 2.4em;
+      color: black;
+      fill: white;
+    }
   }
 
   .separator-grow {
