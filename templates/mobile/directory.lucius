@@ -23,13 +23,10 @@ ul {
   white-space: nowrap;
   padding: 0 0 1em 0;
   margin: 0;
+  list-style-type: none;
 
   li {
     cursor: pointer;
-    display: flex;
-    align-items: center;
-    gap: 0.5em;
-    padding: 0.5em 0;
 
     border-bottom: 1px solid rgba(255, 255, 255, 0.2);
 
@@ -37,15 +34,22 @@ ul {
       border-bottom: none;
     }
 
-    i {
-      font-size: 1.5em;
-    }
+    >a {
+      display: flex;
+      align-items: center;
+      gap: 0.5em;
+      padding: 0.5em 0;
+      text-decoration: none;
 
-    >span,
-    a {
-      overflow: hidden;
-      text-overflow: ellipsis;
-      flex-grow: 1;
+      i {
+        font-size: 1.5em;
+      }
+
+      span {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        flex-grow: 1;
+      }
     }
   }
 }

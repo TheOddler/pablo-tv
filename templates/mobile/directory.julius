@@ -1,4 +1,6 @@
 function playPath(path) {
+  // Remove the link from the local history so that the back button works as expected
+  window.location.replace(window.location.href);
   sendAction({ tag: "PlayPath", path });
 }
 
