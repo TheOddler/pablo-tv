@@ -34,7 +34,6 @@ pre {
 
 .red {
   background: var(--red);
-  color: white;
   fill: white;
 }
 
