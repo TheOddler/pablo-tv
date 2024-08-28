@@ -11,7 +11,7 @@ body {
 img.header {
   flex-shrink: 1;
   object-fit: contain;
-  min-height: 40svh;
+  min-height: 50svh;
   max-width: 100dvw;
 }
 
@@ -21,7 +21,7 @@ ul {
   flex-direction: column;
   max-width: calc(100% - 2em);
   white-space: nowrap;
-  padding: 0;
+  padding: 0 0 1em 0;
   margin: 0;
 
   li {
@@ -32,6 +32,10 @@ ul {
     padding: 0.5em 0;
 
     border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+
+    &:last-child {
+      border-bottom: none;
+    }
 
     i {
       font-size: 1.5em;
