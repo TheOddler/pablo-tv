@@ -1,11 +1,13 @@
 <header>
-  <a href=@{MobileHomeR}>
-    <i class="large fa-solid fa-chevron-left">
-    <i class="xl fa-solid fa-house">
+  $if Just parentRoute /= currentRoute
+    <a href=@{parentRoute}>
+      <i class="xl fa-solid fa-chevron-left">
   <div class="separator-grow">
   <a href=@{InputR}>
     <i class="xl fa-solid fa-arrow-pointer">
   <a href=@{RemoteR}>
     <i class="xl fa-solid fa-gamepad">
+  <a href=@{MobileHomeR}>
+    <i class="xl fa-solid fa-house">
 
 ^{widget}

@@ -70,5 +70,7 @@ mapLeft _ (Right x) = Right x
 unsnoc :: [a] -> Maybe ([a], a)
 unsnoc xs = (\(hd, tl) -> (reverse tl, hd)) <$> uncons (reverse xs)
 
-removeLast :: [a] -> [a]
-removeLast = reverse . drop 1 . reverse
+removeLast :: [a] -> Maybe [a]
+removeLast arr = case reverse arr of
+  [] -> Nothing
+  _ : xs -> Just $ reverse xs

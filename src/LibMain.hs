@@ -106,8 +106,8 @@ instance Yesod App where
     withUrlRenderer $
       $(hamletFile "templates/shared-page-wrapper.hamlet")
 
-mobileLayout :: Widget -> Handler Html
-mobileLayout widget = Yesod.defaultLayout $ do
+mobileLayout :: Route App -> Widget -> Handler Html
+mobileLayout parentRoute widget = Yesod.defaultLayout $ do
   when isDevelopment $ do
     addScriptRemote "//cdn.jsdelivr.net/npm/eruda" -- Console for mobile
     toWidgetBody
@@ -116,6 +116,7 @@ mobileLayout widget = Yesod.defaultLayout $ do
           eruda.init();
         };
       |]
+  currentRoute <- getCurrentRoute
   $(widgetFile "mobile/default")
 
 getMobileHomeR :: Handler Html
@@ -123,7 +124,7 @@ getMobileHomeR = do
   inputDevice <- getsYesod appInputDevice
   mpv <- getsYesod appMPV
   webSockets $ actionsWebSocket inputDevice mpv
-  mobileLayout $(widgetFile "mobile/home")
+  mobileLayout MobileHomeR $(widgetFile "mobile/home")
 
 postMobileHomeR :: Handler ()
 postMobileHomeR = do
@@ -134,15 +135,15 @@ postMobileHomeR = do
 
 getTrackpadR :: Handler Html
 getTrackpadR =
-  mobileLayout $(widgetFile "mobile/trackpad")
+  mobileLayout MobileHomeR $(widgetFile "mobile/trackpad")
 
 getMousePointerR :: Handler Html
 getMousePointerR =
-  mobileLayout $(widgetFile "mobile/mouse-pointer")
+  mobileLayout MobileHomeR $(widgetFile "mobile/mouse-pointer")
 
 getKeyboardR :: Handler Html
 getKeyboardR =
-  mobileLayout $(widgetFile "mobile/keyboard")
+  mobileLayout MobileHomeR $(widgetFile "mobile/keyboard")
 
 -- | Turn the segments into a directory path and optionally a filename
 -- Also checks if the file/directory actually exists, if not, return Nothing
@@ -183,7 +184,7 @@ getDirectoryR segments = do
   absPath <-
     parseSegments segments >>= \case
       Just (p, Nothing) -> pure p
-      _ -> redirect $ DirectoryR $ removeLast segments
+      _ -> redirect $ maybe MobileHomeR DirectoryR $ removeLast segments
   tvdbToken <- getsYesod appTVDBToken
   (mInfo, filesWithNames, dirsWithNames) <- liftIO $ parseDirectory tvdbToken absPath
 
@@ -200,11 +201,12 @@ getDirectoryR segments = do
       mkAbsFilePath :: Path Rel File -> String
       mkAbsFilePath filename = fromAbsFile $ absPath </> filename
 
-  mobileLayout $(widgetFile "mobile/directory")
+  let parentRoute = maybe MobileHomeR DirectoryR $ removeLast segments
+  mobileLayout parentRoute $(widgetFile "mobile/directory")
 
 getRemoteR :: Handler Html
 getRemoteR = do
-  mobileLayout $(widgetFile "mobile/remote")
+  mobileLayout MobileHomeR $(widgetFile "mobile/remote")
 
 getImageR :: [Text] -> Handler Html
 getImageR segments = do
@@ -244,7 +246,7 @@ getImageR segments = do
 
 getInputR :: Handler Html
 getInputR =
-  mobileLayout $(widgetFile "mobile/input")
+  mobileLayout MobileHomeR $(widgetFile "mobile/input")
 
 tvLayout :: Widget -> Handler Html
 tvLayout widget = Yesod.defaultLayout $(widgetFile "tv/default")
@@ -289,15 +291,15 @@ main = do
   tvState <- newTVarIO $ TVState MobileHomeR
 
   let port = 8080
-  let url = "http://localhost:" ++ show port ++ "/tv"
+  let (path, _params) = renderRoute TVHomeR
+  let url = "http://localhost:" ++ show port ++ "/" ++ unpack (intercalate "/" path)
   putStrLn $ "Running on port " ++ show port ++ " - " ++ url
   putStrLn $ "Development mode: " ++ show isDevelopment
 
   -- Only open the browser automatically in production because it;s annoying in
   -- development as it opens a new tab every time the server restarts.
   when (not isDevelopment) $ do
-    let (path, _params) = renderRoute TVHomeR
-    callProcess "xdg-open" [url ++ unpack (intercalate "/" path)]
+    callProcess "xdg-open" [url]
 
   withMPV $ \mpv -> do
     app <-

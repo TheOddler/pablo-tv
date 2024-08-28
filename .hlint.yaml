@@ -4,6 +4,7 @@
 
 - ignore: {name: "Use unless"} # Don't use unless, it's confusing
 - ignore: {name: "Use tuple-section"}
+- ignore: {name: "Replace case with maybe"}
 
 - functions:
   - {name: unsafeDupablePerformIO, within: []} # Unsafe
@@ -58,7 +59,6 @@
 
   - {name: unless, within: []} # Really confusing, use 'when' instead.
   - {name: either, within: []} # Really confusing, just use a case-match.
-  - {name: maybe, within: []} # Somewhat confusing, just use a case-match.
 
   - name: nub
     within: 
