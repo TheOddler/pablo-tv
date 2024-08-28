@@ -17,9 +17,10 @@ $if (not $ null filesWithNames)
         <h2>Parts
   
   <ul>
-    <li id="play-all" class="large" onclick="playAll()">
-      <i class="fa-solid fa-play">
-      <span>Play All
+    $if (length filesWithNames > 1)
+      <li id="play-all" class="large" onclick="playAll()">
+        <i class="fa-solid fa-play">
+        <span>Play All
     $forall (name, path) <- filesWithNames
       <li onclick="playPath('#{mkAbsFilePath path}')">
         <i class="fa-solid fa-play">
@@ -36,4 +37,5 @@ $if (not $ null dirsWithNames)
   <ul>
     $forall (name, path) <- dirsWithNames
       <li>
+        <i class="fa-regular fa-folder-open">
         <a href=@{DirectoryR $ mkSegments path}>#{name}
