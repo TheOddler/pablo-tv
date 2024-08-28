@@ -6,12 +6,18 @@
   box-sizing: border-box;
 }
 
-html {
-  background: black;
+html,
+body {
+  margin: 0;
+  padding: 0;
+  width: 100dvw;
+  min-height: 100dvh;
+
   color: white;
-  overflow-wrap: break-word;
+  background: black;
   text-align: justify;
   word-break: break-word;
+  overflow-wrap: break-word;
 }
 
 a {
