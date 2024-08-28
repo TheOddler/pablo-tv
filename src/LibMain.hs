@@ -13,6 +13,7 @@ import Control.Monad (filterM, when)
 import Data.ByteString.Char8 qualified as BS
 import Data.Char (toLower)
 import Data.List (foldl')
+import Data.List.Extra (replace)
 import Data.Maybe (fromMaybe, isJust)
 import Data.String (fromString)
 import Data.Text (Text, intercalate, unpack)
@@ -34,7 +35,7 @@ import System.Process (callProcess)
 import Text.Hamlet (hamletFile)
 import Text.Julius (RawJavascript (..))
 import Util (networkInterfacesShortList, onChanges, removeLast, toUrl, unsnoc, widgetFile)
-import Yesod hiding (defaultLayout)
+import Yesod hiding (defaultLayout, replace)
 import Yesod qualified
 import Yesod.EmbeddedStatic
 import Yesod.WebSockets (sendTextData, webSockets)
@@ -199,7 +200,7 @@ getDirectoryR segments = do
       absPathJS = RawJavascript . fromText . T.pack $ toFilePath absPath
 
       mkAbsFilePath :: Path Rel File -> String
-      mkAbsFilePath filename = fromAbsFile $ absPath </> filename
+      mkAbsFilePath filename = replace "'" "\\'" $ fromAbsFile $ absPath </> filename
 
   let title = toHtml $ (directoryInfoTitle <$> mInfo) `orElse` "Videos"
   mobileLayout title $(widgetFile "mobile/directory")
