@@ -13,7 +13,7 @@ import Control.Monad (filterM, when)
 import Data.ByteString.Char8 qualified as BS
 import Data.Char (toLower)
 import Data.List (foldl')
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe, isJust)
 import Data.String (fromString)
 import Data.Text (Text, intercalate, unpack)
 import Data.Text qualified as T
@@ -21,7 +21,7 @@ import Data.Text.Lazy.Builder (fromText)
 import Directory (DirectoryInfo (..), DirectoryKind (..), parseDirectory)
 import Evdev.Uinput (Device)
 import GHC.Conc (TVar, atomically, newTVarIO, writeTVar)
-import GHC.Data.Maybe (firstJustsM, listToMaybe)
+import GHC.Data.Maybe (firstJustsM, listToMaybe, orElse)
 import IsDevelopment (isDevelopment)
 import MPV (MPV, withMPV)
 import Network.Info (IPv4 (..), NetworkInterface (..), getNetworkInterfaces)
@@ -106,8 +106,8 @@ instance Yesod App where
     withUrlRenderer $
       $(hamletFile "templates/shared-page-wrapper.hamlet")
 
-mobileLayout :: Route App -> Widget -> Handler Html
-mobileLayout parentRoute widget = Yesod.defaultLayout $ do
+mobileLayout :: Html -> Route App -> Widget -> Handler Html
+mobileLayout title parentRoute widget = Yesod.defaultLayout $ do
   when isDevelopment $ do
     addScriptRemote "//cdn.jsdelivr.net/npm/eruda" -- Console for mobile
     toWidgetBody
@@ -117,6 +117,7 @@ mobileLayout parentRoute widget = Yesod.defaultLayout $ do
         };
       |]
   currentRoute <- getCurrentRoute
+  setTitle $ title <> " - Pablo TV"
   $(widgetFile "mobile/default")
 
 getMobileHomeR :: Handler Html
@@ -124,7 +125,7 @@ getMobileHomeR = do
   inputDevice <- getsYesod appInputDevice
   mpv <- getsYesod appMPV
   webSockets $ actionsWebSocket inputDevice mpv
-  mobileLayout MobileHomeR $(widgetFile "mobile/home")
+  mobileLayout "Home" MobileHomeR $(widgetFile "mobile/home")
 
 postMobileHomeR :: Handler ()
 postMobileHomeR = do
@@ -135,15 +136,15 @@ postMobileHomeR = do
 
 getTrackpadR :: Handler Html
 getTrackpadR =
-  mobileLayout MobileHomeR $(widgetFile "mobile/trackpad")
+  mobileLayout "Trackpad" MobileHomeR $(widgetFile "mobile/trackpad")
 
 getMousePointerR :: Handler Html
 getMousePointerR =
-  mobileLayout MobileHomeR $(widgetFile "mobile/mouse-pointer")
+  mobileLayout "Pointer" MobileHomeR $(widgetFile "mobile/mouse-pointer")
 
 getKeyboardR :: Handler Html
 getKeyboardR =
-  mobileLayout MobileHomeR $(widgetFile "mobile/keyboard")
+  mobileLayout "Keyboard" MobileHomeR $(widgetFile "mobile/keyboard")
 
 -- | Turn the segments into a directory path and optionally a filename
 -- Also checks if the file/directory actually exists, if not, return Nothing
@@ -201,12 +202,13 @@ getDirectoryR segments = do
       mkAbsFilePath :: Path Rel File -> String
       mkAbsFilePath filename = fromAbsFile $ absPath </> filename
 
+  let title = toHtml $ (directoryInfoTitle <$> mInfo) `orElse` "Videos"
   let parentRoute = maybe MobileHomeR DirectoryR $ removeLast segments
-  mobileLayout parentRoute $(widgetFile "mobile/directory")
+  mobileLayout title parentRoute $(widgetFile "mobile/directory")
 
 getRemoteR :: Handler Html
 getRemoteR = do
-  mobileLayout MobileHomeR $(widgetFile "mobile/remote")
+  mobileLayout "Remote" MobileHomeR $(widgetFile "mobile/remote")
 
 getImageR :: [Text] -> Handler Html
 getImageR segments = do
@@ -246,10 +248,12 @@ getImageR segments = do
 
 getInputR :: Handler Html
 getInputR =
-  mobileLayout MobileHomeR $(widgetFile "mobile/input")
+  mobileLayout "Input" MobileHomeR $(widgetFile "mobile/input")
 
-tvLayout :: Widget -> Handler Html
-tvLayout widget = Yesod.defaultLayout $(widgetFile "tv/default")
+tvLayout :: Html -> Widget -> Handler Html
+tvLayout title widget = Yesod.defaultLayout $ do
+  setTitle $ title <> " - Pablo TV"
+  $(widgetFile "tv/default")
 
 getTVHomeR :: Handler Html
 getTVHomeR = do
@@ -260,7 +264,7 @@ getTVHomeR = do
 
   networkInterfaces <- networkInterfacesShortList <$> liftIO getNetworkInterfaces
   port <- getsYesod appPort
-  tvLayout $(widgetFile "tv/home")
+  tvLayout "TV" $(widgetFile "tv/home")
   where
     ipV4OrV6WithPort port i =
       ( if ipv4 i == IPv4 0
@@ -274,7 +278,7 @@ getAllIPsR :: Handler Html
 getAllIPsR = do
   networkInterfaces <- liftIO getNetworkInterfaces
   port <- getsYesod appPort
-  tvLayout $(widgetFile "tv/ips")
+  tvLayout "IPs" $(widgetFile "tv/ips")
   where
     hideZero :: (Show a, Eq a, Bounded a) => a -> String
     hideZero a =

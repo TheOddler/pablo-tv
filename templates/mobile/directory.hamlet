@@ -1,9 +1,6 @@
-$case mInfo
-  $of Nothing
-    <h1>Videos
-  $of Just info
-    <img src=@{ImageR segments} alt="🖼️ Missing poster ☹️" class="header" onerror="this.style.display = 'none'">
-    <h1>#{directoryInfoTitle info}
+<h1>#{title}
+$if isJust mInfo
+  <img src=@{ImageR segments} alt="🖼️ Missing poster ☹️" class="header" onerror="this.style.display = 'none'">
 
 
 $if (not $ null filesWithNames)
