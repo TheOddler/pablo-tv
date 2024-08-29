@@ -24,8 +24,10 @@
   <div class="row">
     <div>
     <button class="large" onclick="sendAction({ tag: 'TogglePlay' })">
-      <i class="fa-solid fa-play">
-      <i class="fa-solid fa-pause">
+      $# The extra div makes the scaling look better when button is pressed
+      <div>
+        <i class="fa-solid fa-play">
+        <i class="fa-solid fa-pause">
     <div class="double-button">
       <button onclick="sendAction({ tag: 'ChangeVolume', change: 1 })">
         <i class="fa-solid fa-plus">

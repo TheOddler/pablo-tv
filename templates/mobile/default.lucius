@@ -85,6 +85,12 @@ header {
       }
     }
 
+    --button-shadow: inset 1pt -2pt 2pt 1pt rgba(0, 0, 0, 0.3),
+    inset -1pt 2pt 2pt 2pt rgba(255, 255, 255, 0.6),
+    1pt -1pt 2pt 3pt rgba(0, 0, 0, 1),
+    -1pt 2pt 2pt 3pt rgba(255, 255, 255, 0.3),
+    0 0 50pt 5pt rgba(255, 255, 255, 0.2);
+
     >a,
     >button,
     >.button,
@@ -101,17 +107,9 @@ header {
           rgb(180, 180, 180) 80%,
           rgb(180, 180, 180) 100%);
       box-shadow:
-        inset 1pt -2pt 2pt 1pt rgba(0, 0, 0, 0.3),
-        inset -1pt 2pt 2pt 2pt rgba(255, 255, 255, 0.6),
-        1pt -1pt 2pt 3pt rgba(0, 0, 0, 1),
-        -1pt 2pt 2pt 3pt rgba(255, 255, 255, 0.3),
-        0 0 50pt 5pt rgba(255, 255, 255, 0.2);
+        var(--button-shadow);
       transition: 0.01s ease-out;
       border: none;
-
-      &:active {
-        transform: scale(0.95);
-      }
 
       &.red {
         background: var(--red);
@@ -123,6 +121,16 @@ header {
     >button,
     >.button {
       aspect-ratio: 1;
+
+      &:active {
+        box-shadow:
+          inset 0 0 2pt 2pt black,
+          var(--button-shadow);
+
+        >* {
+          transform: scale(0.90);
+        }
+      }
     }
 
     >a,
@@ -142,9 +150,29 @@ header {
       align-self: stretch;
 
       >button {
+        cursor: pointer;
         flex: 1;
         border: none;
         background: none;
+
+        &:active {
+          box-shadow:
+            inset 0 0 2pt 2pt black;
+
+          >* {
+            transform: scale(0.90);
+          }
+        }
+
+        &:first-child {
+          border-top-left-radius: 999lvh;
+          border-top-right-radius: 999lvh;
+        }
+
+        &:last-child {
+          border-bottom-left-radius: 999lvh;
+          border-bottom-right-radius: 999lvh;
+        }
       }
 
       >i {
@@ -152,6 +180,7 @@ header {
         display: flex;
         align-items: center;
         justify-content: center;
+        color: rgba(0, 0, 0, 0.3)
       }
     }
   }
