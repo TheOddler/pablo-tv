@@ -108,7 +108,6 @@ header {
           rgb(180, 180, 180) 100%);
       box-shadow:
         var(--button-shadow);
-      transition: 0.01s ease-out;
       border: none;
 
       &.red {
