@@ -1,42 +1,44 @@
-<div class="row">
-  <button onclick="sendAction({ tag: 'ToggleFullscreen' })">
-    <i class="fa-solid fa-expand"></i>
-  <div>
-  <a href=@{DirectoryR []}>
-    <i class="fa-solid fa-file-video">
-  <div>
-  <button class="red" onclick="sendAction({ tag: 'CloseMPV' })">
-    <i class="fa-solid fa-power-off">
+<div class="button-grid">
+  <div class="row">
+    <button onclick="sendAction({ tag: 'ToggleFullscreen' })">
+      <i class="fa-solid fa-expand"></i>
+    <div>
+    <a href=@{DirectoryR []}>
+      <i class="fa-solid fa-file-video">
+    <div>
+    <button class="red" onclick="sendAction({ tag: 'CloseMPV' })">
+      <i class="fa-solid fa-power-off">
 
-<div class="row">
-  <div>
-  <button onclick="sendAction({ tag: 'PlaylistPrevious' })">
-    <i class="fa-solid fa-angles-left">
-  <div class="large">
-    Play<wbr>list
-  <button onclick="sendAction({ tag: 'PlaylistNext' })">
-    <i class="fa-solid fa-angles-right">
-  <div>
+  <div class="row">
+    <div>
+    <button onclick="sendAction({ tag: 'PlaylistPrevious' })">
+      <i class="fa-solid fa-angles-left">
+    <div class="large">
+      Play<wbr>list
+    <button onclick="sendAction({ tag: 'PlaylistNext' })">
+      <i class="fa-solid fa-angles-right">
+    <div>
 
-<div class="row">
-  <div>
-  <button class="large" onclick="sendAction({ tag: 'TogglePlay' })">
-    <i class="fa-solid fa-play">
-    <i class="fa-solid fa-pause">
-  <div class="double-button">
-    <button onclick="sendAction({ tag: 'ChangeVolume', change: 1 })">
-      <i class="fa-solid fa-plus">
-    <i class="fa-solid fa-volume-high">
-    <button onclick="sendAction({ tag: 'ChangeVolume', change: -1 })">
-      <i class="fa-solid fa-minus">
+  <div class="separator-grow">
 
-<div class="row">
-  <button onclick="sendAction({ tag: 'Seek', change: -60 })">
-    <i class="fa-solid fa-backward-fast">
-  <button onclick="sendAction({ tag: 'Seek', change: -10 })">
-    <i class="fa-solid fa-backward-step">
-  <button onclick="sendAction({ tag: 'Seek', change: 10 })">
-    <i class="fa-solid fa-forward-step">
-  <button onclick="sendAction({ tag: 'Seek', change: 60 })">
-    <i class="fa-solid fa-forward-fast">
+  <div class="row">
+    <div>
+    <button class="large" onclick="sendAction({ tag: 'TogglePlay' })">
+      <i class="fa-solid fa-play">
+      <i class="fa-solid fa-pause">
+    <div class="double-button">
+      <button onclick="sendAction({ tag: 'ChangeVolume', change: 1 })">
+        <i class="fa-solid fa-plus">
+      <i class="fa-solid fa-volume-high">
+      <button onclick="sendAction({ tag: 'ChangeVolume', change: -1 })">
+        <i class="fa-solid fa-minus">
 
+  <div class="row">
+    <button onclick="sendAction({ tag: 'Seek', change: -60 })">
+      <i class="fa-solid fa-backward-fast">
+    <button onclick="sendAction({ tag: 'Seek', change: -10 })">
+      <i class="fa-solid fa-backward-step">
+    <button onclick="sendAction({ tag: 'Seek', change: 10 })">
+      <i class="fa-solid fa-forward-step">
+    <button onclick="sendAction({ tag: 'Seek', change: 60 })">
+      <i class="fa-solid fa-forward-fast">
