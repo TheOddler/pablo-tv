@@ -70,11 +70,11 @@ decodeExamples =
     ( "{\"tag\":\"PlaylistPrevious\"}",
       ActionMPV MPVCommandPlaylistPrevious
     ),
-    ( "{\"tag\":\"ToggleFullScreen\"}",
-      ActionMPV MPVCommandToggleFullScreen
+    ( "{\"tag\":\"ToggleFullscreen\"}",
+      ActionMPV MPVCommandToggleFullscreen
     ),
-    ( "{\"tag\":\"SetFullScreen\",\"fullScreen\":true}",
-      ActionMPV (MPVCommandSetFullScreen True)
+    ( "{\"tag\":\"SetFullscreen\",\"fullscreen\":true}",
+      ActionMPV (MPVCommandSetFullscreen True)
     ),
     ( "{\"tag\":\"PlayPath\",\"path\":\"/path/to/file\"}",
       ActionMPV (MPVCommandPlayPath "/path/to/file")

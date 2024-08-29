@@ -21,7 +21,15 @@ common defaults
     default-language: GHC2021
     build-depends: base >=4.18.2.1 && <5
     ghc-options:
-        -Wall -Wcompat -Wincomplete-record-updates -Wredundant-constraints -Wunused-packages -threaded -rtsopts -with-rtsopts=-N -freverse-errors
+        -Wall
+        -Wcompat
+        -Wincomplete-record-updates
+        -Wredundant-constraints
+        -Wunused-packages
+        -threaded
+        -rtsopts
+        -with-rtsopts=-N
+        -freverse-errors
     default-extensions:
         LambdaCase
         OverloadedRecordDot

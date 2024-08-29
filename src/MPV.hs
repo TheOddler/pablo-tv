@@ -45,8 +45,8 @@ data MPVCommand
   | MPVCommandSeek Int -- seconds
   | MPVCommandPlaylistNext
   | MPVCommandPlaylistPrevious
-  | MPVCommandToggleFullScreen
-  | MPVCommandSetFullScreen Bool
+  | MPVCommandToggleFullscreen
+  | MPVCommandSetFullscreen Bool
   | MPVCommandPlayPath Text
   | MPVCommandQuit
   deriving (Show, Eq, Generic)
@@ -69,13 +69,13 @@ mpvCommands = \case
       [ mkCommand ["playlist-prev"],
         mkCommand ["set", "pause", "no"]
       ]
-  MPVCommandToggleFullScreen ->
+  MPVCommandToggleFullscreen ->
     oneCommand ["cycle", "fullscreen"]
-  MPVCommandSetFullScreen fullScreen ->
+  MPVCommandSetFullscreen fullscreen ->
     oneCommand
       [ "set",
         "fullscreen",
-        if fullScreen then "yes" else "no"
+        if fullscreen then "yes" else "no"
       ]
   MPVCommandPlayPath path -> do
     isDir <- case parseAbsDir (T.unpack path) of
@@ -160,7 +160,7 @@ withMPVInfo mpv startIfNotRunning action = modifyMVar_ mpv $ \existingInfo -> do
       handler <-
         spawnProcess
           "mpv"
-          ["--force-window", "--idle", "--msg-level=all=status", "--input-ipc-server=" ++ fromAbsFile socketPath]
+          ["--force-window", "--idle", "--msg-level=all=debug", "--input-ipc-server=" ++ fromAbsFile socketPath]
 
       soc <- socket AF_UNIX Stream 0
       -- Give MPV some time to start and create the socket on it's end before we try to connect to it

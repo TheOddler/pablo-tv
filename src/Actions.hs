@@ -67,8 +67,8 @@ instance HasObjectCodec Action where
         ActionMPV MPVCommandQuit -> ("CloseMPV", noFieldEncoder)
         ActionMPV MPVCommandPlaylistNext -> ("PlaylistNext", noFieldEncoder)
         ActionMPV MPVCommandPlaylistPrevious -> ("PlaylistPrevious", noFieldEncoder)
-        ActionMPV MPVCommandToggleFullScreen -> ("ToggleFullScreen", noFieldEncoder)
-        ActionMPV (MPVCommandSetFullScreen fullScreen) -> ("SetFullScreen", oneFieldEncoder "fullScreen" fullScreen)
+        ActionMPV MPVCommandToggleFullscreen -> ("ToggleFullscreen", noFieldEncoder)
+        ActionMPV (MPVCommandSetFullscreen fullscreen) -> ("SetFullscreen", oneFieldEncoder "fullscreen" fullscreen)
       dec :: HashMap.HashMap Discriminator (Text, ObjectCodec Void Action)
       dec =
         HashMap.fromList
@@ -83,8 +83,8 @@ instance HasObjectCodec Action where
             ("CloseMPV", ("ActionMPV Quit", noFieldDecoder $ ActionMPV MPVCommandQuit)),
             ("PlaylistNext", ("ActionMPV PlaylistNext", noFieldDecoder $ ActionMPV MPVCommandPlaylistNext)),
             ("PlaylistPrevious", ("ActionMPV PlaylistPrevious", noFieldDecoder $ ActionMPV MPVCommandPlaylistPrevious)),
-            ("ToggleFullScreen", ("ActionMPV ToggleFullScreen", noFieldDecoder $ ActionMPV MPVCommandToggleFullScreen)),
-            ("SetFullScreen", ("ActionMPV SetFullScreen", oneFieldDecoder (ActionMPV . MPVCommandSetFullScreen) "fullScreen"))
+            ("ToggleFullscreen", ("ActionMPV ToggleFullscreen", noFieldDecoder $ ActionMPV MPVCommandToggleFullscreen)),
+            ("SetFullscreen", ("ActionMPV SetFullscreen", oneFieldDecoder (ActionMPV . MPVCommandSetFullscreen) "fullscreen"))
           ]
 
 actionsWebSocket :: (MonadHandler m) => Device -> MPV -> WebSocketsT m ()
