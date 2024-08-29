@@ -43,6 +43,10 @@ data MPVCommand
   = MPVCommandTogglePlay
   | MPVCommandChangeVolume Int
   | MPVCommandSeek Int -- seconds
+  | MPVCommandPlaylistNext
+  | MPVCommandPlaylistPrevious
+  | MPVCommandToggleFullScreen
+  | MPVCommandSetFullScreen Bool
   | MPVCommandPlayPath Text
   | MPVCommandQuit
   deriving (Show, Eq, Generic)
@@ -55,6 +59,24 @@ mpvCommands = \case
     oneCommand ["add", "volume", showBS change]
   MPVCommandSeek change ->
     oneCommand ["seek", showBS change]
+  MPVCommandPlaylistNext ->
+    pure
+      [ mkCommand ["playlist-next"],
+        mkCommand ["set", "pause", "no"]
+      ]
+  MPVCommandPlaylistPrevious ->
+    pure
+      [ mkCommand ["playlist-prev"],
+        mkCommand ["set", "pause", "no"]
+      ]
+  MPVCommandToggleFullScreen ->
+    oneCommand ["cycle", "fullscreen"]
+  MPVCommandSetFullScreen fullScreen ->
+    oneCommand
+      [ "set",
+        "fullscreen",
+        if fullScreen then "yes" else "no"
+      ]
   MPVCommandPlayPath path -> do
     isDir <- case parseAbsDir (T.unpack path) of
       Just dirPath -> doesDirExist dirPath

@@ -6,11 +6,15 @@ import Actions
 import Autodocodec (eitherDecodeJSONViaCodec, encodeJSONViaCodec)
 import Data.ByteString.Lazy.Char8 qualified as BS
 import Generic.Random (genericArbitrary, uniform)
+import MPV (MPVCommand (..))
 import Test.QuickCheck (Arbitrary (..), property)
 import Test.QuickCheck.Instances ()
 import Test.Syd
 
 instance Arbitrary Action where
+  arbitrary = genericArbitrary uniform
+
+instance Arbitrary MPVCommand where
   arbitrary = genericArbitrary uniform
 
 spec :: Spec
@@ -49,5 +53,33 @@ decodeExamples =
     ),
     ( "{\"tag\":\"Write\",\"text\":\"w () r |_ |}\"}",
       ActionWrite "w () r |_ |}"
+    ),
+    -- MPVCommands
+    ( "{\"tag\":\"TogglePlay\"}",
+      ActionMPV MPVCommandTogglePlay
+    ),
+    ( "{\"tag\":\"ChangeVolume\",\"change\":-1}",
+      ActionMPV (MPVCommandChangeVolume (-1))
+    ),
+    ( "{\"tag\":\"Seek\",\"change\":-1}",
+      ActionMPV (MPVCommandSeek (-1))
+    ),
+    ( "{\"tag\":\"PlaylistNext\"}",
+      ActionMPV MPVCommandPlaylistNext
+    ),
+    ( "{\"tag\":\"PlaylistPrevious\"}",
+      ActionMPV MPVCommandPlaylistPrevious
+    ),
+    ( "{\"tag\":\"ToggleFullScreen\"}",
+      ActionMPV MPVCommandToggleFullScreen
+    ),
+    ( "{\"tag\":\"SetFullScreen\",\"fullScreen\":true}",
+      ActionMPV (MPVCommandSetFullScreen True)
+    ),
+    ( "{\"tag\":\"PlayPath\",\"path\":\"/path/to/file\"}",
+      ActionMPV (MPVCommandPlayPath "/path/to/file")
+    ),
+    ( "{\"tag\":\"CloseMPV\"}",
+      ActionMPV MPVCommandQuit
     )
   ]
