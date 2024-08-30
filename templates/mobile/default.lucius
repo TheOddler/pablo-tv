@@ -4,6 +4,8 @@
     1pt -1pt 2pt 3pt rgba(0, 0, 0, 1),
     -1pt 2pt 2pt 3pt rgba(255, 255, 255, 0.3),
     0 0 50pt 5pt rgba(255, 255, 255, 0.2);
+  --button-pressed-shadow: inset 0 0 2pt 2pt black;
+  --button-pressed-scale: scale(0.90);
 }
 
 body {
@@ -112,11 +114,11 @@ header {
 
       &:active {
         box-shadow:
-          inset 0 0 2pt 2pt black,
+          var(--button-pressed-shadow),
           var(--button-shadow);
 
         >* {
-          transform: scale(0.90);
+          transform: var(--button-pressed-scale);
         }
       }
     }
@@ -134,11 +136,10 @@ header {
         background: none;
 
         &:active {
-          box-shadow:
-            inset 0 0 2pt 2pt black;
+          box-shadow: var(--button-pressed-shadow);
 
           >* {
-            transform: scale(0.90);
+            transform: var(--button-pressed-scale);
           }
         }
 
@@ -153,6 +154,9 @@ header {
         }
       }
 
+      /* This is an optional in-between icon for the double button
+        For example the sound icon in the volume control
+      */
       >i {
         height: 0;
         display: flex;
