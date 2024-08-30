@@ -1,3 +1,11 @@
+:root {
+  --button-shadow: inset 1pt -2pt 2pt 1pt rgba(0, 0, 0, 0.3),
+    inset -1pt 2pt 2pt 2pt rgba(255, 255, 255, 0.6),
+    1pt -1pt 2pt 3pt rgba(0, 0, 0, 1),
+    -1pt 2pt 2pt 3pt rgba(255, 255, 255, 0.3),
+    0 0 50pt 5pt rgba(255, 255, 255, 0.2);
+}
+
 body {
   /* Reserve some space for the top menu */
   padding-top: 3em !important;
@@ -38,30 +46,12 @@ header {
   }
 }
 
-.button-grid {
+.wrapper {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: space-between;
   height: 100%;
-
-  i {
-    font-size: 5svw;
-  }
-
-  &.large-icons i {
-    font-size: 13svw;
-  }
-
-  svg {
-    height: 7svw;
-    width: 7svw;
-  }
-
-  &.large-icons svg {
-    height: 18svw;
-    width: 18svw;
-  }
 
   .separator-grow {
     flex-grow: 1;
@@ -85,13 +75,6 @@ header {
       }
     }
 
-    --button-shadow: inset 1pt -2pt 2pt 1pt rgba(0, 0, 0, 0.3),
-    inset -1pt 2pt 2pt 2pt rgba(255, 255, 255, 0.6),
-    1pt -1pt 2pt 3pt rgba(0, 0, 0, 1),
-    -1pt 2pt 2pt 3pt rgba(255, 255, 255, 0.3),
-    0 0 50pt 5pt rgba(255, 255, 255, 0.2);
-
-    >a,
     >button,
     >.button,
     >.double-button {
@@ -116,10 +99,16 @@ header {
       }
     }
 
-    >a,
     >button,
     >.button {
       aspect-ratio: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+
+      &:visited {
+        color: black;
+      }
 
       &:active {
         box-shadow:
@@ -132,23 +121,13 @@ header {
       }
     }
 
-    >a,
-    >.button {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-
-      &:visited {
-        color: black;
-      }
-    }
-
     >.double-button {
       display: flex;
       flex-direction: column;
       align-self: stretch;
 
-      >button {
+      >button,
+      .button {
         cursor: pointer;
         flex: 1;
         border: none;

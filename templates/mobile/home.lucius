@@ -1,0 +1,10 @@
+.row {
+  i {
+    font-size: 13svw;
+  }
+
+  svg {
+    height: 18svw;
+    width: 18svw;
+  }
+}

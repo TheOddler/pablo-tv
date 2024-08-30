@@ -1,9 +1,9 @@
-<div class="button-grid">
+<div class="wrapper">
   <div class="row">
     <button onclick="sendAction({ tag: 'ToggleFullscreen' })">
       <i class="fa-solid fa-expand"></i>
     <div>
-    <a href=@{DirectoryR []}>
+    <a class="button" href=@{DirectoryR []}>
       <i class="fa-solid fa-file-video">
     <div>
     <button class="red" onclick="sendAction({ tag: 'CloseMPV' })">

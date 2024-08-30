@@ -1,4 +1,4 @@
-<form class="button-grid large-icons">
+<form class="wrapper">
   <div class="row">
     <button formaction=@{TrackpadR} class="rounded">
       <i class="fa-solid fa-computer-mouse">
@@ -26,5 +26,5 @@
         <path d="M15 8C15 9.65685 13.6569 11 12 11C10.3431 11 9 9.65685 9 8C9 6.34315 10.3431 5 12 5C13.6569 5 15 6.34315 15 8Z" stroke="currentColor" stroke-width="1.5" />
     <button formaction=@{TrackpadR} class="rounded">?
     <button formaction=@{TrackpadR} class="rounded">?
-  
+
   <div class="separator-grow">
