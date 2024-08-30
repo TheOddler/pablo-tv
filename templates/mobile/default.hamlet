@@ -1,7 +1,7 @@
 <header>
   <a href="javascript:history.back()">
     <i class="fa-solid fa-chevron-left">
-  <div class="separator-grow">
+  <div class="grow">
   <a href=@{InputR}>
     <i class="fa-solid fa-wand-magic-sparkles">
   <a href=@{RemoteR}>

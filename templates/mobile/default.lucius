@@ -42,10 +42,6 @@ header {
       fill: white;
     }
   }
-
-  .separator-grow {
-    flex-grow: 1;
-  }
 }
 
 .wrapper {
@@ -55,9 +51,6 @@ header {
   justify-content: space-between;
   height: 100%;
 
-  .separator-grow {
-    flex-grow: 1;
-  }
 
   .row {
     display: flex;
@@ -120,6 +113,15 @@ header {
         >* {
           transform: var(--button-pressed-scale);
         }
+      }
+
+      &.flat {
+        aspect-ratio: 2;
+      }
+
+      &.double-width {
+        aspect-ratio: 2;
+        flex: 2;
       }
     }
 

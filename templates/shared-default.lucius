@@ -32,13 +32,13 @@ pre {
   text-wrap: wrap;
 }
 
+.grow {
+  flex-grow: 1;
+}
+
 .red {
   background: var(--red);
   fill: white;
-}
-
-.rounded {
-  border-radius: 1000vw;
 }
 
 .large {
