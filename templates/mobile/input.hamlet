@@ -1,26 +1,26 @@
 <div class="wrapper">
   <div class="row">
-    <button id="keyboard" class="double-width">
+    <div id="keyboard" class="button double-width">
       <i class="fa-solid fa-keyboard">
     <div>
     <div>
     <div>
-    <button id="recenter">
+    <div id="recenter" class="button">
       <i class="fa-solid fa-arrows-to-dot">
 
   <div class="row grow">
     <div id="trackpad">
 
   <div class="row">
-    <button id="left" class="flat">
+    <div id="left" class="button flat">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="32" height="32" color="#000000" fill="none">
         <path d="M10 2.09084C10.6655 2.02383 11.3389 2 12 2C12.9247 2 13.8373 2.07762 14.7349 2.1882C17.1758 2.48893 19.0694 4.51965 19.2593 6.91118C19.3909 8.56832 19.5 10.268 19.5 12C19.5 13.732 19.3909 15.4317 19.2593 17.0888C19.0694 19.4803 17.1758 21.511 14.7349 21.8118C13.8373 21.9223 12.9247 22 12 22C11.0752 22 10.1626 21.9223 9.26502 21.8118C6.82417 21.511 4.93047 19.4803 4.74061 17.0888C4.60903 15.4317 4.5 13.732 4.5 12C4.5 11.3283 4.5164 10.6614 4.54415 10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
         <path d="M12 2L12 11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
         <path d="M5 11H19" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
         <circle cx="5.5" cy="5" r="2.5" stroke="currentColor" stroke-width="1.5" />
-    <button id="pointer" class="flat">
+    <div id="pointer" class="button flat">
       <i class="fa-solid fa-wand-magic-sparkles">
-    <button id="right" class="flat">
+    <div id="right" class="button flat">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="32" height="32" color="#000000" fill="none">
         <path d="M13.5 2.09084C12.8345 2.02383 12.1611 2 11.5 2C10.5753 2 9.66267 2.07762 8.7651 2.1882C6.32417 2.48893 4.43061 4.51965 4.24069 6.91118C4.10906 8.56832 4 10.268 4 12C4 13.732 4.10906 15.4317 4.24069 17.0888C4.43061 19.4803 6.32417 21.511 8.7651 21.8118C9.66267 21.9223 10.5753 22 11.5 22C12.4248 22 13.3374 21.9223 14.235 21.8118C16.6758 21.511 18.5695 19.4803 18.7594 17.0888C18.891 15.4317 19 13.732 19 12C19 11.3283 18.9836 10.6614 18.9558 10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
         <path d="M11.5 2L11.5 11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />

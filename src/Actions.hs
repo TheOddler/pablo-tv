@@ -2,12 +2,13 @@
 
 module Actions where
 
-import Autodocodec (Autodocodec (..), Discriminator, HasCodec (..), HasObjectCodec (..), ObjectCodec, discriminatedUnionCodec, eitherDecodeJSONViaCodec, mapToDecoder, mapToEncoder, object, pureCodec, requiredField', (.=))
+import Autodocodec (Autodocodec (..), Discriminator, HasCodec (..), HasObjectCodec (..), ObjectCodec, discriminatedUnionCodec, eitherDecodeJSONViaCodec, mapToDecoder, mapToEncoder, object, pureCodec, requiredField', stringConstCodec, (.=))
 import Control.Monad (forever)
 import Data.ByteString.Lazy (ByteString)
 import Data.HashMap.Strict qualified as HashMap
 import Data.Int (Int32)
 import Data.List (nub)
+import Data.List.NonEmpty qualified as NE
 import Data.Scientific (Scientific, scientific)
 import Data.Text (Text)
 import Data.Void (Void)
@@ -20,7 +21,7 @@ import Yesod (FromJSON, MonadHandler, liftIO)
 import Yesod.WebSockets (WebSocketsT, receiveData)
 
 data Action
-  = ActionClickMouse
+  = ActionClickMouse MouseButton
   | ActionMoveMouse Int32 Int32 -- x,y
   | -- | Point the mouse relative to the center of the screen
     -- So (0,0) is the center of the screen
@@ -56,7 +57,7 @@ instance HasObjectCodec Action where
 
       enc :: Action -> (Discriminator, ObjectCodec a ())
       enc = \case
-        ActionClickMouse -> ("ClickMouse", noFieldEncoder)
+        ActionClickMouse btn -> ("ClickMouse", oneFieldEncoder "button" btn)
         ActionMoveMouse x y -> ("MoveMouse", twoFieldEncoder "x" x "y" y)
         ActionPointMouse lr ud -> ("PointMouse", twoFieldEncoder "leftRight" lr "upDown" ud)
         ActionWrite t -> ("Write", oneFieldEncoder "text" t)
@@ -72,7 +73,7 @@ instance HasObjectCodec Action where
       dec :: HashMap.HashMap Discriminator (Text, ObjectCodec Void Action)
       dec =
         HashMap.fromList
-          [ ("ClickMouse", ("ActionClickMouse", noFieldDecoder ActionClickMouse)),
+          [ ("ClickMouse", ("ActionClickMouse", oneFieldDecoder ActionClickMouse "button")),
             ("MoveMouse", ("ActionMoveMouse", twoFieldDecoder ActionMoveMouse "x" "y")),
             ("PointMouse", ("ActionPointMouse", twoFieldDecoder ActionPointMouse "leftRight" "upDown")),
             ("Write", ("ActionWrite", oneFieldDecoder ActionWrite "text")),
@@ -87,6 +88,17 @@ instance HasObjectCodec Action where
             ("SetFullscreen", ("ActionMPV SetFullscreen", oneFieldDecoder (ActionMPV . MPVCommandSetFullscreen) "fullscreen"))
           ]
 
+data MouseButton = MouseButtonLeft | MouseButtonRight
+  deriving (Show, Eq, Generic)
+  deriving (FromJSON) via (Autodocodec MouseButton)
+
+instance HasCodec MouseButton where
+  codec =
+    stringConstCodec $
+      (MouseButtonLeft, "left")
+        NE.:| [ (MouseButtonRight, "right")
+              ]
+
 actionsWebSocket :: (MonadHandler m) => Device -> MPV -> WebSocketsT m ()
 actionsWebSocket inputDevice mpv = forever $ do
   d <- receiveData
@@ -99,14 +111,17 @@ decodeAndPerformAction inputDevice mpv websocketData = case eitherDecodeJSONViaC
 
 performAction :: Device -> MPV -> Action -> IO ()
 performAction inputDevice mpv = \case
-  ActionClickMouse ->
-    writeBatch
-      inputDevice
-      [ KeyEvent BtnLeft Pressed,
-        SyncEvent SynReport,
-        KeyEvent BtnLeft Released
-        -- Batch automatically adds a sync at the end too
-      ]
+  ActionClickMouse btn' ->
+    let btn = case btn' of
+          MouseButtonLeft -> BtnLeft
+          MouseButtonRight -> BtnRight
+     in writeBatch
+          inputDevice
+          [ KeyEvent btn Pressed,
+            SyncEvent SynReport,
+            KeyEvent btn Released
+            -- Batch automatically adds a sync at the end too
+          ]
   ActionMoveMouse x y ->
     writeBatch
       inputDevice

@@ -1,8 +1,8 @@
 const webSocket = new ReconnectingWebSocket('@{MobileHomeR}');
 
 // Helper
-function clickMouse() {
-  sendActionWS(webSocket, { tag: "ClickMouse" });
+function clickMouse(button) {
+  sendActionWS(webSocket, { tag: "ClickMouse", button });
 }
 
 // Trackpad
@@ -17,11 +17,14 @@ const handleTouchMove = throttle((event) => {
 });
 trackpad.addEventListener("touchstart", e => previousTouch = e.touches[0]);
 trackpad.addEventListener("touchmove", handleTouchMove);
-trackpad.addEventListener("click", clickMouse);
+trackpad.addEventListener("click", () => clickMouse("left"));
 
 // Click buttons
-document.getElementById("left").addEventListener("click", clickMouse);
-document.getElementById("right").addEventListener("click", clickMouse);
+document.getElementById("left").addEventListener("touchend", () => clickMouse("left"));
+document.getElementById("left").addEventListener("mouseup", () => clickMouse("left"));
+
+document.getElementById("right").addEventListener("touchend", () => clickMouse("right"));
+document.getElementById("right").addEventListener("mouseup", () => clickMouse("right"));
 
 // Pointer
 (() => {
@@ -97,11 +100,15 @@ document.getElementById("right").addEventListener("click", clickMouse);
 
   window.addEventListener("deviceorientation", handleOrientation, true);
   const pointerButton = document.getElementById("pointer");
+
   pointerButton.addEventListener("touchstart", () => active = true);
-  pointerButton.addEventListener("touchend", () => active = false);
   pointerButton.addEventListener("mousedown", () => active = true);
+
+  pointerButton.addEventListener("touchend", () => active = false);
   pointerButton.addEventListener("mouseup", () => active = false);
-  document.getElementById("recenter").addEventListener("click", resetCenter);
+
+  document.getElementById("recenter").addEventListener("touchend", resetCenter);
+  document.getElementById("recenter").addEventListener("mouseup", resetCenter);
 })();
 
 // Keyboard
