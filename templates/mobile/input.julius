@@ -85,8 +85,6 @@ document.getElementById("right").addEventListener(clickEvent, () => clickMouse("
       upDown: event.beta, // [-180, 180]
     };
 
-    console.log(active);
-
     if (!active) return;
     if (!center) center = raw;
     if (!smoothed) smoothed = raw;
