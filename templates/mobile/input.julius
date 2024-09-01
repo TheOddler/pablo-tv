@@ -4,6 +4,16 @@ const webSocket = new ReconnectingWebSocket('@{MobileHomeR}');
 function clickMouse(button) {
   sendActionWS(webSocket, { tag: "ClickMouse", button });
 }
+function pressKey(key) {
+  sendActionWS(webSocket, { tag: "PressKeyboard", key });
+}
+function isTouchDevice() {
+  return (('ontouchstart' in window) ||
+    (navigator.maxTouchPoints > 0) ||
+    (navigator.msMaxTouchPoints > 0));
+}
+// Depending on wether we have touch or not, we pretend click events are different
+const clickEvent = isTouchDevice() ? "touchend" : "click";
 
 // Trackpad
 const trackpad = document.getElementById("trackpad");
@@ -17,14 +27,11 @@ const handleTouchMove = throttle((event) => {
 });
 trackpad.addEventListener("touchstart", e => previousTouch = e.touches[0]);
 trackpad.addEventListener("touchmove", handleTouchMove);
-trackpad.addEventListener("click", () => clickMouse("left"));
+trackpad.addEventListener("clickEvent", () => clickMouse("left"));
 
 // Click buttons
-document.getElementById("left").addEventListener("touchend", () => clickMouse("left"));
-document.getElementById("left").addEventListener("mouseup", () => clickMouse("left"));
-
-document.getElementById("right").addEventListener("touchend", () => clickMouse("right"));
-document.getElementById("right").addEventListener("mouseup", () => clickMouse("right"));
+document.getElementById("left").addEventListener(clickEvent, () => clickMouse("left"));
+document.getElementById("right").addEventListener(clickEvent, () => clickMouse("right"));
 
 // Pointer
 (() => {
@@ -102,17 +109,17 @@ document.getElementById("right").addEventListener("mouseup", () => clickMouse("r
   const pointerButton = document.getElementById("pointer");
 
   pointerButton.addEventListener("touchstart", () => active = true);
-  pointerButton.addEventListener("mousedown", () => active = true);
-
   pointerButton.addEventListener("touchend", () => active = false);
-  pointerButton.addEventListener("mouseup", () => active = false);
 
-  document.getElementById("recenter").addEventListener("touchend", resetCenter);
-  document.getElementById("recenter").addEventListener("mouseup", resetCenter);
+  document.getElementById("recenter").addEventListener(clickEvent, resetCenter);
 })();
 
 // Keyboard
-document.getElementById("keyboard").addEventListener("click", () => {
+document.getElementById("keyboard").addEventListener(clickEvent, () => {
   const text = prompt("Enter text");
   if (text !== null) sendAction({ tag: "Write", text });
 });
+
+document.getElementById("move-cursor-left").addEventListener(clickEvent, () => pressKey("left"));
+document.getElementById("move-cursor-right").addEventListener(clickEvent, () => pressKey("right"));
+document.getElementById("backspace").addEventListener(clickEvent, () => pressKey("backspace"));

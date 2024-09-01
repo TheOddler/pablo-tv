@@ -23,7 +23,8 @@
   - {name: throw, within: []} # Don't throw from pure code, use throwIO instead.
   - name: Prelude.error
     within:
-      TestUtils
+      - Util
+      - TestUtils
 
   - {name: Data.List.head, within: []} # Partial, use `listToMaybe` instead.
   - {name: Data.List.tail, within: []} # Partial
@@ -62,7 +63,7 @@
 
   - name: nub
     within: 
-      Actions # We only run it once at startup, so fine to use there.
+      - Actions # We only run it once at startup, so fine to use there.
     message: "O(n^2)"
 
   - {name: Data.Foldable.foldl, within: []} # Lazy accumulator. Use foldl' instead.
@@ -119,7 +120,7 @@
   # 44
   - name: fromIntegral
     within: 
-      SafeMaths
+      - SafeMaths
   - {name: fromInteger, within: []}
 
   - {name: 'read', within: []} # Partial, use `Text.Read.readMaybe` instead.

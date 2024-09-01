@@ -2,13 +2,12 @@
 
 module Actions where
 
-import Autodocodec (Autodocodec (..), Discriminator, HasCodec (..), HasObjectCodec (..), ObjectCodec, discriminatedUnionCodec, eitherDecodeJSONViaCodec, mapToDecoder, mapToEncoder, object, pureCodec, requiredField', stringConstCodec, (.=))
+import Autodocodec (Autodocodec (..), Discriminator, HasCodec (..), HasObjectCodec (..), ObjectCodec, discriminatedUnionCodec, eitherDecodeJSONViaCodec, mapToDecoder, mapToEncoder, object, pureCodec, requiredField', (.=))
 import Control.Monad (forever)
 import Data.ByteString.Lazy (ByteString)
 import Data.HashMap.Strict qualified as HashMap
 import Data.Int (Int32)
 import Data.List (nub)
-import Data.List.NonEmpty qualified as NE
 import Data.Scientific (Scientific, scientific)
 import Data.Text (Text)
 import Data.Void (Void)
@@ -17,11 +16,13 @@ import Evdev.Uinput
 import GHC.Generics (Generic)
 import MPV (MPV, MPVCommand (..), sendCommand)
 import SafeMaths (int32ToInteger)
+import Util (boundedEnumCodec)
 import Yesod (FromJSON, MonadHandler, liftIO)
 import Yesod.WebSockets (WebSocketsT, receiveData)
 
 data Action
   = ActionClickMouse MouseButton
+  | ActionPressKeyboard KeyboardButton
   | ActionMoveMouse Int32 Int32 -- x,y
   | -- | Point the mouse relative to the center of the screen
     -- So (0,0) is the center of the screen
@@ -58,6 +59,7 @@ instance HasObjectCodec Action where
       enc :: Action -> (Discriminator, ObjectCodec a ())
       enc = \case
         ActionClickMouse btn -> ("ClickMouse", oneFieldEncoder "button" btn)
+        ActionPressKeyboard key -> ("PressKeyboard", oneFieldEncoder "key" key)
         ActionMoveMouse x y -> ("MoveMouse", twoFieldEncoder "x" x "y" y)
         ActionPointMouse lr ud -> ("PointMouse", twoFieldEncoder "leftRight" lr "upDown" ud)
         ActionWrite t -> ("Write", oneFieldEncoder "text" t)
@@ -74,6 +76,7 @@ instance HasObjectCodec Action where
       dec =
         HashMap.fromList
           [ ("ClickMouse", ("ActionClickMouse", oneFieldDecoder ActionClickMouse "button")),
+            ("PressKeyboard", ("ActionPressKeyboard", oneFieldDecoder ActionPressKeyboard "key")),
             ("MoveMouse", ("ActionMoveMouse", twoFieldDecoder ActionMoveMouse "x" "y")),
             ("PointMouse", ("ActionPointMouse", twoFieldDecoder ActionPointMouse "leftRight" "upDown")),
             ("Write", ("ActionWrite", oneFieldDecoder ActionWrite "text")),
@@ -89,15 +92,38 @@ instance HasObjectCodec Action where
           ]
 
 data MouseButton = MouseButtonLeft | MouseButtonRight
-  deriving (Show, Eq, Generic)
+  deriving (Show, Eq, Bounded, Enum)
   deriving (FromJSON) via (Autodocodec MouseButton)
 
 instance HasCodec MouseButton where
   codec =
-    stringConstCodec $
-      (MouseButtonLeft, "left")
-        NE.:| [ (MouseButtonRight, "right")
-              ]
+    boundedEnumCodec $ \case
+      MouseButtonLeft -> "left"
+      MouseButtonRight -> "right"
+
+mouseButtonToEvdevKey :: MouseButton -> Key
+mouseButtonToEvdevKey = \case
+  MouseButtonLeft -> BtnLeft
+  MouseButtonRight -> BtnRight
+
+data KeyboardButton
+  = KeyboardBackspace
+  | KeyboardLeftArrow
+  | KeyboardRightArrow
+  deriving (Show, Eq, Bounded, Enum)
+
+instance HasCodec KeyboardButton where
+  codec =
+    boundedEnumCodec $ \case
+      KeyboardBackspace -> "backspace"
+      KeyboardLeftArrow -> "left"
+      KeyboardRightArrow -> "right"
+
+keyboardButtonToEvdevKey :: KeyboardButton -> Key
+keyboardButtonToEvdevKey = \case
+  KeyboardBackspace -> KeyBackspace
+  KeyboardLeftArrow -> KeyLeft
+  KeyboardRightArrow -> KeyRight
 
 actionsWebSocket :: (MonadHandler m) => Device -> MPV -> WebSocketsT m ()
 actionsWebSocket inputDevice mpv = forever $ do
@@ -112,15 +138,21 @@ decodeAndPerformAction inputDevice mpv websocketData = case eitherDecodeJSONViaC
 performAction :: Device -> MPV -> Action -> IO ()
 performAction inputDevice mpv = \case
   ActionClickMouse btn' ->
-    let btn = case btn' of
-          MouseButtonLeft -> BtnLeft
-          MouseButtonRight -> BtnRight
+    let btn = mouseButtonToEvdevKey btn'
      in writeBatch
           inputDevice
           [ KeyEvent btn Pressed,
             SyncEvent SynReport,
             KeyEvent btn Released
             -- Batch automatically adds a sync at the end too
+          ]
+  ActionPressKeyboard key' ->
+    let key = keyboardButtonToEvdevKey key'
+     in writeBatch
+          inputDevice
+          [ KeyEvent key Pressed,
+            SyncEvent SynReport,
+            KeyEvent key Released
           ]
   ActionMoveMouse x y ->
     writeBatch
@@ -265,16 +297,10 @@ mkInputDevice =
         keys =
           -- We only run this once, so it's fine to use nub here
           nub
-            ( [ -- Mouse buttons
-                BtnLeft,
-                BtnRight,
-                BtnMiddle,
-                -- Keyboard buttons
-                KeyEsc,
-                KeyBackspace,
-                KeyTab,
-                KeyEnter
-              ]
+            ( -- All keys supported by the mouse
+              fmap mouseButtonToEvdevKey [minBound .. maxBound]
+                -- All extra keys supported as single press keyboard keys
+                ++ fmap keyboardButtonToEvdevKey [minBound .. maxBound]
                 -- Add all keys we support in the keyboard
                 ++ concatMap charToKey [minBound .. maxBound]
             ),

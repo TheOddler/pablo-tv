@@ -2,9 +2,12 @@
   <div class="row">
     <div id="keyboard" class="button double-width">
       <i class="fa-solid fa-keyboard">
-    <div>
-    <div>
-    <div>
+    <div id="move-cursor-left" class="button">
+      <i class="fa-solid fa-chevron-left">
+    <div id="move-cursor-right" class="button">
+      <i class="fa-solid fa-chevron-right">
+    <div id="backspace" class="button">
+      <i class="fa-solid fa-delete-left">
     <div id="recenter" class="button">
       <i class="fa-solid fa-arrows-to-dot">
 

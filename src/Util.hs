@@ -1,10 +1,13 @@
 module Util where
 
+import Autodocodec (JSONCodec, stringConstCodec)
 import Control.Monad (when)
 import Data.Binary.Builder (toLazyByteString)
 import Data.ByteString.Lazy qualified as LBS
 import Data.Default (def)
 import Data.List (isPrefixOf)
+import Data.List.NonEmpty qualified as NE
+import Data.Text qualified as T
 import GHC.Conc (TVar, atomically, readTVar, readTVarIO, retry)
 import GHC.List (uncons)
 import IsDevelopment (isDevelopment)
@@ -74,3 +77,14 @@ removeLast :: [a] -> Maybe [a]
 removeLast arr = case reverse arr of
   [] -> Nothing
   _ : xs -> Just $ reverse xs
+
+boundedEnumCodec ::
+  forall enum.
+  (Eq enum, Enum enum, Bounded enum) =>
+  (enum -> T.Text) ->
+  JSONCodec enum
+boundedEnumCodec showFunc =
+  let ls = [minBound .. maxBound]
+   in case NE.nonEmpty ls of
+        Nothing -> error "0 enum values ?!"
+        Just ne -> stringConstCodec (NE.map (\v -> (v, showFunc v)) ne)
