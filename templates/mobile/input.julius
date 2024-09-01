@@ -39,7 +39,7 @@ const handleTouchMove = throttle((event) => {
 });
 trackpad.addEventListener("touchstart", e => previousTouches = e.touches);
 trackpad.addEventListener("touchmove", handleTouchMove);
-trackpad.addEventListener("clickEvent", () => clickMouse("left"));
+trackpad.addEventListener(clickEvent, () => clickMouse("left"));
 
 // Click buttons
 document.getElementById("left").addEventListener(clickEvent, () => clickMouse("left"));
