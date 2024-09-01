@@ -17,6 +17,12 @@ instance Arbitrary Action where
 instance Arbitrary MPVCommand where
   arbitrary = genericArbitrary uniform
 
+instance Arbitrary MouseButton where
+  arbitrary = genericArbitrary uniform
+
+instance Arbitrary KeyboardButton where
+  arbitrary = genericArbitrary uniform
+
 spec :: Spec
 spec = do
   describe "Decoding from json" $ do
@@ -33,8 +39,8 @@ decodeSpec (json, action) =
 
 decodeExamples :: [(BS.ByteString, Action)]
 decodeExamples =
-  [ ( "{\"tag\":\"ClickMouse\"}",
-      ActionClickMouse
+  [ ( "{\"tag\":\"ClickMouse\", \"button\": \"left\"}",
+      ActionClickMouse MouseButtonLeft
     ),
     ( "{\"tag\":\"MoveMouse\",\"x\":1,\"y\":2}",
       ActionMoveMouse 1 2

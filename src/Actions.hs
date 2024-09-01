@@ -92,7 +92,7 @@ instance HasObjectCodec Action where
           ]
 
 data MouseButton = MouseButtonLeft | MouseButtonRight
-  deriving (Show, Eq, Bounded, Enum)
+  deriving (Show, Eq, Bounded, Enum, Generic)
   deriving (FromJSON) via (Autodocodec MouseButton)
 
 instance HasCodec MouseButton where
@@ -110,7 +110,7 @@ data KeyboardButton
   = KeyboardBackspace
   | KeyboardLeftArrow
   | KeyboardRightArrow
-  deriving (Show, Eq, Bounded, Enum)
+  deriving (Show, Eq, Bounded, Enum, Generic)
 
 instance HasCodec KeyboardButton where
   codec =
