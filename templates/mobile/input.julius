@@ -121,7 +121,7 @@ document.getElementById("right").addEventListener(clickEvent, () => clickMouse("
   pointerButton.addEventListener("touchstart", () => active = true);
   pointerButton.addEventListener("touchend", () => active = false);
 
-  document.getElementById("recenter").addEventListener(clickEvent, resetCenter);
+  document.getElementById("recenter").addEventListener("click", resetCenter);
 })();
 
 // Keyboard
