@@ -1,3 +1,7 @@
+body {
+  touch-action: none;
+}
+
 #trackpad {
   border-radius: 2vw;
   box-sizing: border-box;

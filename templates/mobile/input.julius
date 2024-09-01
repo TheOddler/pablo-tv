@@ -17,15 +17,27 @@ const clickEvent = isTouchDevice() ? "touchend" : "click";
 
 // Trackpad
 const trackpad = document.getElementById("trackpad");
-let previousTouch;
+let previousTouches;
 const handleTouchMove = throttle((event) => {
-  const touch = event.touches[0];
-  const x = touch.pageX - previousTouch.pageX;
-  const y = touch.pageY - previousTouch.pageY;
-  sendActionWS(webSocket, { tag: "MoveMouse", x, y });
-  previousTouch = touch;
+  if (event.touches.length == 1 && previousTouches?.length == 1) {
+    // Move mouse
+    const touch = event.touches[0];
+    const previousTouch = previousTouches[0];
+    const x = touch.pageX - previousTouch.pageX;
+    const y = touch.pageY - previousTouch.pageY;
+    sendActionWS(webSocket, { tag: "MoveMouse", x, y });
+  }
+  else if (event.touches.length == 2 && previousTouches?.length == 2) {
+    // Simulate scrolling
+    const startY = (event.touches[0].pageY + event.touches[1].pageY) / 2;
+    const previousStartY = (previousTouches[0].pageY + previousTouches[1].pageY) / 2;
+    const scrollY = Math.round((previousStartY - startY) / 10);
+    sendActionWS(webSocket, { tag: "MouseScroll", amount: scrollY });
+  }
+
+  previousTouches = event.touches;
 });
-trackpad.addEventListener("touchstart", e => previousTouch = e.touches[0]);
+trackpad.addEventListener("touchstart", e => previousTouches = e.touches);
 trackpad.addEventListener("touchmove", handleTouchMove);
 trackpad.addEventListener("clickEvent", () => clickMouse("left"));
 

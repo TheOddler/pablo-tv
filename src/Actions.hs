@@ -32,6 +32,7 @@ data Action
     -- Does that make sense?
     -- It's meant to be used with the mouse pointer tool
     ActionPointMouse Scientific Scientific -- leftRight, upDown
+  | ActionMouseScroll Int32
   | ActionWrite String
   | ActionMPV MPVCommand
   deriving (Show, Eq, Generic)
@@ -62,6 +63,7 @@ instance HasObjectCodec Action where
         ActionPressKeyboard key -> ("PressKeyboard", oneFieldEncoder "key" key)
         ActionMoveMouse x y -> ("MoveMouse", twoFieldEncoder "x" x "y" y)
         ActionPointMouse lr ud -> ("PointMouse", twoFieldEncoder "leftRight" lr "upDown" ud)
+        ActionMouseScroll amount -> ("MouseScroll", oneFieldEncoder "amount" amount)
         ActionWrite t -> ("Write", oneFieldEncoder "text" t)
         ActionMPV MPVCommandTogglePlay -> ("TogglePlay", noFieldEncoder)
         ActionMPV (MPVCommandChangeVolume change) -> ("ChangeVolume", oneFieldEncoder "change" change)
@@ -79,6 +81,7 @@ instance HasObjectCodec Action where
             ("PressKeyboard", ("ActionPressKeyboard", oneFieldDecoder ActionPressKeyboard "key")),
             ("MoveMouse", ("ActionMoveMouse", twoFieldDecoder ActionMoveMouse "x" "y")),
             ("PointMouse", ("ActionPointMouse", twoFieldDecoder ActionPointMouse "leftRight" "upDown")),
+            ("MouseScroll", ("ActionMouseScroll", oneFieldDecoder ActionMouseScroll "amount")),
             ("Write", ("ActionWrite", oneFieldDecoder ActionWrite "text")),
             ("TogglePlay", ("ActionMPV TogglePlay", noFieldDecoder (ActionMPV MPVCommandTogglePlay))),
             ("ChangeVolume", ("ActionMPV ChangeVolume", oneFieldDecoder (ActionMPV . MPVCommandChangeVolume) "change")),
@@ -172,6 +175,11 @@ performAction inputDevice mpv = \case
       inputDevice
       [ AbsoluteEvent AbsX $ EventValue pointerX,
         AbsoluteEvent AbsY $ EventValue pointerY
+      ]
+  ActionMouseScroll amount ->
+    writeBatch
+      inputDevice
+      [ RelativeEvent RelWheel $ EventValue amount
       ]
   ActionWrite text -> do
     let clickKeyCombo keys =
@@ -304,7 +312,7 @@ mkInputDevice =
                 -- Add all keys we support in the keyboard
                 ++ concatMap charToKey [minBound .. maxBound]
             ),
-        relAxes = [RelX, RelY],
+        relAxes = [RelX, RelY, RelWheel],
         absAxes =
           let absInfo max' =
                 AbsInfo
