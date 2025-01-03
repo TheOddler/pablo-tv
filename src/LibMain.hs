@@ -19,7 +19,7 @@ import Data.String (fromString)
 import Data.Text (Text, intercalate, unpack)
 import Data.Text qualified as T
 import Data.Text.Lazy.Builder (fromText)
-import Directory (DirectoryInfo (..), DirectoryKind (..), parseDirectory)
+import Directory (DirectoryInfo (..), DirectoryKind (..), parseDirectory, readFilesAndDirs)
 import Evdev.Uinput (Device)
 import GHC.Conc (TVar, atomically, newTVarIO, writeTVar)
 import GHC.Data.Maybe (firstJustsM, listToMaybe, orElse)
@@ -186,8 +186,17 @@ getDirectoryR segments = do
     parseSegments segments >>= \case
       Just (p, Nothing) -> pure p
       _ -> redirect $ maybe MobileHomeR DirectoryR $ removeLast segments
-  tvdbToken <- getsYesod appTVDBToken
-  (mInfo, filesWithNames, dirsWithNames) <- liftIO $ parseDirectory tvdbToken absPath
+  (mInfo, filesWithNames, dirsWithNames) <-
+    case segments of
+      -- If we are at the root, don't try to parse any folder info,
+      -- just list the files and directories, as this is the main video
+      -- directory, which we don't want to pollute with an info file.
+      [] -> do
+        (f, d) <- liftIO $ readFilesAndDirs absPath
+        pure (Nothing, f, d)
+      _ -> do
+        tvdbToken <- getsYesod appTVDBToken
+        liftIO $ parseDirectory tvdbToken absPath
 
   -- Let the tv know what page we're on
   tvStateTVar <- getsYesod appTVState

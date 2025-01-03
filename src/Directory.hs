@@ -3,6 +3,7 @@
 module Directory
   ( DirectoryInfo (..),
     DirectoryKind (..),
+    readFilesAndDirs,
     parseDirectory,
     niceFileNameT,
     -- Exports for testing
@@ -104,19 +105,31 @@ instance HasCodec DirectoryKind where
         NE.:| [ (DirectoryKindSeries, "series")
               ]
 
--- | The main function, gives a directory, tries to see if there's existing info,
--- and if not tries to guess it and saves it.
-parseDirectory :: BS.ByteString -> Path Abs Dir -> IO (Maybe DirectoryInfo, [(Text, Path Rel File)], [(Text, Path Rel Dir)])
-parseDirectory tvdbToken dir = do
-  -- Read files and directories
+type NamedFile a = (Text, Path a File)
+
+type NamedDir a = (Text, Path a Dir)
+
+readFilesAndDirs :: Path Abs Dir -> IO ([NamedFile Rel], [NamedDir Rel])
+readFilesAndDirs dir = do
   (dirNames, fileNames) <- listDirRel dir
   let files = smartPathSort $ filter isVideoFile fileNames
   let directories = smartPathSort dirNames
 
   let filesWithNames = map (\f -> (niceFileNameT f, f)) files
       directoriesWithNames = map (\d -> (niceDirNameT d, d)) directories
-      -- Guess some info in case there's no info file
-      mInfoGuess = guessDirectoryInfo dir files directories
+  pure (filesWithNames, directoriesWithNames)
+
+-- | The main function, given a directory, checks if there's existing info
+-- and if not tries to guess it and save it.
+parseDirectory :: BS.ByteString -> Path Abs Dir -> IO (Maybe DirectoryInfo, [NamedFile Rel], [NamedDir Rel])
+parseDirectory tvdbToken dir = do
+  (filesWithNames, directoriesWithNames) <- readFilesAndDirs dir
+  let -- Guess some info in case there's no info file
+      mInfoGuess =
+        guessDirectoryInfo
+          dir
+          (snd <$> filesWithNames)
+          (snd <$> directoriesWithNames)
 
   -- See if there's an info file
   mInfoFilePath <- tryGetFile (== $(mkRelFile "info.yaml")) dir
