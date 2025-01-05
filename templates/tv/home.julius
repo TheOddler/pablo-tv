@@ -102,7 +102,7 @@ listenToSocket((event) => {
         // block is vertical scrolling, center it when moving vertically.
         // Otherwise scroll as little as possible (possibly not at all)
         block:
-          direction == 'ArrpwUp' || direction == 'ArrowDown' ?
+          direction == 'ArrowUp' || direction == 'ArrowDown' ?
             "center" :
             "nearest",
         // inline is horizontal scrolling, handled similarly as vertical
