@@ -60,7 +60,6 @@ mkEmbeddedStatic
   False
   "embeddedStatic"
   [ embedFile "static/reconnecting-websocket.js",
-    embedFile "static/arrow-navigation.js",
     embedFile "static/fontawesome/css/all.min.css",
     embedFile "static/fontawesome/webfonts/fa-brands-400.ttf",
     embedFile "static/fontawesome/webfonts/fa-brands-400.woff2",
@@ -103,7 +102,6 @@ instance Yesod App where
     pc <- widgetToPageContent $ do
       when isDevelopment $ addScriptRemote "https://pabloproductions.be/LiveJS/live.js"
       addScript $ StaticR static_reconnecting_websocket_js
-      addScript $ StaticR static_arrow_navigation_js
       addStylesheet $ StaticR static_fontawesome_css_all_min_css
       $(widgetFile "shared-default")
     withUrlRenderer $
