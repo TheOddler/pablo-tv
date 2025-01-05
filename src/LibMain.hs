@@ -12,7 +12,7 @@ import Actions (Action, actionsWebSocket, mkInputDevice, performAction)
 import Control.Monad (filterM, when)
 import Data.ByteString.Char8 qualified as BS
 import Data.Char (toLower)
-import Data.List (foldl')
+import Data.List (foldl', sort)
 import Data.List.Extra (replace)
 import Data.Maybe (fromMaybe, isJust)
 import Data.String (fromString)
@@ -146,6 +146,12 @@ getKeyboardR :: Handler Html
 getKeyboardR =
   mobileLayout "Keyboard" $(widgetFile "mobile/keyboard")
 
+getVideoDir :: Handler (Path Abs Dir)
+getVideoDir = do
+  home <- liftIO getHomeDir
+  let videoDirName = $(mkRelDir "Videos")
+  pure $ home </> videoDirName
+
 -- | Turn the segments into a directory path and optionally a filename
 -- Also checks if the file/directory actually exists, if not, return Nothing
 parseSegments :: [Text] -> Handler (Maybe (Path Abs Dir, Maybe (Path Rel File)))
@@ -272,8 +278,21 @@ getTVHomeR = do
 
   networkInterfaces <- networkInterfacesShortList <$> liftIO getNetworkInterfaces
   port <- getsYesod appPort
+
+  videoDir <- getVideoDir
+  (filesWithNames, dirsWithNames) <- liftIO $ readFilesAndDirs videoDir
+  let namedLinks =
+        sort $
+          [ (name, [T.pack $ dropTrailingPathSeparator $ toFilePath path])
+            | (name, path) <- dirsWithNames
+          ]
+            ++ [ (name, [T.pack $ dropTrailingPathSeparator $ toFilePath path])
+                 | (name, path) <- filesWithNames
+               ]
+
   let countTo :: Int -> [Int]
       countTo x = [1 .. x]
+
   tvLayout "TV" $(widgetFile "tv/home")
   where
     ipV4OrV6WithPort port i =

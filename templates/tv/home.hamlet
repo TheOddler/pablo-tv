@@ -9,12 +9,14 @@ $forall networkInterface <- networkInterfaces
 <div id="debug">
 
 <div class="container">
+  <h1>Alphabetically
   <div class="row">
-    $forall idx <- countTo 10
-      <button class="el" onclick="console.log('Button #{idx} on row 1 was clicked!')">
+    $forall (name, segments) <- namedLinks
+      <a class="el" href=@{DirectoryR segments}>
+        <img src=@{ImageR segments} alt="#{name}">
   <div class="row">
-    $forall idx <- countTo 3
-      <button class="el" onclick="console.log('Button #{idx} on row 1 was clicked!')">
+    $forall _idx <- countTo 3
+      <a class="el" href=@{AllIPsR}>
   <div class="row">
-    $forall idx <- countTo 12
-      <button class="el" onclick="console.log('Button #{idx} on row 1 was clicked!')">
+    $forall _idx <- countTo 12
+      <a class="el" href=@{AllIPsR}>
