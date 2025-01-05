@@ -272,6 +272,8 @@ getTVHomeR = do
 
   networkInterfaces <- networkInterfacesShortList <$> liftIO getNetworkInterfaces
   port <- getsYesod appPort
+  let countTo :: Int -> [Int]
+      countTo x = [1 .. x]
   tvLayout "TV" $(widgetFile "tv/home")
   where
     ipV4OrV6WithPort port i =

@@ -1,0 +1,30 @@
+@gap: 15pt;
+
+.container {
+  display: flex;
+  flex-direction: column;
+  gap: #{gap};
+}
+
+.row {
+  display: flex;
+  flex-direction: row;
+  gap: #{gap};
+  overflow-x: scroll;
+}
+
+.el {
+  flex-shrink: 0;
+  width: 20vw;
+  height: 35.55vw;
+  background-color: olive;
+
+  nav-up: auto;
+  nav-down: auto;
+  nav-right: auto;
+  nav-left: auto;
+
+  &:focus {
+    background-color: red;
+  }
+}
