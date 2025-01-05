@@ -19,11 +19,6 @@
   height: 35.55vw;
   background-color: olive;
 
-  nav-up: auto;
-  nav-down: auto;
-  nav-right: auto;
-  nav-left: auto;
-
   &:focus {
     background-color: red;
   }
