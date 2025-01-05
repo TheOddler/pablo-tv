@@ -11,10 +11,10 @@ $forall networkInterface <- networkInterfaces
 <div class="container">
   <div class="row">
     $forall _idx <- countTo 10
-      <div class="el selectable" tabindex="0">
+      <div class="el" tabindex="0">
   <div class="row">
     $forall _idx <- countTo 3
-      <div class="el selectable" tabindex="0">
+      <div class="el" tabindex="0">
   <div class="row">
     $forall _idx <- countTo 12
-      <div class="el selectable" tabindex="0">
+      <div class="el" tabindex="0">

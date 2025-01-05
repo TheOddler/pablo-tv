@@ -63,15 +63,21 @@ listenToSocket((event) => {
     }
   };
 
+  const getFocusableElements = () => {
+    return Array.from(document.querySelectorAll(
+      'a[href], area[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled]), iframe, object, embed, [tabindex], [contenteditable], audio[controls], video[controls], summary'
+    )).filter(el => !el.hasAttribute('tabindex') || el.tabIndex >= 0);
+  };
+
   /**
    * @param {Direction} direction
   */
   const moveFocus = (direction) => {
     const currentElement = document.activeElement;
-    const selectables = document.querySelectorAll(".selectable");
-    if (selectables.length === 0) return;
+    const focusableElements = getFocusableElements();
+    if (focusableElements.length === 0) return;
     if (!currentElement) {
-      selectables[0].focus();
+      focusableElements[0].focus();
       return;
     }
 
@@ -82,7 +88,7 @@ listenToSocket((event) => {
     let targetElement = null;
     let minDistance = Infinity;
 
-    selectables.forEach((element) => {
+    focusableElements.forEach((element) => {
       if (element === currentElement) return;
 
       const point = getMiddle(element);
