@@ -26,7 +26,6 @@
   height: #{elHeight};
   background-color: olive;
   position: relative;
-  transition: all 0.5s;
 
   img {
     width: #{elWidth};
