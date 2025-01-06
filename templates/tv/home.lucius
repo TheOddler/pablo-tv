@@ -14,6 +14,9 @@
   flex-direction: row;
   gap: #{gap};
   overflow-x: scroll;
+  /* Add padding that is just the right size needed to accomodate a scaled
+    element, so that it'll never to clipped as we're in a scroll element here.
+  */
   padding: calc((#{elFocusScale} - 1) / 2 * #{elHeight}) calc((#{elFocusScale} - 1) / 2 * #{elWidth});
 }
 
