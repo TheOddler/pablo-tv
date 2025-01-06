@@ -89,8 +89,19 @@
       if (element === currentElement) return;
 
       const point = getMiddle(element);
+
+      // Only consider elements that are in the direction of the arrow key
       if (angleDiff(angle(curPos, point), wantedAngle) > Math.PI / 4) return;
 
+      // Ignore elements too far off screen (a little off-screen we allow)
+      const allowedOffScreen = 0.3;
+      if (point.x < -window.innerWidth * allowedOffScreen
+        || point.x > window.innerWidth * (1 + allowedOffScreen)
+        || point.y < -window.innerHeight * allowedOffScreen
+        || point.y > window.innerHeight * (1 + allowedOffScreen)
+      ) return;
+
+      // Remember closest element
       const dist = distance(curPos, point);
       if (dist < minDistance) {
         minDistance = dist;
