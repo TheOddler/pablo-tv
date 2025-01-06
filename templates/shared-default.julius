@@ -113,17 +113,8 @@
       targetElement.focus();
       targetElement.scrollIntoView({
         behavior: "smooth",
-        // block is vertical scrolling, center it when moving vertically.
-        // Otherwise scroll as little as possible (possibly not at all)
-        block:
-          direction == 'ArrowUp' || direction == 'ArrowDown' ?
-            "center" :
-            "nearest",
-        // inline is horizontal scrolling, handled similarly as vertical
-        inline:
-          direction == 'ArrowLeft' || direction == 'ArrowRight' ?
-            "center" :
-            "nearest",
+        block: "center",
+        inline: "center",
       });
     }
   };
