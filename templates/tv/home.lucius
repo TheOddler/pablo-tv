@@ -1,6 +1,7 @@
 @gap: 15pt;
 @elWidth: 20vw;
-@elHeightCalc: 20vw * 1000 / 680;
+/* 29.41 = 20 * 1000 / 680, the dimentions of the images */
+@elHeight: 29.411vw;
 @elFocusScale: 1.2;
 
 .container {
@@ -13,19 +14,20 @@
   flex-direction: row;
   gap: #{gap};
   overflow-x: scroll;
-  padding: calc((#{elFocusScale} - 1) / 2 * #{elHeightCalc}) #{gap};
+  padding: calc((#{elFocusScale} - 1) / 2 * #{elHeight}) calc((#{elFocusScale} - 1) / 2 * #{elWidth});
 }
 
 .el {
   flex-shrink: 0;
   width: #{elWidth};
-  height: calc(#{elHeightCalc});
+  height: #{elHeight};
   background-color: olive;
   position: relative;
+  transition: all 0.5s;
 
   img {
     width: #{elWidth};
-    height: calc(#{elHeightCalc});
+    height: #{elHeight};
     object-fit: cover;
   }
 
