@@ -24,13 +24,23 @@
   flex-shrink: 0;
   width: #{elWidth};
   height: #{elHeight};
-  background-color: olive;
+  background-color: midnightblue;
   position: relative;
+
+  /* This removed the line under the alt-text. The rest of the styling is later */
+  text-decoration: none;
 
   img {
     width: #{elWidth};
     height: #{elHeight};
     object-fit: cover;
+
+    /* Styles for the alt text */
+    display: flex;
+    justify-content: space-evenly;
+    align-items: center;
+    text-align: center;
+    font-size: xx-large;
   }
 
   &:focus {

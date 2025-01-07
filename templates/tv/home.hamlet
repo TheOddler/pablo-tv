@@ -13,10 +13,10 @@ $forall networkInterface <- networkInterfaces
   <div class="row">
     $forall (name, segments) <- namedLinks
       <a class="el" href=@{DirectoryR segments}>
-        <img src=@{ImageR segments} alt="#{name}">
+        <img src=@{ImageR segments} alt="#{name}" loading="lazy">
   <div class="row">
     $forall _idx <- countTo 3
-      <a class="el" href=@{AllIPsR}>
+      <a class="el" href=@{AllIPsR} loading="lazy">
   <div class="row">
     $forall _idx <- countTo 12
-      <a class="el" href=@{AllIPsR}>
+      <a class="el" href=@{AllIPsR} loading="lazy">
