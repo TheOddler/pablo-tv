@@ -19,7 +19,17 @@ import Data.String (fromString)
 import Data.Text (Text, intercalate, unpack)
 import Data.Text qualified as T
 import Data.Text.Lazy.Builder (fromText)
-import Directory (DirectoryInfo (..), DirectoryKind (..), parseDirectory, readFilesAndDirs)
+import Directory
+  ( DirectoryInfo (..),
+    DirectoryKind (..),
+    DirectoryRaw (..),
+    getVideoDir,
+    niceDirNameT,
+    niceFileNameT,
+    parseVideoDir,
+    readDirInfo,
+    readDirRaw,
+  )
 import Evdev.Uinput (Device)
 import GHC.Conc (TVar, atomically, newTVarIO, writeTVar)
 import GHC.Data.Maybe (firstJustsM, listToMaybe, orElse)
@@ -146,12 +156,6 @@ getKeyboardR :: Handler Html
 getKeyboardR =
   mobileLayout "Keyboard" $(widgetFile "mobile/keyboard")
 
-getVideoDir :: Handler (Path Abs Dir)
-getVideoDir = do
-  home <- liftIO getHomeDir
-  let videoDirName = $(mkRelDir "Videos")
-  pure $ home </> videoDirName
-
 -- | Turn the segments into a directory path and optionally a filename
 -- Also checks if the file/directory actually exists, if not, return Nothing
 parseSegments :: [Text] -> Handler (Maybe (Path Abs Dir, Maybe (Path Rel File)))
@@ -192,17 +196,12 @@ getDirectoryR segments = do
     parseSegments segments >>= \case
       Just (p, Nothing) -> pure p
       _ -> redirect $ maybe MobileHomeR DirectoryR $ removeLast segments
-  (mInfo, filesWithNames, dirsWithNames) <-
-    case segments of
-      -- If we are at the root, don't try to parse any folder info,
-      -- just list the files and directories, as this is the main video
-      -- directory, which we don't want to pollute with an info file.
-      [] -> do
-        (f, d) <- liftIO $ readFilesAndDirs absPath
-        pure (Nothing, f, d)
-      _ -> do
-        tvdbToken <- getsYesod appTVDBToken
-        liftIO $ parseDirectory tvdbToken absPath
+
+  mPathAndInfo <- liftIO $ readDirInfo absPath
+  let mInfo = snd <$> mPathAndInfo
+  dirRaw <- liftIO $ readDirRaw absPath
+  let filesWithNames = map (\f -> (niceFileNameT f, f)) dirRaw.directoryVideoFiles
+      dirsWithNames = map (\d -> (niceDirNameT d, d)) dirRaw.directoryDirectories
 
   -- Let the tv know what page we're on
   tvStateTVar <- getsYesod appTVState
@@ -279,8 +278,11 @@ getTVHomeR = do
   networkInterfaces <- networkInterfacesShortList <$> liftIO getNetworkInterfaces
   port <- getsYesod appPort
 
-  videoDir <- getVideoDir
-  (filesWithNames, dirsWithNames) <- liftIO $ readFilesAndDirs videoDir
+  videoDir <- liftIO getVideoDir
+  dirRaw <- liftIO $ readDirRaw videoDir
+  let filesWithNames = map (\f -> (niceFileNameT f, f)) dirRaw.directoryVideoFiles
+      dirsWithNames = map (\d -> (niceDirNameT d, d)) dirRaw.directoryDirectories
+
   let namedLinks =
         sort $
           [ (name, [T.pack $ dropTrailingPathSeparator $ toFilePath path])
@@ -318,7 +320,7 @@ getAllIPsR = do
 main :: IO ()
 main = do
   -- To get this token for now you can use your apiKey here https://thetvdb.github.io/v4-api/#/Login/post_login
-  tvdbToken <- getEnv "TVDB_TOKEN"
+  tvdbToken <- BS.pack <$> getEnv "TVDB_TOKEN"
 
   inputDevice <- mkInputDevice
   tvState <- newTVarIO $ TVState MobileHomeR
@@ -334,12 +336,16 @@ main = do
   when (not isDevelopment) $ do
     callProcess "xdg-open" [url]
 
+  -- Parse the info files at startup
+  -- TODO: Add some way to do this async and allow it to refresh while running
+  _ <- parseVideoDir tvdbToken
+
   withMPV $ \mpv -> do
     app <-
       toWaiAppPlain
         App
           { appPort = port,
-            appTVDBToken = BS.pack tvdbToken,
+            appTVDBToken = tvdbToken,
             appInputDevice = inputDevice,
             appTVState = tvState,
             appMPV = mpv,
