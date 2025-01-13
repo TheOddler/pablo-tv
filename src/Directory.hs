@@ -65,9 +65,9 @@ instance HasCodec DirectoryInfo where
         <*> requiredField "kind" "Is this a series or a movie?" .= directoryInfoKind
         <*> optionalField' "year" "The year this series or movie was released" .= directoryInfoYear
         <*> optionalField' "description" "The description of the series or movie" .= directoryInfoDescription
-        <*> optionalField' "imdb" "The IMDB ID" .= directoryInfoImdb
-        <*> optionalField' "tvdb" "The TVDB ID" .= directoryInfoTvdb
-        <*> optionalField' "tmdb" "The TMDB ID" .= directoryInfoTmdb
+        <*> optionalField "imdb" "The IMDB ID" .= directoryInfoImdb
+        <*> optionalField "tvdb" "The TVDB ID" .= directoryInfoTvdb
+        <*> optionalField "tmdb" "The TMDB ID" .= directoryInfoTmdb
         <*> optionalField "force-update" "This forces the system to try and download more information again. This can be used for when some of the data was wrong, you can remove the incorrect data, fill in what you know, set this flag to true, and it'll use the info you gave it to search for the rest." .= directoryInfoForceUpdate
     where
       -- We use this instead of `optionalFieldOrNull` because this also writes a `null` when the field is `Nothing`
@@ -87,13 +87,6 @@ instance HasCodec DirectoryKind where
         NE.:| [ (DirectoryKindSeries, "series")
               ]
 
-data DirectoryRaw = DirectoryRaw
-  { directoryPath :: Path Abs Dir,
-    directoryVideoFiles :: [Path Rel File],
-    directoryDirectories :: [Path Rel Dir]
-  }
-  deriving (Generic, Show, Eq)
-
 getVideoDirPath :: IO (Path Abs Dir)
 getVideoDirPath = do
   home <- getHomeDir
@@ -101,42 +94,47 @@ getVideoDirPath = do
   pure $ home </> videoDirName
 
 videoDataThread :: BS.ByteString -> MVar () -> TVar [DirectoryInfo] -> IO ()
-videoDataThread tvdbToken refreshTrigger dirData = do
-  loop
+videoDataThread tvdbToken refreshTrigger dirData = loop
   where
-    refreshVideoData :: IO ()
-    refreshVideoData = do
-      videoDirPath <- getVideoDirPath
-      dirRaw <- readDirRaw videoDirPath
-      let subDirsAbs = (videoDirPath </>) <$> dirRaw.directoryDirectories
-      infos <- forM subDirsAbs $ \subDir -> do
-        mInfo <- readDirInfo subDir
-        case mInfo of
-          Just (infoPath, info)
-            | info.directoryInfoForceUpdate == Just True -> do
-                (extendedInfo, mImage) <- downloadDirInfo tvdbToken info
-                writeDirInfo infoPath extendedInfo
-                case mImage of
-                  Just (contentType, imgBytes) -> writeImage subDir contentType imgBytes
-                  Nothing -> pure ()
-                pure info
-          Nothing -> do
-            subDirRaw <- readDirRaw subDir
-            let guessedInfo = guessDirectoryInfo subDirRaw
-            (newDirInfo, mImage) <- downloadDirInfo tvdbToken guessedInfo
-            writeDirInfo (mkDirInfoFilePath subDir) newDirInfo
-            case mImage of
-              Just (contentType, imgBytes) -> writeImage subDir contentType imgBytes
-              Nothing -> pure ()
-            pure newDirInfo
-          Just (_path, info) -> pure info
-      atomically $ writeTVar dirData $ sort infos
-
     loop :: IO ()
     loop = do
       takeMVar refreshTrigger
-      refreshVideoData
+      infos <- refreshVideoData tvdbToken
+      atomically $ writeTVar dirData $ sort infos
       loop
+
+refreshVideoData :: BS.ByteString -> IO [DirectoryInfo]
+refreshVideoData tvdbToken = do
+  videoDirPath <- getVideoDirPath
+  dirRaw <- readDirRaw videoDirPath
+  let subDirsAbs = (videoDirPath </>) <$> dirRaw.directoryDirectories
+  forM subDirsAbs $ \subDir -> do
+    mInfo <- readDirInfo subDir
+    case mInfo of
+      Just (infoPath, info) | info.directoryInfoForceUpdate == Just True -> do
+        (extendedInfo, mImage) <- downloadDirInfo tvdbToken info
+        writeDirInfo infoPath extendedInfo
+        case mImage of
+          Just (contentType, imgBytes) -> writeImage subDir contentType imgBytes
+          Nothing -> pure ()
+        pure info
+      Just (_path, info) -> pure info
+      Nothing -> do
+        subDirRaw <- readDirRaw subDir
+        let guessedInfo = guessDirectoryInfo subDirRaw
+        (newDirInfo, mImage) <- downloadDirInfo tvdbToken guessedInfo
+        writeDirInfo (mkDirInfoFilePath subDir) newDirInfo
+        case mImage of
+          Just (contentType, imgBytes) -> writeImage subDir contentType imgBytes
+          Nothing -> pure ()
+        pure newDirInfo
+
+data DirectoryRaw = DirectoryRaw
+  { directoryPath :: Path Abs Dir,
+    directoryVideoFiles :: [Path Rel File],
+    directoryDirectories :: [Path Rel Dir]
+  }
+  deriving (Generic, Show, Eq)
 
 -- | This reads a directory and returns the video files and directories in it.
 -- Also sorts these lists in a natural way (putting 2 before 10, for example).
@@ -241,20 +239,20 @@ writeImage rootDir contentType imgBytes =
       path = rootDir </> name
    in BS.writeFile (fromAbsFile path) imgBytes
 
+guessDirectoryKind :: DirectoryRaw -> DirectoryKind
+guessDirectoryKind dirRaw =
+  let isSeriesDir = any (isJust . seasonFromDir) dirRaw.directoryDirectories
+      mSeasonFromFiles = seasonFromFiles dirRaw.directoryVideoFiles
+   in if isSeriesDir || isJust mSeasonFromFiles
+        then DirectoryKindSeries
+        else DirectoryKindMovie
+
 -- | This tries to guess some information based on the directory and file names.
 guessDirectoryInfo :: DirectoryRaw -> DirectoryInfo
 guessDirectoryInfo dirRaw =
   let dir = dirRaw.directoryPath
       videoFiles = dirRaw.directoryVideoFiles
-      directories = dirRaw.directoryDirectories
-
-      isSeriesDir = any (isJust . seasonFromDir) directories
-      mSeasonFromFiles = seasonFromFiles videoFiles
-
-      kind =
-        if isSeriesDir || isJust mSeasonFromFiles
-          then DirectoryKindSeries
-          else DirectoryKindMovie
+      kind = guessDirectoryKind dirRaw
    in DirectoryInfo
         { directoryInfoKind = kind,
           directoryInfoTitle = titleFromDir dir,
