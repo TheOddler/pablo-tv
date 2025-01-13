@@ -23,16 +23,17 @@ import Directory
   ( DirectoryInfo (..),
     DirectoryKind (..),
     DirectoryRaw (..),
-    getVideoDir,
+    getVideoDirPath,
     niceDirNameT,
     niceFileNameT,
-    parseVideoDir,
     readDirInfo,
     readDirRaw,
+    videoDataThread,
   )
 import Evdev.Uinput (Device)
 import GHC.Conc (TVar, atomically, newTVarIO, writeTVar)
 import GHC.Data.Maybe (firstJustsM, listToMaybe, orElse)
+import GHC.MVar (MVar, newMVar)
 import IsDevelopment (isDevelopment)
 import MPV (MPV, withMPV)
 import Network.Info (IPv4 (..), NetworkInterface (..), getNetworkInterfaces)
@@ -48,7 +49,7 @@ import Util (networkInterfacesShortList, onChanges, removeLast, toUrl, unsnoc, w
 import Yesod hiding (defaultLayout, replace)
 import Yesod qualified
 import Yesod.EmbeddedStatic
-import Yesod.WebSockets (sendTextData, webSockets)
+import Yesod.WebSockets (race_, sendTextData, webSockets)
 
 data App = App
   { appPort :: Int,
@@ -56,7 +57,9 @@ data App = App
     appInputDevice :: Device,
     appTVState :: TVar TVState,
     appMPV :: MPV,
-    appGetStatic :: EmbeddedStatic
+    appGetStatic :: EmbeddedStatic,
+    appVideoData :: TVar [DirectoryInfo],
+    appVideoDataRefreshTrigger :: MVar ()
   }
 
 newtype TVState = TVState
@@ -278,7 +281,7 @@ getTVHomeR = do
   networkInterfaces <- networkInterfacesShortList <$> liftIO getNetworkInterfaces
   port <- getsYesod appPort
 
-  videoDir <- liftIO getVideoDir
+  videoDir <- liftIO getVideoDirPath
   dirRaw <- liftIO $ readDirRaw videoDir
   let filesWithNames = map (\f -> (niceFileNameT f, f)) dirRaw.directoryVideoFiles
       dirsWithNames = map (\d -> (niceDirNameT d, d)) dirRaw.directoryDirectories
@@ -324,6 +327,8 @@ main = do
 
   inputDevice <- mkInputDevice
   tvState <- newTVarIO $ TVState MobileHomeR
+  videoData <- newTVarIO []
+  videoDataRefreshTrigger <- newMVar ()
 
   let port = 8080
   let (path, _params) = renderRoute TVHomeR
@@ -336,21 +341,20 @@ main = do
   when (not isDevelopment) $ do
     callProcess "xdg-open" [url]
 
-  -- Parse the info files at startup
-  -- TODO: Add some way to do this async and allow it to refresh while running
-  _ <- parseVideoDir tvdbToken
-
-  withMPV $ \mpv -> do
-    app <-
-      toWaiAppPlain
-        App
-          { appPort = port,
-            appTVDBToken = tvdbToken,
-            appInputDevice = inputDevice,
-            appTVState = tvState,
-            appMPV = mpv,
-            appGetStatic = embeddedStatic
-          }
-    run port $ defaultMiddlewaresNoLogging app
+  race_ (videoDataThread tvdbToken videoDataRefreshTrigger videoData) $
+    withMPV $ \mpv -> do
+      app <-
+        toWaiAppPlain
+          App
+            { appPort = port,
+              appTVDBToken = tvdbToken,
+              appInputDevice = inputDevice,
+              appTVState = tvState,
+              appMPV = mpv,
+              appGetStatic = embeddedStatic,
+              appVideoData = videoData,
+              appVideoDataRefreshTrigger = videoDataRefreshTrigger
+            }
+      run port $ defaultMiddlewaresNoLogging app
 
   putStrLn "Server quite."
