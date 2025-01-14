@@ -6,7 +6,7 @@ import Algorithms.NaturalSort qualified as Natural
 import Autodocodec
   ( HasCodec (codec),
     object,
-    optionalField,
+    optionalFieldOrNull,
     requiredField,
     stringConstCodec,
     (.=),
@@ -63,17 +63,17 @@ instance HasCodec DirectoryInfo where
       DirectoryInfo
         <$> requiredField "title" "The title of this series or movie" .= directoryInfoTitle
         <*> requiredField "kind" "Is this a series or a movie?" .= directoryInfoKind
-        <*> optionalField' "year" "The year this series or movie was released" .= directoryInfoYear
-        <*> optionalField' "description" "The description of the series or movie" .= directoryInfoDescription
-        <*> optionalField "imdb" "The IMDB ID" .= directoryInfoImdb
-        <*> optionalField "tvdb" "The TVDB ID" .= directoryInfoTvdb
-        <*> optionalField "tmdb" "The TMDB ID" .= directoryInfoTmdb
-        <*> optionalField "force-update" "This forces the system to try and download more information again. This can be used for when some of the data was wrong, you can remove the incorrect data, fill in what you know, set this flag to true, and it'll use the info you gave it to search for the rest." .= directoryInfoForceUpdate
+        <*> optionalFieldWriteNull "year" "The year this series or movie was released" .= directoryInfoYear
+        <*> optionalFieldWriteNull "description" "The description of the series or movie" .= directoryInfoDescription
+        <*> optionalFieldOrNull "imdb" "The IMDB ID" .= directoryInfoImdb
+        <*> optionalFieldOrNull "tvdb" "The TVDB ID" .= directoryInfoTvdb
+        <*> optionalFieldOrNull "tmdb" "The TMDB ID" .= directoryInfoTmdb
+        <*> optionalFieldOrNull "force-update" "This forces the system to try and download more information again. This can be used for when some of the data was wrong, you can remove the incorrect data, fill in what you know, set this flag to true, and it'll use the info you gave it to search for the rest." .= directoryInfoForceUpdate
     where
       -- We use this instead of `optionalFieldOrNull` because this also writes a `null` when the field is `Nothing`
       -- that way we get `null` values in new files and they serve as better templates, but we can still
       -- remove the field from the file and they'll parse just fine.
-      optionalField' key = optionalFieldWithDefaultWith key codec Nothing
+      optionalFieldWriteNull key = optionalFieldWithDefaultWith key codec Nothing
 
 data DirectoryKind
   = DirectoryKindMovie
