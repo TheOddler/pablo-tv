@@ -135,6 +135,11 @@
         // as we scroll to the selected element
         event.preventDefault();
         break;
+      // Allow going back with the backspace key for better keyboard navigation
+      case 'Backspace':
+        history.back();
+        event.preventDefault();
+        break;
     }
   });
   document.addEventListener('keyup', (event) => {
@@ -150,13 +155,3 @@
     }
   });
 })();
-
-// Allow going back with the backspace key for better keyboard navigation
-document.addEventListener('keydown', (event) => {
-  switch (event.key) {
-    case 'Backspace':
-      history.back();
-      event.preventDefault();
-      break;
-  }
-});
