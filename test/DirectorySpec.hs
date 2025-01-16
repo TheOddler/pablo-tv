@@ -5,7 +5,7 @@ import Data.ByteString.Char8 qualified as BS
 import Data.Text (Text)
 import Data.Text qualified as T
 import Directory
-import Path (File, Path, Rel, fromRelFile, parseRelDir, parseRelFile)
+import Path (Abs, Dir, File, Path, Rel, fromRelFile, parseAbsDir, parseRelDir, parseRelFile)
 import Test.Syd (Spec, describe, expectationFailure, it, pureGoldenByteStringFile, pureGoldenTextFile, shouldBe)
 import TestUtils (labeledExpectationFailure)
 
@@ -18,7 +18,7 @@ spec = do
     pureGoldenTextFile "test/golden/cleanFileName" $
       T.unlines
         [ T.unlines
-            [ "Dir:   " <> T.pack root,
+            [ "Dir:   " <> niceDirNameT (forceAbsDir root),
               "Orig:  " <> T.pack (fromRelFile file),
               "Clean: " <> niceFileNameT file
             ]
@@ -160,14 +160,20 @@ forceRelFile file =
     Left err -> labeledExpectationFailure "Failed forceRelFile" err
     Right f -> f
 
+forceAbsDir :: FilePath -> Path Abs Dir
+forceAbsDir file =
+  case parseAbsDir file of
+    Left err -> labeledExpectationFailure "Failed forceRelFile" err
+    Right f -> f
+
 mkGuess :: DirectoryKind -> Text -> Maybe Int -> DirectoryInfo
-mkGuess kind title year = DirectoryInfo kind title year Nothing Nothing Nothing Nothing Nothing
+mkGuess kind title year = DirectoryInfo title kind year Nothing Nothing Nothing Nothing Nothing
 
 -- | Folder name, file names, expected results
-folderExamples :: [(FilePath, [FilePath], [FilePath], Maybe (FilePath, DirectoryInfo))]
+folderExamples :: [(FilePath, [FilePath], [FilePath], DirectoryInfo)]
 folderExamples =
   [ ( -- Base example
-      "Pabloland/Season 2",
+      "/Pabloland",
       [ "Pabloland.s02e04.hdtv.x264-tla.mp4",
         "Pabloland.s02e02.XviD-AFG.avi",
         "Pabloland.S02E06.hdtv.x264-tla.mp4",
@@ -179,102 +185,71 @@ folderExamples =
         "Pabloland [01x04] The Episode Name.srt"
       ],
       [],
-      Just
-        ( "Pabloland",
-          mkGuess DirectoryKindSeries "Pabloland" Nothing
-        )
+      mkGuess DirectoryKindSeries "Pabloland" Nothing
     ),
     ( -- A series without a season
       --  but the file names indicate it's a series, not a movie
-      "My TV Series",
+      "/My TV Series",
       [ "Episode 6 - Episode Name (My TV Series) [abcd].mp4",
         "NEW My TV Series Episode Name [xyza].mp4"
       ],
       [],
-      Just
-        ( "My TV Series",
-          mkGuess DirectoryKindSeries "My TV Series" Nothing
-        )
+      mkGuess DirectoryKindSeries "My TV Series" Nothing
     ),
     ( -- Flemish support
-      "Vlaamschen Serie (2021)/Seizoen 1",
+      "/Vlaamschen Serie (2021)/",
       [ "Vlaamschen Serie - Aflevering 2.avi",
         "Vlaamschen Serie - Aflevering 4.avi"
       ],
       [],
-      Just
-        ( "Vlaamschen Serie (2021)",
-          mkGuess DirectoryKindSeries "Vlaamschen Serie" (Just 2021)
-        )
+      mkGuess DirectoryKindSeries "Vlaamschen Serie" (Just 2021)
     ),
     ( -- Flemish support
-      "Vlaamschen Serie",
+      "/Vlaamschen Serie",
       [],
       [ "Seizoen 1",
         "Seizoen 2"
       ],
-      Just
-        ( "Vlaamschen Serie",
-          mkGuess DirectoryKindSeries "Vlaamschen Serie" Nothing
-        )
+      mkGuess DirectoryKindSeries "Vlaamschen Serie" Nothing
     ),
-    ( "Film Van Mijn Jeugd",
+    ( "/Film Van Mijn Jeugd",
       [ "Film Van Mijn Jeugd (1991).avi",
         "Film Van Mijn Jeugd (1991).srt"
       ],
       [],
-      Just
-        ( "Film Van Mijn Jeugd",
-          mkGuess DirectoryKindMovie "Film Van Mijn Jeugd" (Just 1991)
-        )
+      mkGuess DirectoryKindMovie "Film Van Mijn Jeugd" (Just 1991)
     ),
-    ( "Film Van Mijn Jeugd",
+    ( "/Film Van Mijn Jeugd",
       [ "Film Van Mijn Jeugd (1991) Part 1.avi",
         "Film Van Mijn Jeugd (1991) Part 2.avi"
       ],
       [],
-      Just
-        ( "Film Van Mijn Jeugd",
-          mkGuess DirectoryKindMovie "Film Van Mijn Jeugd" (Just 1991)
-        )
+      mkGuess DirectoryKindMovie "Film Van Mijn Jeugd" (Just 1991)
     ),
-    ( "Film (2023)",
+    ( "/Film (2023)",
       [ "File.avi"
       ],
       [],
-      Just
-        ( "Film (2023)",
-          mkGuess DirectoryKindMovie "Film" (Just 2023)
-        )
+      mkGuess DirectoryKindMovie "Film" (Just 2023)
     ),
-    ( "Film",
+    ( "/Film",
       [ "File.avi"
       ],
       [],
-      Just
-        ( "Film",
-          mkGuess DirectoryKindMovie "Film" Nothing
-        )
+      mkGuess DirectoryKindMovie "Film" Nothing
     ),
-    ( "Japanese Movie (2023, Dubbed)",
+    ( "/Japanese Movie (2023, Dubbed)",
       [ "Japanese.Movie.2023.DUBBED.1080p.AMZN.WEBRip.DD5.1.x264-Woooops.mkv"
       ],
       [],
-      Just
-        ( "Japanese Movie (2023, Dubbed)",
-          mkGuess DirectoryKindMovie "Japanese Movie" (Just 2023)
-        )
+      mkGuess DirectoryKindMovie "Japanese Movie" (Just 2023)
     )
   ]
 
-folderSpec :: (FilePath, [FilePath], [FilePath], Maybe (FilePath, DirectoryInfo)) -> Spec
+folderSpec :: (FilePath, [FilePath], [FilePath], DirectoryInfo) -> Spec
 folderSpec (dirStr, fileNames, directoryNames, expected) = do
   it ("Correctly parses " <> dirStr) $ do
-    dir <- parseRelDir dirStr
+    dir <- parseAbsDir dirStr
     files <- mapM parseRelFile fileNames
     directories <- mapM parseRelDir directoryNames
-    let mapExpected Nothing = Nothing
-        mapExpected (Just (dirName, dirInfo)) = do
-          mappedDir <- parseRelDir dirName
-          Just (mappedDir, dirInfo)
-    guessDirectoryInfo dir files directories `shouldBe` mapExpected expected
+    guessDirectoryInfo (DirectoryRaw dir files directories) `shouldBe` expected
