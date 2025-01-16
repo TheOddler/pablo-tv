@@ -65,13 +65,8 @@ instance HasObjectCodec Action where
         ActionPointMouse lr ud -> ("PointMouse", twoFieldEncoder "leftRight" lr "upDown" ud)
         ActionMouseScroll amount -> ("MouseScroll", oneFieldEncoder "amount" amount)
         ActionWrite t -> ("Write", oneFieldEncoder "text" t)
-        ActionMPV MPVCommandTogglePlay -> ("TogglePlay", noFieldEncoder)
-        ActionMPV (MPVCommandChangeVolume change) -> ("ChangeVolume", oneFieldEncoder "change" change)
-        ActionMPV (MPVCommandSeek change) -> ("Seek", oneFieldEncoder "change" change)
         ActionMPV (MPVCommandPlayPath path) -> ("PlayPath", oneFieldEncoder "path" path)
         ActionMPV MPVCommandQuit -> ("CloseMPV", noFieldEncoder)
-        ActionMPV MPVCommandPlaylistNext -> ("PlaylistNext", noFieldEncoder)
-        ActionMPV MPVCommandPlaylistPrevious -> ("PlaylistPrevious", noFieldEncoder)
         ActionMPV MPVCommandToggleFullscreen -> ("ToggleFullscreen", noFieldEncoder)
         ActionMPV (MPVCommandSetFullscreen fullscreen) -> ("SetFullscreen", oneFieldEncoder "fullscreen" fullscreen)
       dec :: HashMap.HashMap Discriminator (Text, ObjectCodec Void Action)
@@ -83,13 +78,8 @@ instance HasObjectCodec Action where
             ("PointMouse", ("ActionPointMouse", twoFieldDecoder ActionPointMouse "leftRight" "upDown")),
             ("MouseScroll", ("ActionMouseScroll", oneFieldDecoder ActionMouseScroll "amount")),
             ("Write", ("ActionWrite", oneFieldDecoder ActionWrite "text")),
-            ("TogglePlay", ("ActionMPV TogglePlay", noFieldDecoder (ActionMPV MPVCommandTogglePlay))),
-            ("ChangeVolume", ("ActionMPV ChangeVolume", oneFieldDecoder (ActionMPV . MPVCommandChangeVolume) "change")),
-            ("Seek", ("ActionMPV Seek", oneFieldDecoder (ActionMPV . MPVCommandSeek) "change")),
             ("PlayPath", ("ActionMPV PlayPath", oneFieldDecoder (ActionMPV . MPVCommandPlayPath) "path")),
             ("CloseMPV", ("ActionMPV Quit", noFieldDecoder $ ActionMPV MPVCommandQuit)),
-            ("PlaylistNext", ("ActionMPV PlaylistNext", noFieldDecoder $ ActionMPV MPVCommandPlaylistNext)),
-            ("PlaylistPrevious", ("ActionMPV PlaylistPrevious", noFieldDecoder $ ActionMPV MPVCommandPlaylistPrevious)),
             ("ToggleFullscreen", ("ActionMPV ToggleFullscreen", noFieldDecoder $ ActionMPV MPVCommandToggleFullscreen)),
             ("SetFullscreen", ("ActionMPV SetFullscreen", oneFieldDecoder (ActionMPV . MPVCommandSetFullscreen) "fullscreen"))
           ]

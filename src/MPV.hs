@@ -40,12 +40,7 @@ data MPVInfo = MPVInfo
   }
 
 data MPVCommand
-  = MPVCommandTogglePlay
-  | MPVCommandChangeVolume Int
-  | MPVCommandSeek Int -- seconds
-  | MPVCommandPlaylistNext
-  | MPVCommandPlaylistPrevious
-  | MPVCommandToggleFullscreen
+  = MPVCommandToggleFullscreen
   | MPVCommandSetFullscreen Bool
   | MPVCommandPlayPath Text
   | MPVCommandQuit
@@ -53,22 +48,6 @@ data MPVCommand
 
 mpvCommands :: MPVCommand -> IO [BS.ByteString]
 mpvCommands = \case
-  MPVCommandTogglePlay ->
-    oneCommand ["cycle", "pause"]
-  MPVCommandChangeVolume change ->
-    oneCommand ["add", "volume", showBS change]
-  MPVCommandSeek change ->
-    oneCommand ["seek", showBS change]
-  MPVCommandPlaylistNext ->
-    pure
-      [ mkCommand ["playlist-next"],
-        mkCommand ["set", "pause", "no"]
-      ]
-  MPVCommandPlaylistPrevious ->
-    pure
-      [ mkCommand ["playlist-prev"],
-        mkCommand ["set", "pause", "no"]
-      ]
   MPVCommandToggleFullscreen ->
     oneCommand ["cycle", "fullscreen"]
   MPVCommandSetFullscreen fullscreen ->
@@ -101,9 +80,6 @@ mpvCommands = \case
     mkCommand parts = [i|{ "command": #{"osd-msg-bar" : parts} }|]
 
     oneCommand = pure . singleton . mkCommand
-
-    showBS :: (Show a) => a -> BS.ByteString
-    showBS = BS8.pack . show
 
     fromT = T.encodeUtf8
 
