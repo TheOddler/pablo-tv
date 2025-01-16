@@ -111,22 +111,58 @@ mouseButtonToEvdevKey = \case
 
 data KeyboardButton
   = KeyboardBackspace
+  | KeyboardDelete
+  | KeyboardEnter
   | KeyboardLeftArrow
   | KeyboardRightArrow
+  | KeyboardUpArrow
+  | KeyboardDownArrow
+  | KeyboardVolumeUp
+  | KeyboardVolumeDown
+  | KeyboardPlayPause
+  | KeyboardMediaNext
+  | KeyboardMediaPrevious
+  | KeyboardMediaForward
+  | KeyboardMediaBackward
+  | KeyboardMediaStop
   deriving (Show, Eq, Bounded, Enum, Generic)
 
 instance HasCodec KeyboardButton where
   codec =
     boundedEnumCodec $ \case
       KeyboardBackspace -> "backspace"
+      KeyboardDelete -> "delete"
+      KeyboardEnter -> "enter"
       KeyboardLeftArrow -> "left"
       KeyboardRightArrow -> "right"
+      KeyboardUpArrow -> "up"
+      KeyboardDownArrow -> "down"
+      KeyboardVolumeUp -> "volumeUp"
+      KeyboardVolumeDown -> "volumeDown"
+      KeyboardPlayPause -> "playPause"
+      KeyboardMediaNext -> "mediaNext"
+      KeyboardMediaPrevious -> "mediaPrevious"
+      KeyboardMediaForward -> "mediaForward"
+      KeyboardMediaBackward -> "mediaBackward"
+      KeyboardMediaStop -> "mediaStop"
 
 keyboardButtonToEvdevKey :: KeyboardButton -> Key
 keyboardButtonToEvdevKey = \case
   KeyboardBackspace -> KeyBackspace
+  KeyboardDelete -> KeyDelete
+  KeyboardEnter -> KeyEnter
   KeyboardLeftArrow -> KeyLeft
   KeyboardRightArrow -> KeyRight
+  KeyboardUpArrow -> KeyUp
+  KeyboardDownArrow -> KeyDown
+  KeyboardVolumeUp -> KeyVolumeup
+  KeyboardVolumeDown -> KeyVolumedown
+  KeyboardPlayPause -> KeyPlaypause
+  KeyboardMediaNext -> KeyNextsong
+  KeyboardMediaPrevious -> KeyPrevioussong
+  KeyboardMediaForward -> KeyFastforward
+  KeyboardMediaBackward -> KeyRewind
+  KeyboardMediaStop -> KeyStopcd
 
 actionsWebSocket :: (MonadHandler m) => Device -> MPV -> WebSocketsT m ()
 actionsWebSocket inputDevice mpv = forever $ do
@@ -303,6 +339,8 @@ mkInputDevice =
         idBustype = Nothing,
         idVersion = Nothing,
         keys =
+          -- We can't just enable all keys as there seems to be a 255 keys
+          -- limit, and there are over 500 keys.
           -- We only run this once, so it's fine to use nub here
           nub
             ( -- All keys supported by the mouse
