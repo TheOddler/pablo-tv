@@ -20,7 +20,6 @@
         ];
         runtimeInputs = with pkgs; [
           libevdev
-          mpv
         ];
       in
       rec {

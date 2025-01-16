@@ -2,20 +2,20 @@
 
 module Actions where
 
-import Autodocodec (Autodocodec (..), Discriminator, HasCodec (..), HasObjectCodec (..), ObjectCodec, discriminatedUnionCodec, eitherDecodeJSONViaCodec, mapToDecoder, mapToEncoder, object, pureCodec, requiredField', (.=))
+import Autodocodec (Autodocodec (..), Discriminator, HasCodec (..), HasObjectCodec (..), ObjectCodec, discriminatedUnionCodec, eitherDecodeJSONViaCodec, mapToDecoder, mapToEncoder, object, requiredField', (.=))
 import Control.Monad (forever)
 import Data.ByteString.Lazy (ByteString)
 import Data.HashMap.Strict qualified as HashMap
 import Data.Int (Int32)
-import Data.List (nub)
+import Data.List (dropWhileEnd, nub)
 import Data.Scientific (Scientific, scientific)
 import Data.Text (Text)
 import Data.Void (Void)
 import Evdev.Codes
 import Evdev.Uinput
 import GHC.Generics (Generic)
-import MPV (MPV, MPVCommand (..), sendCommand)
 import SafeMaths (int32ToInteger)
+import System.Process (callProcess, readProcess)
 import Util (boundedEnumCodec)
 import Yesod (FromJSON, MonadHandler, liftIO)
 import Yesod.WebSockets (WebSocketsT, receiveData)
@@ -34,7 +34,7 @@ data Action
     ActionPointMouse Scientific Scientific -- leftRight, upDown
   | ActionMouseScroll Int32
   | ActionWrite String
-  | ActionMPV MPVCommand
+  | ActionPlayPath String
   deriving (Show, Eq, Generic)
   deriving (FromJSON) via (Autodocodec Action)
 
@@ -44,15 +44,15 @@ instance HasCodec Action where
 instance HasObjectCodec Action where
   objectCodec = discriminatedUnionCodec "tag" enc dec
     where
-      nothingCodec = pureCodec ()
+      -- nothingCodec = pureCodec ()
       twoFieldCodec first second = (,) <$> requiredField' first .= fst <*> requiredField' second .= snd
 
-      noFieldEncoder = mapToEncoder () nothingCodec
+      -- noFieldEncoder = mapToEncoder () nothingCodec
       oneFieldEncoder name value = mapToEncoder value (requiredField' name)
       twoFieldEncoder firstName first secondName second =
         mapToEncoder (first, second) (twoFieldCodec firstName secondName)
 
-      noFieldDecoder constructor = mapToDecoder (const constructor) nothingCodec
+      -- noFieldDecoder constructor = mapToDecoder (const constructor) nothingCodec
       oneFieldDecoder constructor name = mapToDecoder constructor (requiredField' name)
       twoFieldDecoder constructor firstName secondName =
         mapToDecoder (uncurry constructor) (twoFieldCodec firstName secondName)
@@ -65,10 +65,7 @@ instance HasObjectCodec Action where
         ActionPointMouse lr ud -> ("PointMouse", twoFieldEncoder "leftRight" lr "upDown" ud)
         ActionMouseScroll amount -> ("MouseScroll", oneFieldEncoder "amount" amount)
         ActionWrite t -> ("Write", oneFieldEncoder "text" t)
-        ActionMPV (MPVCommandPlayPath path) -> ("PlayPath", oneFieldEncoder "path" path)
-        ActionMPV MPVCommandQuit -> ("CloseMPV", noFieldEncoder)
-        ActionMPV MPVCommandToggleFullscreen -> ("ToggleFullscreen", noFieldEncoder)
-        ActionMPV (MPVCommandSetFullscreen fullscreen) -> ("SetFullscreen", oneFieldEncoder "fullscreen" fullscreen)
+        ActionPlayPath path -> ("PlayPath", oneFieldEncoder "path" path)
       dec :: HashMap.HashMap Discriminator (Text, ObjectCodec Void Action)
       dec =
         HashMap.fromList
@@ -78,10 +75,7 @@ instance HasObjectCodec Action where
             ("PointMouse", ("ActionPointMouse", twoFieldDecoder ActionPointMouse "leftRight" "upDown")),
             ("MouseScroll", ("ActionMouseScroll", oneFieldDecoder ActionMouseScroll "amount")),
             ("Write", ("ActionWrite", oneFieldDecoder ActionWrite "text")),
-            ("PlayPath", ("ActionMPV PlayPath", oneFieldDecoder (ActionMPV . MPVCommandPlayPath) "path")),
-            ("CloseMPV", ("ActionMPV Quit", noFieldDecoder $ ActionMPV MPVCommandQuit)),
-            ("ToggleFullscreen", ("ActionMPV ToggleFullscreen", noFieldDecoder $ ActionMPV MPVCommandToggleFullscreen)),
-            ("SetFullscreen", ("ActionMPV SetFullscreen", oneFieldDecoder (ActionMPV . MPVCommandSetFullscreen) "fullscreen"))
+            ("PlayPath", ("ActionPlayPath", oneFieldDecoder ActionPlayPath "path"))
           ]
 
 data MouseButton = MouseButtonLeft | MouseButtonRight
@@ -154,18 +148,18 @@ keyboardButtonToEvdevKey = \case
   KeyboardMediaBackward -> KeyRewind
   KeyboardMediaStop -> KeyStopcd
 
-actionsWebSocket :: (MonadHandler m) => Device -> MPV -> WebSocketsT m ()
-actionsWebSocket inputDevice mpv = forever $ do
+actionsWebSocket :: (MonadHandler m) => Device -> WebSocketsT m ()
+actionsWebSocket inputDevice = forever $ do
   d <- receiveData
-  liftIO $ decodeAndPerformAction inputDevice mpv d
+  liftIO $ decodeAndPerformAction inputDevice d
 
-decodeAndPerformAction :: Device -> MPV -> ByteString -> IO ()
-decodeAndPerformAction inputDevice mpv websocketData = case eitherDecodeJSONViaCodec websocketData of
+decodeAndPerformAction :: Device -> ByteString -> IO ()
+decodeAndPerformAction inputDevice websocketData = case eitherDecodeJSONViaCodec websocketData of
   Left err -> putStrLn $ "Error decoding action: " <> err
-  Right action -> performAction inputDevice mpv action
+  Right action -> performAction inputDevice action
 
-performAction :: Device -> MPV -> Action -> IO ()
-performAction inputDevice mpv = \case
+performAction :: Device -> Action -> IO ()
+performAction inputDevice = \case
   ActionClickMouse btn' ->
     let btn = mouseButtonToEvdevKey btn'
      in writeBatch
@@ -215,7 +209,9 @@ performAction inputDevice mpv = \case
             ++ [SyncEvent SynReport]
         events = concatMap (clickKeyCombo . charToKey) text
     writeBatch inputDevice events
-  ActionMPV command -> sendCommand mpv command
+  ActionPlayPath path -> do
+    defaultVideoPlayer <- readProcess "xdg-mime" ["query", "default", "video/x-msvideo"] ""
+    callProcess "gtk-launch" [dropWhileEnd (== '\n') defaultVideoPlayer, path]
 
 charToKey :: Char -> [Key]
 charToKey = \case

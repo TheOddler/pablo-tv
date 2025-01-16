@@ -35,7 +35,6 @@ import GHC.Conc (TVar, atomically, newTVarIO, writeTVar)
 import GHC.Data.Maybe (firstJustsM, listToMaybe, orElse)
 import GHC.MVar (MVar, newMVar)
 import IsDevelopment (isDevelopment)
-import MPV (MPV, withMPV)
 import Network.Info (IPv4 (..), NetworkInterface (..), getNetworkInterfaces)
 import Network.Wai.Handler.Warp (run)
 import Path (Abs, Dir, File, Path, Rel, fileExtension, fromAbsFile, mkRelDir, parent, parseRelDir, parseRelFile, toFilePath, (</>))
@@ -56,7 +55,6 @@ data App = App
     appTVDBToken :: BS.ByteString,
     appInputDevice :: Device,
     appTVState :: TVar TVState,
-    appMPV :: MPV,
     appGetStatic :: EmbeddedStatic,
     appVideoData :: TVar [DirectoryInfo],
     appVideoDataRefreshTrigger :: MVar ()
@@ -136,16 +134,14 @@ mobileLayout title widget = Yesod.defaultLayout $ do
 getMobileHomeR :: Handler Html
 getMobileHomeR = do
   inputDevice <- getsYesod appInputDevice
-  mpv <- getsYesod appMPV
-  webSockets $ actionsWebSocket inputDevice mpv
+  webSockets $ actionsWebSocket inputDevice
   mobileLayout "Home" $(widgetFile "mobile/home")
 
 postMobileHomeR :: Handler ()
 postMobileHomeR = do
   (action :: Action) <- requireCheckJsonBody
   inputDevice <- getsYesod appInputDevice
-  mpv <- getsYesod appMPV
-  liftIO $ performAction inputDevice mpv action
+  liftIO $ performAction inputDevice action
 
 getTrackpadR :: Handler Html
 getTrackpadR =
@@ -341,20 +337,18 @@ main = do
   when (not isDevelopment) $ do
     callProcess "xdg-open" [url]
 
-  race_ (videoDataThread tvdbToken videoDataRefreshTrigger videoData) $
-    withMPV $ \mpv -> do
-      app <-
-        toWaiAppPlain
-          App
-            { appPort = port,
-              appTVDBToken = tvdbToken,
-              appInputDevice = inputDevice,
-              appTVState = tvState,
-              appMPV = mpv,
-              appGetStatic = embeddedStatic,
-              appVideoData = videoData,
-              appVideoDataRefreshTrigger = videoDataRefreshTrigger
-            }
-      run port $ defaultMiddlewaresNoLogging app
+  race_ (videoDataThread tvdbToken videoDataRefreshTrigger videoData) $ do
+    app <-
+      toWaiAppPlain
+        App
+          { appPort = port,
+            appTVDBToken = tvdbToken,
+            appInputDevice = inputDevice,
+            appTVState = tvState,
+            appGetStatic = embeddedStatic,
+            appVideoData = videoData,
+            appVideoDataRefreshTrigger = videoDataRefreshTrigger
+          }
+    run port $ defaultMiddlewaresNoLogging app
 
   putStrLn "Server quite."
