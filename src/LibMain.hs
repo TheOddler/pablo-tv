@@ -8,8 +8,9 @@
 
 module LibMain where
 
-import Actions (Action, actionsWebSocket, mkInputDevice, performAction)
+import Actions (actionsWebSocket, mkInputDevice, performAction)
 import Control.Monad (filterM, when)
+import Data.Aeson (Result (..))
 import Data.ByteString.Char8 qualified as BS
 import Data.Char (toLower)
 import Data.List (foldl', sort)
@@ -18,6 +19,7 @@ import Data.Maybe (fromMaybe, isJust)
 import Data.String (fromString)
 import Data.Text (Text, intercalate, unpack)
 import Data.Text qualified as T
+import Data.Text qualified as Text
 import Data.Text.Lazy.Builder (fromText)
 import Directory
   ( DirectoryInfo (..),
@@ -138,10 +140,14 @@ getMobileHomeR = do
   mobileLayout "Home" $(widgetFile "mobile/home")
 
 postMobileHomeR :: Handler ()
-postMobileHomeR = do
-  (action :: Action) <- requireCheckJsonBody
-  inputDevice <- getsYesod appInputDevice
-  liftIO $ performAction inputDevice action
+postMobileHomeR =
+  parseCheckJsonBody >>= \case
+    Error s -> do
+      liftIO $ putStrLn $ "Failed parsing action: " ++ s
+      invalidArgs [Text.pack s]
+    Success action -> do
+      inputDevice <- getsYesod appInputDevice
+      liftIO $ performAction inputDevice action
 
 getTrackpadR :: Handler Html
 getTrackpadR =
