@@ -5,8 +5,7 @@
     <a class="button" href=@{DirectoryR []}>
       <i class="fa-solid fa-file-video">
     <div>
-    $# TODO: Repalce with a proper button or action
-    <button class="red" onclick="sendAction({ tag: 'PressKeyboard', key: 'mediaStop' })">
+    <button class="red" onclick="sendAction({ tag: 'CloseWindow' })">
       <i class="fa-solid fa-power-off">
 
   <div class="row">

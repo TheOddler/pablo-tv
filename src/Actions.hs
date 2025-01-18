@@ -2,7 +2,7 @@
 
 module Actions where
 
-import Autodocodec (Autodocodec (..), Discriminator, HasCodec (..), HasObjectCodec (..), ObjectCodec, discriminatedUnionCodec, eitherDecodeJSONViaCodec, mapToDecoder, mapToEncoder, object, requiredField', (.=))
+import Autodocodec (Autodocodec (..), Discriminator, HasCodec (..), HasObjectCodec (..), ObjectCodec, discriminatedUnionCodec, eitherDecodeJSONViaCodec, mapToDecoder, mapToEncoder, object, pureCodec, requiredField', (.=))
 import Control.Monad (forever)
 import Data.ByteString.Lazy (ByteString)
 import Data.HashMap.Strict qualified as HashMap
@@ -35,6 +35,7 @@ data Action
   | ActionMouseScroll Int32
   | ActionWrite String
   | ActionPlayPath String
+  | ActionCloseWindow
   deriving (Show, Eq, Generic)
   deriving (FromJSON) via (Autodocodec Action)
 
@@ -44,15 +45,15 @@ instance HasCodec Action where
 instance HasObjectCodec Action where
   objectCodec = discriminatedUnionCodec "tag" enc dec
     where
-      -- nothingCodec = pureCodec ()
+      nothingCodec = pureCodec ()
       twoFieldCodec first second = (,) <$> requiredField' first .= fst <*> requiredField' second .= snd
 
-      -- noFieldEncoder = mapToEncoder () nothingCodec
+      noFieldEncoder = mapToEncoder () nothingCodec
       oneFieldEncoder name value = mapToEncoder value (requiredField' name)
       twoFieldEncoder firstName first secondName second =
         mapToEncoder (first, second) (twoFieldCodec firstName secondName)
 
-      -- noFieldDecoder constructor = mapToDecoder (const constructor) nothingCodec
+      noFieldDecoder constructor = mapToDecoder (const constructor) nothingCodec
       oneFieldDecoder constructor name = mapToDecoder constructor (requiredField' name)
       twoFieldDecoder constructor firstName secondName =
         mapToDecoder (uncurry constructor) (twoFieldCodec firstName secondName)
@@ -66,6 +67,7 @@ instance HasObjectCodec Action where
         ActionMouseScroll amount -> ("MouseScroll", oneFieldEncoder "amount" amount)
         ActionWrite t -> ("Write", oneFieldEncoder "text" t)
         ActionPlayPath path -> ("PlayPath", oneFieldEncoder "path" path)
+        ActionCloseWindow -> ("CloseWindow", noFieldEncoder)
       dec :: HashMap.HashMap Discriminator (Text, ObjectCodec Void Action)
       dec =
         HashMap.fromList
@@ -75,7 +77,8 @@ instance HasObjectCodec Action where
             ("PointMouse", ("ActionPointMouse", twoFieldDecoder ActionPointMouse "leftRight" "upDown")),
             ("MouseScroll", ("ActionMouseScroll", oneFieldDecoder ActionMouseScroll "amount")),
             ("Write", ("ActionWrite", oneFieldDecoder ActionWrite "text")),
-            ("PlayPath", ("ActionPlayPath", oneFieldDecoder ActionPlayPath "path"))
+            ("PlayPath", ("ActionPlayPath", oneFieldDecoder ActionPlayPath "path")),
+            ("CloseWindow", ("ActionCloseWindow", noFieldDecoder ActionCloseWindow))
           ]
 
 data MouseButton = MouseButtonLeft | MouseButtonRight
@@ -176,6 +179,7 @@ performAction inputDevice = \case
           [ KeyEvent key Pressed,
             SyncEvent SynReport,
             KeyEvent key Released
+            -- Batch automatically adds a sync at the end too
           ]
   ActionMoveMouse x y ->
     writeBatch
@@ -202,16 +206,19 @@ performAction inputDevice = \case
       [ RelativeEvent RelWheel $ EventValue amount
       ]
   ActionWrite text -> do
-    let clickKeyCombo keys =
-          map (`KeyEvent` Pressed) keys
-            ++ [SyncEvent SynReport]
-            ++ map (`KeyEvent` Released) (reverse keys)
-            ++ [SyncEvent SynReport]
-        events = concatMap (clickKeyCombo . charToKey) text
+    let events = concatMap (clickKeyCombo . charToKey) text
     writeBatch inputDevice events
   ActionPlayPath path -> do
     defaultVideoPlayer <- readProcess "xdg-mime" ["query", "default", "video/x-msvideo"] ""
     callProcess "gtk-launch" [dropWhileEnd (== '\n') defaultVideoPlayer, path]
+  ActionCloseWindow ->
+    writeBatch inputDevice $ clickKeyCombo [KeyLeftctrl, KeyQ]
+  where
+    clickKeyCombo keys =
+      map (`KeyEvent` Pressed) keys
+        ++ [SyncEvent SynReport]
+        ++ map (`KeyEvent` Released) (reverse keys)
+        ++ [SyncEvent SynReport]
 
 charToKey :: Char -> [Key]
 charToKey = \case
@@ -335,6 +342,8 @@ mkInputDevice =
                 ++ fmap keyboardButtonToEvdevKey [minBound .. maxBound]
                 -- Add all keys we support in the keyboard
                 ++ concatMap charToKey [minBound .. maxBound]
+                -- Some extra control keys:
+                ++ [KeyLeftctrl, KeyLeftshift]
             ),
         relAxes = [RelX, RelY, RelWheel],
         absAxes =
