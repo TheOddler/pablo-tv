@@ -1,11 +1,9 @@
-const webSocket = new ReconnectingWebSocket('@{MobileHomeR}');
-
 // Helper
 function clickMouse(button) {
-  sendActionWS(webSocket, { tag: "ClickMouse", button });
+  sendAction({ tag: "ClickMouse", button });
 }
 function pressKey(key) {
-  sendActionWS(webSocket, { tag: "PressKeyboard", key });
+  sendAction({ tag: "PressKeyboard", key });
 }
 function isTouchDevice() {
   return (('ontouchstart' in window) ||
@@ -25,14 +23,14 @@ const handleTouchMove = throttle((event) => {
     const previousTouch = previousTouches[0];
     const x = touch.pageX - previousTouch.pageX;
     const y = touch.pageY - previousTouch.pageY;
-    sendActionWS(webSocket, { tag: "MoveMouse", x, y });
+    sendAction({ tag: "MoveMouse", x, y });
   }
   else if (event.touches.length == 2 && previousTouches?.length == 2) {
     // Simulate scrolling
     const startY = (event.touches[0].pageY + event.touches[1].pageY) / 2;
     const previousStartY = (previousTouches[0].pageY + previousTouches[1].pageY) / 2;
     const scrollY = Math.round((previousStartY - startY) / 10);
-    sendActionWS(webSocket, { tag: "MouseScroll", amount: scrollY });
+    sendAction({ tag: "MouseScroll", amount: scrollY });
   }
 
   previousTouches = event.touches;
@@ -102,7 +100,7 @@ document.getElementById("right").addEventListener(clickEvent, () => clickMouse("
   };
 
   const sendOrientation = throttle((value) => {
-    sendActionWS(webSocket, {
+    sendAction({
       tag: "PointMouse",
       leftRight: -value.leftRight * scalingFactor,
       upDown: -value.upDown * scalingFactor,

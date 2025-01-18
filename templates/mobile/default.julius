@@ -10,16 +10,6 @@ function throttle(func, timeout = 50) {
   };
 }
 
-function sendActionWS(webSocket, action) {
-  if (webSocket.readyState === WebSocket.OPEN) {
-    // console.log('Sending action:', action);
-    webSocket.send(JSON.stringify(action));
-  }
-  else {
-    console.log('WebSocket is not open. Action not sent:', action);
-  }
-}
-
 function sendAction(action) {
   fetch("@{MobileHomeR}", {
     method: "POST",
