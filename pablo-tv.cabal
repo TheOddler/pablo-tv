@@ -62,18 +62,21 @@ library
       , filepath
       , ghc
       , http-client
+      , list-shuffle
       , modern-uri
       , natural-sort
       , network-info
       , path
       , path-io
       , process
+      , random
       , regex-tdfa
       , req
       , scientific
       , shakespeare
       , template-haskell
       , text
+      , unix
       , unordered-containers
       , warp
       , yesod

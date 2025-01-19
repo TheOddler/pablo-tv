@@ -13,8 +13,8 @@ import Control.Monad (filterM, when)
 import Data.Aeson (Result (..))
 import Data.ByteString.Char8 qualified as BS
 import Data.Char (toLower)
-import Data.List (foldl', sort)
-import Data.List.Extra (replace)
+import Data.List (foldl')
+import Data.List.Extra (notNull, replace)
 import Data.Maybe (fromMaybe, isJust)
 import Data.String (fromString)
 import Data.Text (Text, intercalate, unpack)
@@ -23,27 +23,32 @@ import Data.Text qualified as Text
 import Data.Text.Lazy.Builder (fromText)
 import Directory
   ( DirectoryInfo (..),
+    DirectoryInfoFS (..),
     DirectoryKind (..),
     DirectoryRaw (..),
     getVideoDirPath,
     niceDirNameT,
     niceFileNameT,
+    readDirectoryInfoFS,
     readDirectoryInfoRec,
     readDirectoryRaw,
     updateAllDirectoryInfos,
   )
 import Evdev.Uinput (Device)
-import GHC.Conc (TVar, atomically, newTVarIO, readTVar, writeTVar)
+import GHC.Conc (TVar, atomically, newTVarIO, readTVar, readTVarIO, writeTVar)
 import GHC.Data.Maybe (firstJustsM, listToMaybe, orElse)
 import GHC.MVar (MVar, newMVar)
+import GHC.Utils.Misc (sortWith)
 import IsDevelopment (isDevelopment)
+import List.Shuffle (shuffleIO, shuffle_)
 import Network.Info (IPv4 (..), NetworkInterface (..), getNetworkInterfaces)
 import Network.Wai.Handler.Warp (run)
-import Path (Abs, Dir, File, Path, Rel, fileExtension, fromAbsFile, mkRelDir, parent, parseRelDir, parseRelFile, toFilePath, (</>))
+import Path (Abs, Dir, File, Path, Rel, dirname, fileExtension, fromAbsFile, mkRelDir, parent, parseRelDir, parseRelFile, toFilePath, (</>))
 import Path.IO (doesDirExist, doesFileExist, getHomeDir, listDir)
 import System.Environment (getEnv)
 import System.FilePath (dropTrailingPathSeparator)
 import System.Process (callProcess)
+import System.Random (mkStdGen)
 import TVDB (TVDBToken (..))
 import Text.Hamlet (hamletFile)
 import Text.Julius (RawJavascript (..))
@@ -64,7 +69,7 @@ data App = App
 
 data TVState = TVState
   { tvPage :: Route App,
-    tvVideoData :: [DirectoryInfo]
+    tvVideoData :: [(Path Abs Dir, DirectoryInfo, DirectoryInfoFS)]
   }
 
 instance (Eq (Route App)) => Eq TVState where
@@ -283,25 +288,36 @@ getTVHomeR = do
   webSockets $ onChanges tvStateTVar $ \tvState -> do
     toUrl (tvPage tvState) >>= sendTextData
 
+  -- Do the non-websocket stuff
   networkInterfaces <- networkInterfacesShortList <$> liftIO getNetworkInterfaces
   port <- getsYesod appPort
 
+  -- See if there are any files in the root, ideally there shouldn't be because
+  -- we won't have info for them. But I do want to support it, so we'll still
+  -- show them.
   videoDir <- liftIO getVideoDirPath
   dirRaw <- liftIO $ readDirectoryRaw videoDir
-  let filesWithNames = map (\f -> (niceFileNameT f, f)) dirRaw.directoryVideoFiles
-      dirsWithNames = map (\d -> (niceDirNameT d, d)) dirRaw.directoryDirectories
+  let files = map (\f -> (niceFileNameT f, fileNameToSegments f)) dirRaw.directoryVideoFiles
 
-  let namedLinks =
-        sort $
-          [ (name, [T.pack $ dropTrailingPathSeparator $ toFilePath path])
-            | (name, path) <- dirsWithNames
-          ]
-            ++ [ (name, [T.pack $ dropTrailingPathSeparator $ toFilePath path])
-                 | (name, path) <- filesWithNames
-               ]
+  -- Get proper data (we got this async from the state)
+  tvState <- liftIO $ readTVarIO tvStateTVar
+  let videoData = tvVideoData tvState
 
-  let countTo :: Int -> [Int]
-      countTo x = [1 .. x]
+  -- Different orderings of the video data that we want to use
+  videosRandom' <-
+    liftIO $
+      if isDevelopment
+        then -- When in dev we auto-reload the page every second or so,
+        -- so we want the same random shuffle every time, otherwise the page
+        -- keeps changing which is annoying.
+          pure $ shuffle_ videoData (mkStdGen 1)
+        else shuffleIO videoData
+  let videosRandom = nameAndSegments <$> videosRandom'
+  let videosSortedWith :: (Ord a) => ((Path Abs Dir, DirectoryInfo, DirectoryInfoFS) -> a) -> [(Text, [Text])]
+      videosSortedWith f = nameAndSegments <$> sortWith f videoData
+  let videosAlphabetical = videosSortedWith (\(_, i, _) -> i.directoryInfoTitle)
+  let videosNewest = videosSortedWith (\(_, _, i) -> -i.directoryDataLastModified)
+  let videosUnseen = nameAndSegments <$> filter (\(_, _, i) -> i.directoryDataPlayedVideoFileCount < i.directoryDataVideoFileCount) videoData
 
   tvLayout "TV" $(widgetFile "tv/home")
   where
@@ -312,6 +328,14 @@ getTVHomeR = do
       )
         ++ ":"
         ++ show port
+
+    fileNameToSegments :: Path Rel a -> [Text]
+    fileNameToSegments f = [T.pack $ toFilePath f]
+
+    nameAndSegments :: (Path Abs Dir, DirectoryInfo, DirectoryInfoFS) -> (Text, [Text])
+    nameAndSegments (path, info, _) =
+      let segments = fileNameToSegments $ dirname path
+       in (directoryInfoTitle info, segments)
 
 getAllIPsR :: Handler Html
 getAllIPsR = do
@@ -335,8 +359,8 @@ main = do
   videoDataRefreshTrigger <- newMVar ()
 
   let port = 8080
-  let (path, _params) = renderRoute TVHomeR
-  let url = "http://localhost:" ++ show port ++ "/" ++ unpack (intercalate "/" path)
+  let (homePath, _params) = renderRoute TVHomeR
+  let url = "http://localhost:" ++ show port ++ "/" ++ unpack (intercalate "/" homePath)
   putStrLn $ "Running on port " ++ show port ++ " - " ++ url
   putStrLn $ "Development mode: " ++ show isDevelopment
 
@@ -347,10 +371,14 @@ main = do
 
   let dataThread =
         asyncOnTrigger videoDataRefreshTrigger $ do
-          infos <- updateAllDirectoryInfos tvdbToken
+          infosWithPath <- updateAllDirectoryInfos tvdbToken
+          let addFSInfo (path, info) = do
+                infoFS <- readDirectoryInfoFS path
+                pure (path, info, infoFS)
+          infos <- mapM addFSInfo infosWithPath
           atomically $ do
             state <- readTVar tvState
-            writeTVar tvState state {tvVideoData = sort $ snd <$> infos}
+            writeTVar tvState state {tvVideoData = infos}
 
   let appThread = do
         app <-

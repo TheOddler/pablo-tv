@@ -9,14 +9,33 @@ $forall networkInterface <- networkInterfaces
 <div id="debug">
 
 <div class="container">
+  <h1>Newest
+  <div class="row">
+    $forall (name, segments) <- videosNewest
+      <a class="el" href=@{DirectoryR segments}>
+          <img src=@{ImageR segments} alt="#{name}" loading="lazy">
+
+  $if notNull files
+    <h1>Unseen
+    <div class="row">
+      $forall (name, segments) <- videosUnseen
+        <a class="el" href=@{DirectoryR segments}>
+            <img src=@{ImageR segments} alt="#{name}" loading="lazy">
+
   <h1>Alphabetically
   <div class="row">
-    $forall (name, segments) <- namedLinks
+    $forall (name, segments) <- videosAlphabetical
       <a class="el" href=@{DirectoryR segments}>
         <img src=@{ImageR segments} alt="#{name}" loading="lazy">
+
+  <h1>Random
   <div class="row">
-    $forall _idx <- countTo 3
-      <a class="el" href=@{AllIPsR} loading="lazy">
-  <div class="row">
-    $forall _idx <- countTo 12
-      <a class="el" href=@{AllIPsR} loading="lazy">
+    $forall (name, segments) <- videosRandom
+      <a class="el" href=@{DirectoryR segments}>
+        <img src=@{ImageR segments} alt="#{name}" loading="lazy">
+  
+  $if notNull files
+    <div class="row">
+      $forall (name, segments) <- files
+        <a class="el" href=@{DirectoryR segments}>
+          <img src=@{ImageR segments} alt="#{name}" loading="lazy">

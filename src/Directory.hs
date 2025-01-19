@@ -10,6 +10,8 @@ module Directory
     getVideoDirPath,
     niceFileNameT,
     niceDirNameT,
+    DirectoryInfoFS (..),
+    readDirectoryInfoFS,
   )
 where
 
@@ -33,8 +35,10 @@ import Data.Char (toLower)
 import Data.List (sortBy)
 import Data.List.NonEmpty (group)
 import Data.List.NonEmpty qualified as NE
+import Data.List.NonEmpty.Extra qualified as NE
 import Data.Text (Text, breakOn, replace, strip)
 import Data.Text qualified as T
+import Foreign.C (CTime (..))
 import GHC.Data.Maybe
   ( firstJusts,
     fromMaybe,
@@ -45,18 +49,18 @@ import GHC.Data.Maybe
     orElse,
   )
 import GHC.Exts (sortWith)
-import GHC.Generics (Generic)
 import Path (Abs, Dir, File, Path, Rel, addExtension, dirname, fileExtension, filename, fromRelDir, fromRelFile, mkRelDir, mkRelFile, parent, parseRelFile, splitExtension, toFilePath, (</>))
 import SaferIO (FSRead (..), FSWrite (..), Logger (..), NetworkRead)
 import System.FilePath (dropTrailingPathSeparator)
+import System.Posix qualified as Posix
 import TVDB (TVDBData (..), TVDBToken, TVDBType (..), getInfoFromTVDB)
 import Text.Read (readMaybe)
 import Text.Regex.TDFA ((=~))
 import Yesod (ContentType)
 
 data DirectoryInfo = DirectoryInfo
-  { directoryInfoTitle :: Text,
-    directoryInfoKind :: DirectoryKind,
+  { directoryInfoKind :: DirectoryKind,
+    directoryInfoTitle :: Text,
     directoryInfoYear :: Maybe Int,
     directoryInfoDescription :: Maybe Text,
     directoryInfoImdb :: Maybe Text,
@@ -64,14 +68,14 @@ data DirectoryInfo = DirectoryInfo
     directoryInfoTmdb :: Maybe Text,
     directoryInfoForceUpdate :: Maybe Bool
   }
-  deriving (Generic, Show, Eq, Ord)
+  deriving (Show, Eq)
 
 instance HasCodec DirectoryInfo where
   codec =
     object "DirectoryInfo" $
       DirectoryInfo
-        <$> requiredField "title" "The title of this series or movie" .= directoryInfoTitle
-        <*> requiredField "kind" "Is this a series or a movie?" .= directoryInfoKind
+        <$> requiredField "kind" "Is this a series or a movie?" .= directoryInfoKind
+        <*> requiredField "title" "The title of this series or movie" .= directoryInfoTitle
         <*> optionalFieldWriteNull "year" "The year this series or movie was released" .= directoryInfoYear
         <*> optionalFieldWriteNull "description" "The description of the series or movie" .= directoryInfoDescription
         <*> optionalFieldOrNull "imdb" "The IMDB ID" .= directoryInfoImdb
@@ -87,7 +91,7 @@ instance HasCodec DirectoryInfo where
 data DirectoryKind
   = DirectoryKindMovie
   | DirectoryKindSeries
-  deriving (Generic, Show, Eq, Ord)
+  deriving (Show, Eq)
 
 instance HasCodec DirectoryKind where
   codec =
@@ -101,7 +105,25 @@ data DirectoryRaw = DirectoryRaw
     directoryVideoFiles :: [Path Rel File],
     directoryDirectories :: [Path Rel Dir]
   }
-  deriving (Generic, Show, Eq)
+  deriving (Show, Eq)
+
+-- | Directory info we get directly from the file system.
+data DirectoryInfoFS = DirectoryInfoFS
+  { -- | The last time this directory, or any of it's files/subdir (recursively) was modified.
+    directoryDataLastModified :: Posix.EpochTime,
+    directoryDataLastAccessed :: Posix.EpochTime,
+    -- | Total number of files in this directory or any subdirs (recursively)
+    directoryDataVideoFileCount :: Int,
+    -- | Count of files that have an accessed time > modified time
+    directoryDataPlayedVideoFileCount :: Int
+  }
+  deriving (Eq)
+
+getVideoDirPath :: (FSRead m) => m (Path Abs Dir)
+getVideoDirPath = do
+  home <- getHomeDir
+  let videoDirName = $(mkRelDir "Videos")
+  pure $ home </> videoDirName
 
 -- | This reads a directory and returns the video files and directories in it.
 -- Also sorts these lists in a natural way (putting 2 before 10, for example).
@@ -112,18 +134,12 @@ readDirectoryRaw dir = do
   let directories = smartPathSort dirNames
   pure $ DirectoryRaw dir files directories
 
-getVideoDirPath :: (FSRead m) => m (Path Abs Dir)
-getVideoDirPath = do
-  home <- getHomeDir
-  let videoDirName = $(mkRelDir "Videos")
-  pure $ home </> videoDirName
-
 -- | This reads the info file from a directory and returns it if it exists.
 -- If a file with the correct name exists, but it can't be decoded, it will
 -- also return `Nothing` and print an error in the console.
 readDirectoryInfo :: (FSRead m, Logger m) => Path Abs Dir -> m (Maybe DirectoryInfo)
-readDirectoryInfo root = do
-  mInfoFile <- readFileBSSafe $ root </> $(mkRelFile "info.yaml")
+readDirectoryInfo dir = do
+  mInfoFile <- readFileBSSafe $ dir </> $(mkRelFile "info.yaml")
   case mInfoFile of
     Nothing -> pure Nothing
     Just infoFile ->
@@ -150,6 +166,31 @@ readDirectoryInfoRec dir = do
           if parentDir == dir
             then pure Nothing
             else readDirectoryInfoRec parentDir
+
+-- | This reads the info file from a directory and returns it if it exists.
+-- If a file with the correct name exists, but it can't be decoded, it will
+-- also return `Nothing` and print an error in the console.
+readDirectoryInfoFS :: (FSRead m) => Path Abs Dir -> m DirectoryInfoFS
+readDirectoryInfoFS dir = do
+  (dirs', files') <- listDirRecur dir
+  let dirs = dir : dirs'
+      files = filter isVideoFile files'
+
+  dirStatuses <- traverse getDirStatus dirs
+  fileStatuses <- traverse getFileStatus files
+  let allStatuses = NE.nonEmpty $ dirStatuses ++ fileStatuses
+  let accessTimes = fmap Posix.accessTime <$> allStatuses
+  let modificationTimes = fmap Posix.modificationTime <$> allStatuses
+
+  pure
+    DirectoryInfoFS
+      { directoryDataLastModified = maybe (CTime minBound) NE.maximum1 modificationTimes,
+        directoryDataLastAccessed = maybe (CTime minBound) NE.maximum1 accessTimes,
+        directoryDataVideoFileCount = length files,
+        directoryDataPlayedVideoFileCount = length $ filter beenPlayed fileStatuses
+      }
+  where
+    beenPlayed status = Posix.accessTime status > Posix.modificationTime status
 
 type Image = (ContentType, BS.ByteString)
 

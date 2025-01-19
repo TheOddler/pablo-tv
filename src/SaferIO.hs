@@ -11,20 +11,27 @@ import Network.HTTP.Req qualified as HTTP
 import Path (Abs, Dir, File, Path, Rel)
 import Path qualified
 import Path.IO qualified as Path
+import System.Posix qualified as Posix
 
 -- | Can read from the file system
 class (Monad m) => FSRead m where
   getHomeDir :: m (Path Abs Dir)
   listDirRel :: Path Abs Dir -> m ([Path Rel Dir], [Path Rel File])
+  listDirRecur :: Path Abs Dir -> m ([Path Abs Dir], [Path Abs File])
   readFileBSSafe :: Path Abs File -> m (Maybe BS8.ByteString)
+  getFileStatus :: Path Abs File -> m Posix.FileStatus
+  getDirStatus :: Path Abs Dir -> m Posix.FileStatus
 
 instance FSRead IO where
   getHomeDir = Path.getHomeDir
   listDirRel = Path.listDirRel
+  listDirRecur = Path.listDirRecur
   readFileBSSafe path = do
     (contentOrErr :: Either SomeException BS8.ByteString) <-
       try (BS8.readFile $ Path.fromAbsFile path)
     pure $ rightToMaybe contentOrErr
+  getFileStatus = Posix.getFileStatus . Path.fromAbsFile
+  getDirStatus = Posix.getFileStatus . Path.fromAbsDir
 
 class (Monad m) => FSWrite m where
   writeFileBS :: Path Abs File -> BS8.ByteString -> m ()
