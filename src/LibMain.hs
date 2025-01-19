@@ -28,9 +28,9 @@ import Directory
     getVideoDirPath,
     niceDirNameT,
     niceFileNameT,
-    readDirInfoRec,
-    readDirRaw,
-    updateDirectoryInfos,
+    readDirectoryInfoRec,
+    readDirectoryRaw,
+    updateAllDirectoryInfos,
   )
 import Evdev.Uinput (Device)
 import GHC.Conc (TVar, atomically, newTVarIO, readTVar, writeTVar)
@@ -203,9 +203,9 @@ getDirectoryR segments = do
       Just (p, Nothing) -> pure p
       _ -> redirect $ maybe MobileHomeR DirectoryR $ removeLast segments
 
-  mPathAndInfo <- liftIO $ readDirInfoRec absPath
+  mPathAndInfo <- liftIO $ readDirectoryInfoRec absPath
   let mInfo = snd <$> mPathAndInfo
-  dirRaw <- liftIO $ readDirRaw absPath
+  dirRaw <- liftIO $ readDirectoryRaw absPath
   let filesWithNames = map (\f -> (niceFileNameT f, f)) dirRaw.directoryVideoFiles
       dirsWithNames = map (\d -> (niceDirNameT d, d)) dirRaw.directoryDirectories
 
@@ -287,7 +287,7 @@ getTVHomeR = do
   port <- getsYesod appPort
 
   videoDir <- liftIO getVideoDirPath
-  dirRaw <- liftIO $ readDirRaw videoDir
+  dirRaw <- liftIO $ readDirectoryRaw videoDir
   let filesWithNames = map (\f -> (niceFileNameT f, f)) dirRaw.directoryVideoFiles
       dirsWithNames = map (\d -> (niceDirNameT d, d)) dirRaw.directoryDirectories
 
@@ -347,7 +347,7 @@ main = do
 
   let dataThread =
         asyncOnTrigger videoDataRefreshTrigger $ do
-          infos <- updateDirectoryInfos tvdbToken
+          infos <- updateAllDirectoryInfos tvdbToken
           atomically $ do
             state <- readTVar tvState
             writeTVar tvState state {tvVideoData = sort $ snd <$> infos}

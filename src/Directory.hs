@@ -1,12 +1,12 @@
 {-# LANGUAGE TemplateHaskell #-}
 
 module Directory
-  ( DirectoryInfo (..),
+  ( DirectoryRaw (..),
+    readDirectoryRaw,
+    DirectoryInfo (..),
     DirectoryKind (..),
-    updateDirectoryInfos,
-    readDirInfoRec,
-    DirectoryRaw (..),
-    readDirRaw,
+    readDirectoryInfoRec,
+    updateAllDirectoryInfos,
     getVideoDirPath,
     niceFileNameT,
     niceDirNameT,
@@ -25,7 +25,7 @@ import Autodocodec
 import Autodocodec.Codec (optionalFieldWithDefaultWith)
 import Autodocodec.Yaml (eitherDecodeYamlViaCodec, encodeYamlViaCodec)
 import Control.Applicative ((<|>))
-import Control.Monad (forM, forM_, when)
+import Control.Monad (forM)
 import Control.Monad.Extra (whenJust)
 import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BS8
@@ -105,8 +105,8 @@ data DirectoryRaw = DirectoryRaw
 
 -- | This reads a directory and returns the video files and directories in it.
 -- Also sorts these lists in a natural way (putting 2 before 10, for example).
-readDirRaw :: (FSRead m) => Path Abs Dir -> m DirectoryRaw
-readDirRaw dir = do
+readDirectoryRaw :: (FSRead m) => Path Abs Dir -> m DirectoryRaw
+readDirectoryRaw dir = do
   (dirNames, fileNames) <- listDirRel dir
   let files = smartPathSort $ filter isVideoFile fileNames
   let directories = smartPathSort dirNames
@@ -118,24 +118,38 @@ getVideoDirPath = do
   let videoDirName = $(mkRelDir "Videos")
   pure $ home </> videoDirName
 
-readAllExistingDirectoryInfos :: (FSRead m, Logger m) => m [(Path Abs Dir, Maybe DirectoryInfo)]
-readAllExistingDirectoryInfos = do
-  videoDirPath <- getVideoDirPath
-  videoDirRaw <- readDirRaw videoDirPath
+-- | This reads the info file from a directory and returns it if it exists.
+-- If a file with the correct name exists, but it can't be decoded, it will
+-- also return `Nothing` and print an error in the console.
+readDirectoryInfo :: (FSRead m, Logger m) => Path Abs Dir -> m (Maybe DirectoryInfo)
+readDirectoryInfo root = do
+  mInfoFile <- readFileBSSafe $ root </> $(mkRelFile "info.yaml")
+  case mInfoFile of
+    Nothing -> pure Nothing
+    Just infoFile ->
+      case eitherDecodeYamlViaCodec infoFile of
+        Right info -> pure $ Just info
+        Left err -> do
+          -- If there's an error, move it to a backup file
+          -- We'll need to make a new guess and download info again later
+          logStr $ "Failed to decode info file: " ++ show err
+          pure Nothing
 
-  whenJust (NE.nonEmpty videoDirRaw.directoryVideoFiles) $ \files ->
-    logStr . unlines $
-      [ "Found video files in root video folder.",
-        "You'll still see these as videos on the main page, but no metadata will be downloaded for them.",
-        "Place them in a folder with the movie or series name to get metadata.",
-        "The files are:"
-      ]
-        ++ NE.toList (fromRelFile <$> files)
-
-  let subDirsAbs = (videoDirPath </>) <$> videoDirRaw.directoryDirectories
-  forM subDirsAbs $ \subDir -> do
-    mInfo <- readDirInfo subDir
-    pure (subDir, mInfo)
+-- | Try and read directory info, if not found recursively try the parent folder
+-- until some info is found, or return nothing if no info is ever found.
+-- Returns the directory the file was found in.
+readDirectoryInfoRec :: (FSRead m, Logger m) => Path Abs Dir -> m (Maybe (Path Abs Dir, DirectoryInfo))
+readDirectoryInfoRec dir = do
+  mInfoFile <- readDirectoryInfo dir
+  case mInfoFile of
+    Just info -> pure $ Just (dir, info)
+    Nothing ->
+      let parentDir = parent dir
+       in -- The `parent` function returns the same dir if it's the root of your file system
+          -- so at that point we don't want to loop forever
+          if parentDir == dir
+            then pure Nothing
+            else readDirectoryInfoRec parentDir
 
 type Image = (ContentType, BS.ByteString)
 
@@ -188,95 +202,65 @@ downloadDirectoryInfo tvdbToken startingInfo = do
 
 writeDirectoryInfo :: (FSWrite m) => Path Abs Dir -> DirectoryInfo -> Maybe Image -> m ()
 writeDirectoryInfo dir info mImage = do
-  writeDirInfo dir info
+  writeFileBS (mkDirInfoFilePath dir) (encodeYamlViaCodec info)
   case mImage of
     Just (contentType, imgBytes) -> writeImage dir contentType imgBytes
     Nothing -> pure ()
 
-data DirectoryInfoOrigin
-  = DirectoryInfoOriginal
-  | DirectoryInfoUpdated
-  deriving (Eq)
-
--- | This updates all directory infos in the video directory.
--- It will optionally download more information from TVDB, and write the new info to disk.
--- The refresh level can be overwritten by setting `force-update` in the info file.
-updateDirectoryInfos :: (FSRead m, NetworkRead m, FSWrite m, Logger m) => TVDBToken -> m [(Path Abs Dir, DirectoryInfo)]
-updateDirectoryInfos tvdbToken = do
-  existingInfos <- readAllExistingDirectoryInfos
-
-  -- Guess or download infos based on the settings
-  updatedInfos <- forM existingInfos $ \(dir, mInfo) -> do
-    let doDownload info = do
-          (extendedInfo, mImage) <- downloadDirectoryInfo tvdbToken info
-          pure (extendedInfo, DirectoryInfoUpdated, mImage)
-    (info, origin, mImg) <- case mInfo of
-      Just info
-        | info.directoryInfoForceUpdate == Just True ->
-            doDownload info
-      Just info ->
-        pure (info, DirectoryInfoOriginal, Nothing)
-      Nothing -> do
-        dirRaw <- readDirRaw dir
-        let guessedInfo = guessDirectoryInfo dirRaw
-        doDownload guessedInfo
-    pure (dir, info, origin, mImg)
-
-  -- Write the new infos to disk
-  forM_ updatedInfos $ \(dir, info, origin, mImg) -> do
-    when (origin /= DirectoryInfoOriginal) $ do
+-- | Reads the existing directory info, if it exists and update is wanted it does,
+-- if not makes a guess and tries to get data online.
+-- Returns the updated (or existing) info.
+updateDirectoryInfo :: (FSRead m, NetworkRead m, FSWrite m, Logger m) => TVDBToken -> Path Abs Dir -> m DirectoryInfo
+updateDirectoryInfo tvdbToken dir = do
+  existingInfo <- readDirectoryInfo dir
+  case existingInfo of
+    Just info
+      | info.directoryInfoForceUpdate == Just True -> do
+          updateAndWrite info
+    Just info ->
+      pure info
+    Nothing -> do
+      dirRaw <- readDirectoryRaw dir
+      let guessedInfo = guessDirectoryInfo dirRaw
+      updateAndWrite guessedInfo
+  where
+    updateAndWrite info = do
       -- Make a backup if a file already exists,
-      -- do this without parsing it, as it might have failed parsing
+      -- do this without parsing it, as it might (have) fail(ed) parsing
       let infoFilePath = mkDirInfoFilePath dir
       case addExtension ".backup" infoFilePath of
         Just backupPath ->
           renameFileSafe infoFilePath backupPath
         Nothing -> logStr $ "Failed to make backup file name: " ++ toFilePath infoFilePath
-      writeDirectoryInfo dir info mImg
+      -- Get the new data and write it to disk
+      (extendedInfo, mImage) <- downloadDirectoryInfo tvdbToken info
+      writeDirectoryInfo dir extendedInfo mImage
+      pure extendedInfo
 
-  let takeDirAndInfo (dir, info, _origin, _mImg) = (dir, info)
-  pure $ takeDirAndInfo <$> updatedInfos
+-- | This updates all directory infos in the video directory.
+-- It will optionally download more information from TVDB, and write the new info to disk.
+-- The refresh level can be overwritten by setting `force-update` in the info file.
+updateAllDirectoryInfos :: (FSRead m, NetworkRead m, FSWrite m, Logger m) => TVDBToken -> m [(Path Abs Dir, DirectoryInfo)]
+updateAllDirectoryInfos tvdbToken = do
+  videoDirPath <- getVideoDirPath
+  videoDirRaw <- readDirectoryRaw videoDirPath
 
--- | This reads the info file from a directory and returns it if it exists.
--- If a file with the correct name exists, but it can't be decoded,
--- it will be renamed to `.backup` and the function will return `Nothing`
--- as if no file existed in the first place.
-readDirInfo :: (FSRead m, Logger m) => Path Abs Dir -> m (Maybe DirectoryInfo)
-readDirInfo root = do
-  mInfoFile <- readFileBSSafe $ root </> $(mkRelFile "info.yaml")
-  case mInfoFile of
-    Nothing -> pure Nothing
-    Just infoFile ->
-      case eitherDecodeYamlViaCodec infoFile of
-        Right info -> pure $ Just info
-        Left err -> do
-          -- If there's an error, move it to a backup file
-          -- We'll need to make a new guess and download info again later
-          logStr $ "Failed to decode info file: " ++ show err
-          pure Nothing
+  whenJust (NE.nonEmpty videoDirRaw.directoryVideoFiles) $ \files ->
+    logStr . unlines $
+      [ "Found video files in root video folder.",
+        "You'll still see these as videos on the main page, but no metadata will be downloaded for them.",
+        "Place them in a folder with the movie or series name to get metadata.",
+        "The files are:"
+      ]
+        ++ NE.toList (fromRelFile <$> files)
 
--- | Try and read directory info, if not found recursively try the parent folder
--- until some info is found, or return nothing if no info is ever found.
--- Returns the directory the file was found in.
-readDirInfoRec :: (FSRead m, Logger m) => Path Abs Dir -> m (Maybe (Path Abs Dir, DirectoryInfo))
-readDirInfoRec root = do
-  mInfoFile <- readDirInfo root
-  case mInfoFile of
-    Just info -> pure $ Just (root, info)
-    Nothing ->
-      let parentDir = parent root
-       in -- The `parent` function returns the same dir if it's the root of your file system
-          -- so at that point we don't want to loop forever
-          if parentDir == root
-            then pure Nothing
-            else readDirInfoRec parentDir
+  forM videoDirRaw.directoryDirectories $ \dir -> do
+    let absPath = videoDirPath </> dir
+    info <- updateDirectoryInfo tvdbToken absPath
+    pure (absPath, info)
 
 mkDirInfoFilePath :: Path Abs Dir -> Path Abs File
 mkDirInfoFilePath root = root </> $(mkRelFile "info.yaml")
-
-writeDirInfo :: (FSWrite m) => Path Abs Dir -> DirectoryInfo -> m ()
-writeDirInfo path info =
-  writeFileBS (mkDirInfoFilePath path) (encodeYamlViaCodec info)
 
 writeImage :: (FSWrite m) => Path Abs Dir -> ContentType -> BS.ByteString -> m ()
 writeImage rootDir contentType imgBytes =
