@@ -25,7 +25,6 @@ import Directory
   ( DirectoryInfo (..),
     DirectoryKind (..),
     DirectoryRaw (..),
-    DirectoryUpdateLevel (..),
     getVideoDirPath,
     niceDirNameT,
     niceFileNameT,
@@ -348,7 +347,7 @@ main = do
 
   let dataThread =
         asyncOnTrigger videoDataRefreshTrigger $ do
-          infos <- updateDirectoryInfos tvdbToken DirectoryUpdateMissing
+          infos <- updateDirectoryInfos tvdbToken
           atomically $ do
             state <- readTVar tvState
             writeTVar tvState state {tvVideoData = sort $ snd <$> infos}

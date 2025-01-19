@@ -4,7 +4,6 @@ module Directory
   ( DirectoryInfo (..),
     DirectoryKind (..),
     updateDirectoryInfos,
-    DirectoryUpdateLevel (..),
     readDirInfoRec,
     DirectoryRaw (..),
     readDirRaw,
@@ -194,50 +193,33 @@ writeDirectoryInfo dir info mImage = do
     Just (contentType, imgBytes) -> writeImage dir contentType imgBytes
     Nothing -> pure ()
 
-data DirectoryUpdateLevel = DirectoryUpdateGuessOnly | DirectoryUpdateMissing | DirectoryUpdateAll
-
 data DirectoryInfoOrigin
   = DirectoryInfoOriginal
-  | DirectoryInfoGuessed
   | DirectoryInfoUpdated
   deriving (Eq)
 
 -- | This updates all directory infos in the video directory.
 -- It will optionally download more information from TVDB, and write the new info to disk.
 -- The refresh level can be overwritten by setting `force-update` in the info file.
-updateDirectoryInfos :: (FSRead m, NetworkRead m, FSWrite m, Logger m) => TVDBToken -> DirectoryUpdateLevel -> m [(Path Abs Dir, DirectoryInfo)]
-updateDirectoryInfos tvdbToken refresh = do
+updateDirectoryInfos :: (FSRead m, NetworkRead m, FSWrite m, Logger m) => TVDBToken -> m [(Path Abs Dir, DirectoryInfo)]
+updateDirectoryInfos tvdbToken = do
   existingInfos <- readAllExistingDirectoryInfos
 
   -- Guess or download infos based on the settings
   updatedInfos <- forM existingInfos $ \(dir, mInfo) -> do
-    let makeGuess = do
-          dirRaw <- readDirRaw dir
-          pure $ guessDirectoryInfo dirRaw
-        doDownload info = do
+    let doDownload info = do
           (extendedInfo, mImage) <- downloadDirectoryInfo tvdbToken info
           pure (extendedInfo, DirectoryInfoUpdated, mImage)
-        doNothing info = pure (info, DirectoryInfoOriginal, Nothing)
-        guessAndDownload = do
-          guessedInfo <- makeGuess
-          doDownload guessedInfo
-    (info, origin, mImg) <- case (refresh, mInfo) of
-      (_, Just info)
+    (info, origin, mImg) <- case mInfo of
+      Just info
         | info.directoryInfoForceUpdate == Just True ->
             doDownload info
-      (DirectoryUpdateGuessOnly, Just info) ->
-        doNothing info
-      (DirectoryUpdateMissing, Just info) ->
-        doNothing info
-      (DirectoryUpdateAll, Just info) ->
-        doDownload info
-      (DirectoryUpdateGuessOnly, Nothing) -> do
-        guessedInfo <- makeGuess
-        pure (guessedInfo, DirectoryInfoGuessed, Nothing)
-      (DirectoryUpdateMissing, Nothing) ->
-        guessAndDownload
-      (DirectoryUpdateAll, Nothing) ->
-        guessAndDownload
+      Just info ->
+        pure (info, DirectoryInfoOriginal, Nothing)
+      Nothing -> do
+        dirRaw <- readDirRaw dir
+        let guessedInfo = guessDirectoryInfo dirRaw
+        doDownload guessedInfo
     pure (dir, info, origin, mImg)
 
   -- Write the new infos to disk
