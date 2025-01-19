@@ -1,6 +1,7 @@
 module Util where
 
 import Autodocodec (JSONCodec, stringConstCodec)
+import Control.Concurrent (MVar, takeMVar)
 import Control.Monad (when)
 import Data.Binary.Builder (toLazyByteString)
 import Data.ByteString.Lazy qualified as LBS
@@ -88,3 +89,16 @@ boundedEnumCodec showFunc =
    in case NE.nonEmpty ls of
         Nothing -> error "0 enum values ?!"
         Just ne -> stringConstCodec (NE.map (\v -> (v, showFunc v)) ne)
+
+-- | This will loop and take the `()` from the trigger, and rerun the action
+-- every time the trigger is set.
+-- If the trigger is set while the action is already running, it will wait until
+-- it is done and then run the action.
+asyncOnTrigger :: MVar () -> IO () -> IO ()
+asyncOnTrigger trigger action = loop
+  where
+    loop :: IO ()
+    loop = do
+      takeMVar trigger
+      action
+      loop

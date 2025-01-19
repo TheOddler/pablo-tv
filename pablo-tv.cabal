@@ -45,6 +45,7 @@ library
         IsDevelopment
         LibMain
         SafeMaths
+        SaferIO
         TVDB
         Util
     if flag(development)

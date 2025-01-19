@@ -3,13 +3,13 @@
 module TVDB
   ( TVDBData (..),
     TVDBType (..),
+    TVDBToken (..),
     getInfoFromTVDB,
   )
 where
 
 import Autodocodec
 import Control.Applicative ((<|>))
-import Control.Exception (try)
 import Data.Aeson (FromJSON)
 import Data.Aeson.KeyMap (KeyMap)
 import Data.Aeson.KeyMap qualified as KeyMap
@@ -18,7 +18,8 @@ import Data.Maybe (listToMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Network.HTTP.Client (responseHeaders)
-import Network.HTTP.Req (GET (GET), HttpConfig, HttpException, HttpResponse (toVanillaResponse), NoReqBody (..), Option, Req, Url, bsResponse, defaultHttpConfig, https, jsonResponse, oAuth2Bearer, req, responseBody, runReq, useURI, (/:), (=:))
+import Network.HTTP.Req (GET (GET), HttpResponse (toVanillaResponse), NoReqBody (..), Option, Url, bsResponse, defaultHttpConfig, https, jsonResponse, oAuth2Bearer, req, responseBody, useURI, (/:), (=:))
+import SaferIO (Logger (..), NetworkRead (..))
 import Text.Read (readMaybe)
 import Text.URI (mkURI)
 import Util (mapLeft)
@@ -85,12 +86,11 @@ instance HasCodec RawResponseRemoteId where
         <$> requiredField "id" "The remote id" .= rawResponseRemoteId
         <*> requiredField "sourceName" "Either `IMDB` or `TheMovieDB.com`, among other irrelevant ones for us" .= rawResponseRemoteSourceName
 
-safeReq :: HttpConfig -> Req r -> IO (Either HttpException r)
-safeReq c r = try $ runReq c r
+newtype TVDBToken = TVDBToken BS.ByteString
 
-getInfoFromTVDB :: BS.ByteString -> Text -> TVDBType -> Maybe Int -> IO (Maybe TVDBData)
-getInfoFromTVDB tvdbToken title type' mYear = do
-  response <- safeReq defaultHttpConfig $ do
+getInfoFromTVDB :: (NetworkRead m, Logger m) => TVDBToken -> Text -> TVDBType -> Maybe Int -> m (Maybe TVDBData)
+getInfoFromTVDB (TVDBToken tvdbToken) title type' mYear = do
+  response <- runReqSafe defaultHttpConfig $ do
     response <-
       req GET (https "api4.thetvdb.com" /: "v4" /: "search") NoReqBody jsonResponse $
         mconcat
@@ -110,10 +110,10 @@ getInfoFromTVDB tvdbToken title type' mYear = do
 
   case response of
     Left err -> do
-      putStrLn $ "Failed TVDB request: " <> show err <> "; " <> show debugInfo
+      logStr $ "Failed TVDB request: " <> show err <> "; " <> show debugInfo
       pure Nothing
     (Right Nothing) -> do
-      putStrLn $ "TVDB request return nothing. " <> show debugInfo
+      logStr $ "TVDB request return nothing. " <> show debugInfo
       pure Nothing
     (Right (Just firstData)) -> do
       let imgUrl = rawResponseDataImageUrl firstData
@@ -126,7 +126,7 @@ getInfoFromTVDB tvdbToken title type' mYear = do
       imgOrError <- downloadImage imgUrl
       case imgOrError of
         Right _ -> pure ()
-        Left err -> putStrLn err
+        Left err -> logStr err
       pure $
         Just $
           TVDBData
@@ -140,17 +140,17 @@ getInfoFromTVDB tvdbToken title type' mYear = do
               tvdbDataTmdb = lookupRemoteId "TheMovieDB.com"
             }
 
-downloadImage :: Text -> IO (Either String (ContentType, BS.ByteString))
+downloadImage :: (NetworkRead m) => Text -> m (Either String (ContentType, BS.ByteString))
 downloadImage urlT = do
   case useURI =<< mkURI urlT of
     Nothing -> pure $ Left $ "Invalid URL: " <> T.unpack urlT
     Just (Left httpUrl) -> downloadFrom httpUrl
     Just (Right httpsUrl) -> downloadFrom httpsUrl
   where
-    downloadFrom :: (Url scheme, Option scheme) -> IO (Either String (ContentType, BS.ByteString))
+    downloadFrom :: (NetworkRead m) => (Url scheme, Option scheme) -> m (Either String (ContentType, BS.ByteString))
     downloadFrom (url, options) = do
       imgResponse <-
-        safeReq defaultHttpConfig $
+        runReqSafe defaultHttpConfig $
           req GET url NoReqBody bsResponse options
       pure $ do
         img <- mapLeft (\err -> "Failed downloading tvdb image: " <> show err) imgResponse

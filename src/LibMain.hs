@@ -25,15 +25,16 @@ import Directory
   ( DirectoryInfo (..),
     DirectoryKind (..),
     DirectoryRaw (..),
+    DirectoryUpdateLevel (..),
     getVideoDirPath,
     niceDirNameT,
     niceFileNameT,
-    readDirInfo,
+    readDirInfoRec,
     readDirRaw,
-    videoDataThread,
+    updateDirectoryInfos,
   )
 import Evdev.Uinput (Device)
-import GHC.Conc (TVar, atomically, newTVarIO, writeTVar)
+import GHC.Conc (TVar, atomically, newTVarIO, readTVar, writeTVar)
 import GHC.Data.Maybe (firstJustsM, listToMaybe, orElse)
 import GHC.MVar (MVar, newMVar)
 import IsDevelopment (isDevelopment)
@@ -44,9 +45,10 @@ import Path.IO (doesDirExist, doesFileExist, getHomeDir, listDir)
 import System.Environment (getEnv)
 import System.FilePath (dropTrailingPathSeparator)
 import System.Process (callProcess)
+import TVDB (TVDBToken (..))
 import Text.Hamlet (hamletFile)
 import Text.Julius (RawJavascript (..))
-import Util (networkInterfacesShortList, onChanges, removeLast, toUrl, unsnoc, widgetFile)
+import Util (asyncOnTrigger, networkInterfacesShortList, onChanges, removeLast, toUrl, unsnoc, widgetFile)
 import Yesod hiding (defaultLayout, replace)
 import Yesod qualified
 import Yesod.EmbeddedStatic
@@ -54,20 +56,20 @@ import Yesod.WebSockets (race_, sendTextData, webSockets)
 
 data App = App
   { appPort :: Int,
-    appTVDBToken :: BS.ByteString,
+    appTVDBToken :: TVDBToken,
     appInputDevice :: Device,
     appTVState :: TVar TVState,
     appGetStatic :: EmbeddedStatic,
-    appVideoData :: TVar [DirectoryInfo],
     appVideoDataRefreshTrigger :: MVar ()
   }
 
-newtype TVState = TVState
-  { tvPage :: Route App
+data TVState = TVState
+  { tvPage :: Route App,
+    tvVideoData :: [DirectoryInfo]
   }
 
 instance (Eq (Route App)) => Eq TVState where
-  TVState a == TVState b = a == b
+  TVState a b == TVState a2 b2 = a == a2 && b == b2
 
 mkEmbeddedStatic
   False
@@ -202,7 +204,7 @@ getDirectoryR segments = do
       Just (p, Nothing) -> pure p
       _ -> redirect $ maybe MobileHomeR DirectoryR $ removeLast segments
 
-  mPathAndInfo <- liftIO $ readDirInfo absPath
+  mPathAndInfo <- liftIO $ readDirInfoRec absPath
   let mInfo = snd <$> mPathAndInfo
   dirRaw <- liftIO $ readDirRaw absPath
   let filesWithNames = map (\f -> (niceFileNameT f, f)) dirRaw.directoryVideoFiles
@@ -210,7 +212,9 @@ getDirectoryR segments = do
 
   -- Let the tv know what page we're on
   tvStateTVar <- getsYesod appTVState
-  liftIO $ atomically $ writeTVar tvStateTVar $ TVState $ DirectoryR segments
+  liftIO $ atomically $ do
+    state <- readTVar tvStateTVar
+    writeTVar tvStateTVar state {tvPage = DirectoryR segments}
 
   let mkSegments :: Path Rel x -> [Text]
       mkSegments d = segments ++ [T.pack $ dropTrailingPathSeparator $ toFilePath d]
@@ -325,11 +329,10 @@ getAllIPsR = do
 main :: IO ()
 main = do
   -- To get this token for now you can use your apiKey here https://thetvdb.github.io/v4-api/#/Login/post_login
-  tvdbToken <- BS.pack <$> getEnv "TVDB_TOKEN"
+  tvdbToken <- TVDBToken . BS.pack <$> getEnv "TVDB_TOKEN"
 
   inputDevice <- mkInputDevice
-  tvState <- newTVarIO $ TVState MobileHomeR
-  videoData <- newTVarIO []
+  tvState <- newTVarIO $ TVState MobileHomeR []
   videoDataRefreshTrigger <- newMVar ()
 
   let port = 8080
@@ -343,18 +346,26 @@ main = do
   when (not isDevelopment) $ do
     callProcess "xdg-open" [url]
 
-  race_ (videoDataThread tvdbToken videoDataRefreshTrigger videoData) $ do
-    app <-
-      toWaiAppPlain
-        App
-          { appPort = port,
-            appTVDBToken = tvdbToken,
-            appInputDevice = inputDevice,
-            appTVState = tvState,
-            appGetStatic = embeddedStatic,
-            appVideoData = videoData,
-            appVideoDataRefreshTrigger = videoDataRefreshTrigger
-          }
-    run port $ defaultMiddlewaresNoLogging app
+  let dataThread =
+        asyncOnTrigger videoDataRefreshTrigger $ do
+          infos <- updateDirectoryInfos tvdbToken DirectoryUpdateMissing
+          atomically $ do
+            state <- readTVar tvState
+            writeTVar tvState state {tvVideoData = sort $ snd <$> infos}
+
+  let appThread = do
+        app <-
+          toWaiAppPlain
+            App
+              { appPort = port,
+                appTVDBToken = tvdbToken,
+                appInputDevice = inputDevice,
+                appTVState = tvState,
+                appGetStatic = embeddedStatic,
+                appVideoDataRefreshTrigger = videoDataRefreshTrigger
+              }
+        run port $ defaultMiddlewaresNoLogging app
+
+  race_ appThread dataThread
 
   putStrLn "Server quite."

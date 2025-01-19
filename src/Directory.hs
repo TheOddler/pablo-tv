@@ -1,6 +1,18 @@
 {-# LANGUAGE TemplateHaskell #-}
 
-module Directory where
+module Directory
+  ( DirectoryInfo (..),
+    DirectoryKind (..),
+    updateDirectoryInfos,
+    DirectoryUpdateLevel (..),
+    readDirInfoRec,
+    DirectoryRaw (..),
+    readDirRaw,
+    getVideoDirPath,
+    niceFileNameT,
+    niceDirNameT,
+  )
+where
 
 import Algorithms.NaturalSort qualified as Natural
 import Autodocodec
@@ -14,19 +26,18 @@ import Autodocodec
 import Autodocodec.Codec (optionalFieldWithDefaultWith)
 import Autodocodec.Yaml (eitherDecodeYamlViaCodec, encodeYamlViaCodec)
 import Control.Applicative ((<|>))
-import Control.Monad (forM)
+import Control.Monad (forM, forM_, when)
+import Control.Monad.Extra (whenJust)
 import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BS8
 import Data.Char (toLower)
-import Data.List (sort, sortBy)
+import Data.List (sortBy)
 import Data.List.NonEmpty (group)
 import Data.List.NonEmpty qualified as NE
 import Data.Text (Text, breakOn, replace, strip)
 import Data.Text qualified as T
-import GHC.Conc (TVar, atomically, writeTVar)
 import GHC.Data.Maybe
   ( firstJusts,
-    firstJustsM,
     fromMaybe,
     isJust,
     isNothing,
@@ -36,11 +47,10 @@ import GHC.Data.Maybe
   )
 import GHC.Exts (sortWith)
 import GHC.Generics (Generic)
-import GHC.MVar (MVar, takeMVar)
-import Path (Abs, Dir, File, Path, Rel, addExtension, dirname, fileExtension, filename, fromAbsFile, fromRelDir, fromRelFile, mkRelDir, mkRelFile, parent, parseRelFile, splitExtension, toFilePath, (</>))
-import Path.IO (getHomeDir, listDirRel, renameFile)
+import Path (Abs, Dir, File, Path, Rel, addExtension, dirname, fileExtension, filename, fromRelDir, fromRelFile, mkRelDir, mkRelFile, parent, parseRelFile, splitExtension, toFilePath, (</>))
+import SaferIO (FSRead (..), FSWrite (..), Logger (..), NetworkRead)
 import System.FilePath (dropTrailingPathSeparator)
-import TVDB (TVDBData (..), TVDBType (..), getInfoFromTVDB)
+import TVDB (TVDBData (..), TVDBToken, TVDBType (..), getInfoFromTVDB)
 import Text.Read (readMaybe)
 import Text.Regex.TDFA ((=~))
 import Yesod (ContentType)
@@ -87,48 +97,6 @@ instance HasCodec DirectoryKind where
         NE.:| [ (DirectoryKindSeries, "series")
               ]
 
-getVideoDirPath :: IO (Path Abs Dir)
-getVideoDirPath = do
-  home <- getHomeDir
-  let videoDirName = $(mkRelDir "Videos")
-  pure $ home </> videoDirName
-
-videoDataThread :: BS.ByteString -> MVar () -> TVar [DirectoryInfo] -> IO ()
-videoDataThread tvdbToken refreshTrigger dirData = loop
-  where
-    loop :: IO ()
-    loop = do
-      takeMVar refreshTrigger
-      infos <- refreshVideoData tvdbToken
-      atomically $ writeTVar dirData $ sort infos
-      loop
-
-refreshVideoData :: BS.ByteString -> IO [DirectoryInfo]
-refreshVideoData tvdbToken = do
-  videoDirPath <- getVideoDirPath
-  dirRaw <- readDirRaw videoDirPath
-  let subDirsAbs = (videoDirPath </>) <$> dirRaw.directoryDirectories
-  forM subDirsAbs $ \subDir -> do
-    mInfo <- readDirInfo subDir
-    case mInfo of
-      Just (infoPath, info) | info.directoryInfoForceUpdate == Just True -> do
-        (extendedInfo, mImage) <- downloadDirInfo tvdbToken info
-        writeDirInfo infoPath extendedInfo
-        case mImage of
-          Just (contentType, imgBytes) -> writeImage subDir contentType imgBytes
-          Nothing -> pure ()
-        pure info
-      Just (_path, info) -> pure info
-      Nothing -> do
-        subDirRaw <- readDirRaw subDir
-        let guessedInfo = guessDirectoryInfo subDirRaw
-        (newDirInfo, mImage) <- downloadDirInfo tvdbToken guessedInfo
-        writeDirInfo (mkDirInfoFilePath subDir) newDirInfo
-        case mImage of
-          Just (contentType, imgBytes) -> writeImage subDir contentType imgBytes
-          Nothing -> pure ()
-        pure newDirInfo
-
 data DirectoryRaw = DirectoryRaw
   { directoryPath :: Path Abs Dir,
     directoryVideoFiles :: [Path Rel File],
@@ -138,44 +106,45 @@ data DirectoryRaw = DirectoryRaw
 
 -- | This reads a directory and returns the video files and directories in it.
 -- Also sorts these lists in a natural way (putting 2 before 10, for example).
-readDirRaw :: Path Abs Dir -> IO DirectoryRaw
+readDirRaw :: (FSRead m) => Path Abs Dir -> m DirectoryRaw
 readDirRaw dir = do
   (dirNames, fileNames) <- listDirRel dir
   let files = smartPathSort $ filter isVideoFile fileNames
   let directories = smartPathSort dirNames
   pure $ DirectoryRaw dir files directories
 
--- | This reads the info file from a directory and returns it if it exists.
--- If a file with the correct name exists, but it can't be decoded,
--- it will be renamed to `.backup` and the function will return `Nothing`
--- as if no file existed in the first place.
-readDirInfo :: Path Abs Dir -> IO (Maybe (Path Abs File, DirectoryInfo))
-readDirInfo root = do
-  mInfoFilePath <- tryGetFile (== $(mkRelFile "info.yaml")) root
-  case mInfoFilePath of
-    Nothing -> pure Nothing
-    Just infoFilePath -> do
-      -- If there is, try and decode it
-      decodedOrError <- eitherDecodeYamlViaCodec <$> BS.readFile (fromAbsFile infoFilePath)
-      case decodedOrError of
-        Right info -> pure $ Just (infoFilePath, info)
-        Left err -> do
-          -- If there's an error, move it to a backup file
-          -- We'll need to make a new guess and download info again later
-          putStrLn $ "Failed to decode info file: " ++ show err
-          newName <- addExtension ".backup" infoFilePath
-          renameFile infoFilePath newName
-          pure Nothing
+getVideoDirPath :: (FSRead m) => m (Path Abs Dir)
+getVideoDirPath = do
+  home <- getHomeDir
+  let videoDirName = $(mkRelDir "Videos")
+  pure $ home </> videoDirName
+
+readAllExistingDirectoryInfos :: (FSRead m, Logger m) => m [(Path Abs Dir, Maybe DirectoryInfo)]
+readAllExistingDirectoryInfos = do
+  videoDirPath <- getVideoDirPath
+  videoDirRaw <- readDirRaw videoDirPath
+
+  whenJust (NE.nonEmpty videoDirRaw.directoryVideoFiles) $ \files ->
+    logStr . unlines $
+      [ "Found video files in root video folder.",
+        "You'll still see these as videos on the main page, but no metadata will be downloaded for them.",
+        "Place them in a folder with the movie or series name to get metadata.",
+        "The files are:"
+      ]
+        ++ NE.toList (fromRelFile <$> files)
+
+  let subDirsAbs = (videoDirPath </>) <$> videoDirRaw.directoryDirectories
+  forM subDirsAbs $ \subDir -> do
+    mInfo <- readDirInfo subDir
+    pure (subDir, mInfo)
+
+type Image = (ContentType, BS.ByteString)
 
 -- | This downloads more information about a directory from TVDB and returns it.
 -- This will always try and download info, even if it's already available, to
 -- see if there's any update to the values.
--- TODO: I might want to return an error instead of nothing.
-downloadDirInfo ::
-  BS.ByteString ->
-  DirectoryInfo ->
-  IO (DirectoryInfo, Maybe (ContentType, BS.ByteString))
-downloadDirInfo tvdbToken startingInfo = do
+downloadDirectoryInfo :: (NetworkRead m, Logger m) => TVDBToken -> DirectoryInfo -> m (DirectoryInfo, Maybe Image)
+downloadDirectoryInfo tvdbToken startingInfo = do
   let tvdbType = case directoryInfoKind startingInfo of
         DirectoryKindMovie -> TVDBTypeMovie
         DirectoryKindSeries -> TVDBTypeSeries
@@ -218,14 +187,116 @@ downloadDirInfo tvdbToken startingInfo = do
 
   pure (extendedInfo, mTVDBData >>= tvdbDataImage)
 
+writeDirectoryInfo :: (FSWrite m) => Path Abs Dir -> DirectoryInfo -> Maybe Image -> m ()
+writeDirectoryInfo dir info mImage = do
+  writeDirInfo dir info
+  case mImage of
+    Just (contentType, imgBytes) -> writeImage dir contentType imgBytes
+    Nothing -> pure ()
+
+data DirectoryUpdateLevel = DirectoryUpdateGuessOnly | DirectoryUpdateMissing | DirectoryUpdateAll
+
+data DirectoryInfoOrigin
+  = DirectoryInfoOriginal
+  | DirectoryInfoGuessed
+  | DirectoryInfoUpdated
+  deriving (Eq)
+
+-- | This updates all directory infos in the video directory.
+-- It will optionally download more information from TVDB, and write the new info to disk.
+-- The refresh level can be overwritten by setting `force-update` in the info file.
+updateDirectoryInfos :: (FSRead m, NetworkRead m, FSWrite m, Logger m) => TVDBToken -> DirectoryUpdateLevel -> m [(Path Abs Dir, DirectoryInfo)]
+updateDirectoryInfos tvdbToken refresh = do
+  existingInfos <- readAllExistingDirectoryInfos
+
+  -- Guess or download infos based on the settings
+  updatedInfos <- forM existingInfos $ \(dir, mInfo) -> do
+    let makeGuess = do
+          dirRaw <- readDirRaw dir
+          pure $ guessDirectoryInfo dirRaw
+        doDownload info = do
+          (extendedInfo, mImage) <- downloadDirectoryInfo tvdbToken info
+          pure (extendedInfo, DirectoryInfoUpdated, mImage)
+        doNothing info = pure (info, DirectoryInfoOriginal, Nothing)
+        guessAndDownload = do
+          guessedInfo <- makeGuess
+          doDownload guessedInfo
+    (info, origin, mImg) <- case (refresh, mInfo) of
+      (_, Just info)
+        | info.directoryInfoForceUpdate == Just True ->
+            doDownload info
+      (DirectoryUpdateGuessOnly, Just info) ->
+        doNothing info
+      (DirectoryUpdateMissing, Just info) ->
+        doNothing info
+      (DirectoryUpdateAll, Just info) ->
+        doDownload info
+      (DirectoryUpdateGuessOnly, Nothing) -> do
+        guessedInfo <- makeGuess
+        pure (guessedInfo, DirectoryInfoGuessed, Nothing)
+      (DirectoryUpdateMissing, Nothing) ->
+        guessAndDownload
+      (DirectoryUpdateAll, Nothing) ->
+        guessAndDownload
+    pure (dir, info, origin, mImg)
+
+  -- Write the new infos to disk
+  forM_ updatedInfos $ \(dir, info, origin, mImg) -> do
+    when (origin /= DirectoryInfoOriginal) $ do
+      -- Make a backup if a file already exists,
+      -- do this without parsing it, as it might have failed parsing
+      let infoFilePath = mkDirInfoFilePath dir
+      case addExtension ".backup" infoFilePath of
+        Just backupPath ->
+          renameFileSafe infoFilePath backupPath
+        Nothing -> logStr $ "Failed to make backup file name: " ++ toFilePath infoFilePath
+      writeDirectoryInfo dir info mImg
+
+  let takeDirAndInfo (dir, info, _origin, _mImg) = (dir, info)
+  pure $ takeDirAndInfo <$> updatedInfos
+
+-- | This reads the info file from a directory and returns it if it exists.
+-- If a file with the correct name exists, but it can't be decoded,
+-- it will be renamed to `.backup` and the function will return `Nothing`
+-- as if no file existed in the first place.
+readDirInfo :: (FSRead m, Logger m) => Path Abs Dir -> m (Maybe DirectoryInfo)
+readDirInfo root = do
+  mInfoFile <- readFileBSSafe $ root </> $(mkRelFile "info.yaml")
+  case mInfoFile of
+    Nothing -> pure Nothing
+    Just infoFile ->
+      case eitherDecodeYamlViaCodec infoFile of
+        Right info -> pure $ Just info
+        Left err -> do
+          -- If there's an error, move it to a backup file
+          -- We'll need to make a new guess and download info again later
+          logStr $ "Failed to decode info file: " ++ show err
+          pure Nothing
+
+-- | Try and read directory info, if not found recursively try the parent folder
+-- until some info is found, or return nothing if no info is ever found.
+-- Returns the directory the file was found in.
+readDirInfoRec :: (FSRead m, Logger m) => Path Abs Dir -> m (Maybe (Path Abs Dir, DirectoryInfo))
+readDirInfoRec root = do
+  mInfoFile <- readDirInfo root
+  case mInfoFile of
+    Just info -> pure $ Just (root, info)
+    Nothing ->
+      let parentDir = parent root
+       in -- The `parent` function returns the same dir if it's the root of your file system
+          -- so at that point we don't want to loop forever
+          if parentDir == root
+            then pure Nothing
+            else readDirInfoRec parentDir
+
 mkDirInfoFilePath :: Path Abs Dir -> Path Abs File
 mkDirInfoFilePath root = root </> $(mkRelFile "info.yaml")
 
-writeDirInfo :: Path Abs File -> DirectoryInfo -> IO ()
+writeDirInfo :: (FSWrite m) => Path Abs Dir -> DirectoryInfo -> m ()
 writeDirInfo path info =
-  BS.writeFile (fromAbsFile path) (encodeYamlViaCodec info)
+  writeFileBS (mkDirInfoFilePath path) (encodeYamlViaCodec info)
 
-writeImage :: Path Abs Dir -> ContentType -> BS.ByteString -> IO ()
+writeImage :: (FSWrite m) => Path Abs Dir -> ContentType -> BS.ByteString -> m ()
 writeImage rootDir contentType imgBytes =
   let extension =
         if BS.isPrefixOf "image/" contentType
@@ -237,7 +308,7 @@ writeImage rootDir contentType imgBytes =
         parseRelFile $ BS8.unpack $ "poster." <> ext
 
       path = rootDir </> name
-   in BS.writeFile (fromAbsFile path) imgBytes
+   in writeFileBS path imgBytes
 
 guessDirectoryKind :: DirectoryRaw -> DirectoryKind
 guessDirectoryKind dirRaw =
@@ -357,18 +428,6 @@ yearFromFiles files =
 
 titleFromDir :: Path a Dir -> Text
 titleFromDir folder = strip . fst $ breakOn "(" (niceDirNameT folder)
-
-tryGetFile :: (Path Rel File -> Bool) -> Path Abs Dir -> IO (Maybe (Path Abs File))
-tryGetFile predicate startDir =
-  -- Look up to X levels deep
-  firstJustsM $ tryGetFile' <$> take 3 (iterate parent startDir)
-  where
-    tryGetFile' dir = do
-      (_dirNames, fileNames) <- listDirRel dir
-      let matchingFileNames = filter predicate fileNames
-      pure $ case listToMaybe $ smartPathSort matchingFileNames of
-        Nothing -> Nothing
-        Just foundFile -> Just (dir </> foundFile)
 
 niceDirNameT :: Path a Dir -> Text
 niceDirNameT = T.pack . dropTrailingPathSeparator . fromRelDir . dirname
