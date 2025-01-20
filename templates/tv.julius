@@ -2,7 +2,7 @@ const debug = document.getElementById("debug");
 
 var tvWebSocket;
 function listenToSocket(callback) {
-  tvWebSocket = tvWebSocket ?? new ReconnectingWebSocket('@{TVHomeR}');
+  tvWebSocket = tvWebSocket ?? new ReconnectingWebSocket('@{TVR}');
   tvWebSocket.onmessage = function (event) {
     // const obj = JSON.parse(event.data);
     const obj = event;

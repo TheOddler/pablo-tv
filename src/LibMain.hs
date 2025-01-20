@@ -114,18 +114,15 @@ mkEmbeddedStatic
 mkYesod
   "App"
   [parseRoutes|
--- Routes for the mobile app
-/ MobileHomeR GET POST
+/ HomeR GET POST
+/tv TVR GET
+/ips AllIPsR GET
 /trackpad TrackpadR GET
 /pointer MousePointerR GET
 /keyboard KeyboardR GET
 /input InputR GET
 /remote RemoteR GET
 /dir/+Texts DirectoryR GET
-
--- Routes for the 
-/tv TVHomeR GET
-/ips AllIPsR GET
 
 -- Other
 /image/+Texts ImageR GET
@@ -171,14 +168,14 @@ defaultLayout title widget = Yesod.defaultLayout $ do
   setTitle $ title <> " - Pablo TV"
   widget
 
-getMobileHomeR :: Handler Html
-getMobileHomeR = do
+getHomeR :: Handler Html
+getHomeR = do
   inputDevice <- getsYesod appInputDevice
   webSockets $ actionsWebSocket inputDevice
   defaultLayout "Home" $(widgetFile "home")
 
-postMobileHomeR :: Handler ()
-postMobileHomeR =
+postHomeR :: Handler ()
+postHomeR =
   parseCheckJsonBody >>= \case
     Error s -> do
       liftIO $ putStrLn $ "Failed parsing action: " ++ s
@@ -235,10 +232,13 @@ parseSegments segmentsT = do
 
 getDirectoryR :: [Text] -> Handler Html
 getDirectoryR segments = do
+  isTv <- isTvRequest
   absPath <-
     parseSegments segments >>= \case
       Just (p, Nothing) -> pure p
-      _ -> redirect $ maybe MobileHomeR DirectoryR $ removeLast segments
+      _ ->
+        let home = if isTv then TVR else HomeR
+         in redirect $ maybe home DirectoryR $ removeLast segments
 
   mPathAndInfo <- liftIO $ readDirectoryInfoRec absPath
   let mInfo = snd <$> mPathAndInfo
@@ -308,9 +308,9 @@ getInputR :: Handler Html
 getInputR = do
   defaultLayout "Input" $(widgetFile "input")
 
-getTVHomeR :: Handler Html
-getTVHomeR = do
-  -- TV has it's own web socket to not interfere with the mobile app
+getTVR :: Handler Html
+getTVR = do
+  -- TV has it's own web socket to not interfere with the rest of the app
   tvStateTVar <- getsYesod appTVState
   webSockets $ onChanges tvStateTVar $ \tvState -> do
     toUrl (tvPage tvState) >>= sendTextData
@@ -379,12 +379,12 @@ main = do
   tvdbToken <- TVDBToken . BS.pack <$> getEnv "TVDB_TOKEN"
 
   inputDevice <- mkInputDevice
-  tvState <- newTVarIO $ TVState MobileHomeR []
+  tvState <- newTVarIO $ TVState HomeR []
   videoDataRefreshTrigger <- newMVar ()
 
   let port = 8080
-  let (homePath, _params) = renderRoute TVHomeR
-  let url = "http://localhost:" ++ show port ++ "/" ++ unpack (intercalate "/" homePath)
+  let (tvPath, _params) = renderRoute TVR
+  let url = "http://localhost:" ++ show port ++ "/" ++ unpack (intercalate "/" tvPath)
   putStrLn $ "Running on port " ++ show port ++ " - " ++ url
   putStrLn $ "Development mode: " ++ show isDevelopment
 

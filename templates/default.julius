@@ -11,7 +11,7 @@ function throttle(func, timeout = 50) {
 }
 
 function sendAction(action) {
-  fetch("@{MobileHomeR}", {
+  fetch("@{HomeR}", {
     method: "POST",
     body: JSON.stringify(action),
     headers: {
