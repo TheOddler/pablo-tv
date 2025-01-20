@@ -7,6 +7,7 @@
     0 0 50pt 5pt rgba(255, 255, 255, 0.2);
   --button-pressed-shadow: inset 0 0 2pt 2pt black;
   --button-pressed-scale: scale(0.90);
+  --header-height: 3em;
 }
 
 * {
@@ -31,7 +32,7 @@ body {
 
 body {
   /* Reserve some space for the top menu */
-  padding-top: 3em;
+  padding-top: var(--header-height);
 }
 
 header {
@@ -50,7 +51,7 @@ header {
     color: white;
     text-decoration: none;
     padding: 0.5em 1em;
-    height: 3em;
+    height: var(--header-height);
 
     >i {
       font-size: 2em;
