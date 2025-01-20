@@ -42,7 +42,22 @@ import GHC.Utils.Misc (sortWith)
 import IsDevelopment (isDevelopment)
 import Network.Info (IPv4 (..), NetworkInterface (..), getNetworkInterfaces)
 import Network.Wai.Handler.Warp (run)
-import Path (Abs, Dir, File, Path, Rel, dirname, fileExtension, fromAbsFile, mkRelDir, parent, parseRelDir, parseRelFile, toFilePath, (</>))
+import Path
+  ( Abs,
+    Dir,
+    File,
+    Path,
+    Rel,
+    dirname,
+    fileExtension,
+    fromAbsFile,
+    mkRelDir,
+    parent,
+    parseRelDir,
+    parseRelFile,
+    toFilePath,
+    (</>),
+  )
 import Path.IO (doesDirExist, doesFileExist, getHomeDir, listDir)
 import System.Environment (getEnv)
 import System.FilePath (dropTrailingPathSeparator)
@@ -52,7 +67,15 @@ import System.Random.Shuffle (shuffle')
 import TVDB (TVDBToken (..))
 import Text.Hamlet (hamletFile)
 import Text.Julius (RawJavascript (..))
-import Util (asyncOnTrigger, networkInterfacesShortList, onChanges, removeLast, toUrl, unsnoc, widgetFile)
+import Util
+  ( asyncOnTrigger,
+    networkInterfacesShortList,
+    onChanges,
+    removeLast,
+    toUrl,
+    unsnoc,
+    widgetFile,
+  )
 import Yesod hiding (defaultLayout, replace)
 import Yesod qualified
 import Yesod.EmbeddedStatic
@@ -113,6 +136,7 @@ instance Yesod App where
   addStaticContent = embedStaticContent appGetStatic StaticR Right
   defaultLayout :: Widget -> Handler Html
   defaultLayout widget = do
+    isTv <- isTvRequest
     -- We break up the default layout into two components:
     -- default-layout is the contents of the body tag, and
     -- default-layout-wrapper is the entire page. Since the final
@@ -120,30 +144,38 @@ instance Yesod App where
     -- you to use normal widget features in default-layout.
     pc <- widgetToPageContent $ do
       when isDevelopment $ addScriptRemote "https://pabloproductions.be/LiveJS/live.js"
+
+      when (isDevelopment && not isTv) $ do
+        addScriptRemote "//cdn.jsdelivr.net/npm/eruda" -- Console for mobile
+        toWidgetBody
+          [julius|
+            window.onload = function() {
+              eruda.init();
+            };
+          |]
+
       addScript $ StaticR static_reconnecting_websocket_js
       addStylesheet $ StaticR static_fontawesome_css_all_min_css
-      $(widgetFile "shared-default")
+      $(widgetFile "default")
     withUrlRenderer $
-      $(hamletFile "templates/shared-page-wrapper.hamlet")
+      $(hamletFile "templates/page-wrapper.hamlet")
 
-mobileLayout :: Html -> Widget -> Handler Html
-mobileLayout title widget = Yesod.defaultLayout $ do
-  when isDevelopment $ do
-    addScriptRemote "//cdn.jsdelivr.net/npm/eruda" -- Console for mobile
-    toWidgetBody
-      [julius|
-        window.onload = function() {
-          eruda.init();
-        };
-      |]
+isTvRequest :: Handler Bool
+isTvRequest = do
+  mHostHeader <- lookupHeader "Host"
+  let isHost h = maybe False (h `BS.isInfixOf`) mHostHeader
+  pure $ any isHost ["localhost", "127.0.0.1", "0:0:0:0:0:0:0:1"]
+
+defaultLayout :: Html -> Widget -> Handler Html
+defaultLayout title widget = Yesod.defaultLayout $ do
   setTitle $ title <> " - Pablo TV"
-  $(widgetFile "mobile/default")
+  widget
 
 getMobileHomeR :: Handler Html
 getMobileHomeR = do
   inputDevice <- getsYesod appInputDevice
   webSockets $ actionsWebSocket inputDevice
-  mobileLayout "Home" $(widgetFile "mobile/home")
+  defaultLayout "Home" $(widgetFile "home")
 
 postMobileHomeR :: Handler ()
 postMobileHomeR =
@@ -157,15 +189,15 @@ postMobileHomeR =
 
 getTrackpadR :: Handler Html
 getTrackpadR =
-  mobileLayout "Trackpad" $(widgetFile "mobile/trackpad")
+  defaultLayout "Trackpad" $(widgetFile "trackpad")
 
 getMousePointerR :: Handler Html
 getMousePointerR =
-  mobileLayout "Pointer" $(widgetFile "mobile/mouse-pointer")
+  defaultLayout "Pointer" $(widgetFile "mouse-pointer")
 
 getKeyboardR :: Handler Html
 getKeyboardR =
-  mobileLayout "Keyboard" $(widgetFile "mobile/keyboard")
+  defaultLayout "Keyboard" $(widgetFile "keyboard")
 
 -- | Turn the segments into a directory path and optionally a filename
 -- Also checks if the file/directory actually exists, if not, return Nothing
@@ -230,11 +262,11 @@ getDirectoryR segments = do
       mkAbsFilePath filename = replace "'" "\\'" $ fromAbsFile $ absPath </> filename
 
   let title = toHtml $ (directoryInfoTitle <$> mInfo) `orElse` "Videos"
-  mobileLayout title $(widgetFile "mobile/directory")
+  defaultLayout title $(widgetFile "directory")
 
 getRemoteR :: Handler Html
 getRemoteR = do
-  mobileLayout "Remote" $(widgetFile "mobile/remote")
+  defaultLayout "Remote" $(widgetFile "remote")
 
 getImageR :: [Text] -> Handler Html
 getImageR segments = do
@@ -273,13 +305,8 @@ getImageR segments = do
           pure $ Just ("image/" <> fromString cleanedExt, absPath)
 
 getInputR :: Handler Html
-getInputR =
-  mobileLayout "Input" $(widgetFile "mobile/input")
-
-tvLayout :: Html -> Widget -> Handler Html
-tvLayout title widget = Yesod.defaultLayout $ do
-  setTitle $ title <> " - Pablo TV"
-  $(widgetFile "tv/default")
+getInputR = do
+  defaultLayout "Input" $(widgetFile "input")
 
 getTVHomeR :: Handler Html
 getTVHomeR = do
@@ -316,7 +343,7 @@ getTVHomeR = do
   let videosNewest = videosSortedWith (\(_, _, i) -> -i.directoryDataLastModified)
   let videosUnseen = nameAndSegments <$> filter (\(_, _, i) -> i.directoryDataPlayedVideoFileCount < i.directoryDataVideoFileCount) videoData
 
-  tvLayout "TV" $(widgetFile "tv/home")
+  defaultLayout "TV" $(widgetFile "tv")
   where
     ipV4OrV6WithPort port i =
       ( if ipv4 i == IPv4 0
@@ -338,7 +365,7 @@ getAllIPsR :: Handler Html
 getAllIPsR = do
   networkInterfaces <- liftIO getNetworkInterfaces
   port <- getsYesod appPort
-  tvLayout "IPs" $(widgetFile "tv/ips")
+  defaultLayout "IPs" $(widgetFile "ips")
   where
     hideZero :: (Show a, Eq a, Bounded a) => a -> String
     hideZero a =

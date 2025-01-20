@@ -1,3 +1,26 @@
+// Helpers
+function throttle(func, timeout = 50) {
+  let timer;
+  let latestFunc;
+  return (...args) => {
+    latestFunc = func;
+    if (!timer) {
+      timer = setTimeout(() => { latestFunc.apply(this, args); timer = null; }, timeout);
+    }
+  };
+}
+
+function sendAction(action) {
+  fetch("@{MobileHomeR}", {
+    method: "POST",
+    body: JSON.stringify(action),
+    headers: {
+      "Content-type": "application/json; charset=UTF-8"
+    }
+  });
+}
+
+
 (() => {
   /**
    * Code to make arrow keys navigate between focusable elements.

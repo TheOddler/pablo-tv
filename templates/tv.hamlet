@@ -35,6 +35,7 @@ $forall networkInterface <- networkInterfaces
         <img src=@{ImageR segments} alt="#{name}" loading="lazy">
   
   $if notNull files
+    <h1>Files (Put in a folder if you want posters)
     <div class="row">
       $forall (name, segments) <- files
         <a class="el" href=@{DirectoryR segments}>

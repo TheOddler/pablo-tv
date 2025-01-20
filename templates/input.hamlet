@@ -1,4 +1,4 @@
-<div class="wrapper">
+<div class="buttons-grid">
   <div class="row">
     <div id="keyboard" class="button double-width">
       <i class="fa-solid fa-keyboard">

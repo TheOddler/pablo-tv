@@ -1,6 +1,0 @@
-const debug = document.getElementById("debug");
-
-listenToSocket((event) => {
-  const message = event.data;
-  debug.innerHTML = `<p>${message}</p>`;
-});

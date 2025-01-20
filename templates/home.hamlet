@@ -1,4 +1,4 @@
-<form class="wrapper">
+<form class="buttons-grid">
   <div class="row">
     <button formaction=@{TrackpadR}>
       <i class="fa-solid fa-computer-mouse">
