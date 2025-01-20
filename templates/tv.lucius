@@ -1,7 +1,7 @@
 @gap: 15pt;
-@elWidth: 20vw;
-/* 29.41 = 20 * 1000 / 680, the dimentions of the images */
-@elHeight: 29.411vw;
+@elHeight: 40vh;
+/* 27.2 = 40 / 1000 * 680, the dimentions of the images */
+@elWidth: 27.2vh;
 @elFocusScale: 1.2;
 
 .container {
@@ -14,6 +14,7 @@
   flex-direction: row;
   gap: #{gap};
   overflow-x: scroll;
+  overflow-y: hidden;
   /* Add padding that is just the right size needed to accomodate a scaled
     element, so that it'll never to clipped as we're in a scroll element here.
   */
