@@ -167,7 +167,7 @@ forceAbsDir file =
     Right f -> f
 
 mkGuess :: DirectoryKind -> Text -> Maybe Int -> DirectoryInfo
-mkGuess kind title year = DirectoryInfo title kind year Nothing Nothing Nothing Nothing Nothing
+mkGuess kind title year = DirectoryInfo kind title year Nothing Nothing Nothing Nothing Nothing
 
 -- | Folder name, file names, expected results
 folderExamples :: [(FilePath, [FilePath], [FilePath], DirectoryInfo)]

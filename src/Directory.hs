@@ -12,6 +12,9 @@ module Directory
     niceDirNameT,
     DirectoryInfoFS (..),
     readDirectoryInfoFS,
+    -- For testing
+    guessDirectoryInfo,
+    isVideoFile,
   )
 where
 
