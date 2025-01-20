@@ -172,15 +172,14 @@ readDirectoryInfoRec dir = do
 -- also return `Nothing` and print an error in the console.
 readDirectoryInfoFS :: (FSRead m) => Path Abs Dir -> m DirectoryInfoFS
 readDirectoryInfoFS dir = do
-  (dirs', files') <- listDirRecur dir
-  let dirs = dir : dirs'
-      files = filter isVideoFile files'
+  (_dirs, files') <- listDirRecur dir
+  let files = filter isVideoFile files'
 
-  dirStatuses <- traverse getDirStatus dirs
   fileStatuses <- traverse getFileStatus files
-  let allStatuses = NE.nonEmpty $ dirStatuses ++ fileStatuses
-  let accessTimes = fmap Posix.accessTime <$> allStatuses
-  let modificationTimes = fmap Posix.modificationTime <$> allStatuses
+  let fileStatusesNE = NE.nonEmpty fileStatuses
+
+  let accessTimes = fmap Posix.accessTime <$> fileStatusesNE
+  let modificationTimes = fmap Posix.modificationTime <$> fileStatusesNE
 
   pure
     DirectoryInfoFS
