@@ -40,7 +40,6 @@ import GHC.Data.Maybe (firstJustsM, listToMaybe, orElse)
 import GHC.MVar (MVar, newMVar)
 import GHC.Utils.Misc (sortWith)
 import IsDevelopment (isDevelopment)
-import List.Shuffle (shuffleIO, shuffle_)
 import Network.Info (IPv4 (..), NetworkInterface (..), getNetworkInterfaces)
 import Network.Wai.Handler.Warp (run)
 import Path (Abs, Dir, File, Path, Rel, dirname, fileExtension, fromAbsFile, mkRelDir, parent, parseRelDir, parseRelFile, toFilePath, (</>))
@@ -48,7 +47,8 @@ import Path.IO (doesDirExist, doesFileExist, getHomeDir, listDir)
 import System.Environment (getEnv)
 import System.FilePath (dropTrailingPathSeparator)
 import System.Process (callProcess)
-import System.Random (mkStdGen)
+import System.Random (initStdGen, mkStdGen)
+import System.Random.Shuffle (shuffle')
 import TVDB (TVDBToken (..))
 import Text.Hamlet (hamletFile)
 import Text.Julius (RawJavascript (..))
@@ -304,15 +304,12 @@ getTVHomeR = do
   let videoData = tvVideoData tvState
 
   -- Different orderings of the video data that we want to use
-  videosRandom' <-
-    liftIO $
-      if isDevelopment
-        then -- When in dev we auto-reload the page every second or so,
-        -- so we want the same random shuffle every time, otherwise the page
-        -- keeps changing which is annoying.
-          pure $ shuffle_ videoData (mkStdGen 1)
-        else shuffleIO videoData
-  let videosRandom = nameAndSegments <$> videosRandom'
+  randomGenerator <-
+    -- When in dev we auto-reload the page every second or so,
+    -- so we want the same random shuffle every time, otherwise the page
+    -- keeps changing which is annoying.
+    if isDevelopment then pure (mkStdGen 2) else initStdGen
+  let videosRandom = nameAndSegments <$> shuffle' videoData (length videoData) randomGenerator
   let videosSortedWith :: (Ord a) => ((Path Abs Dir, DirectoryInfo, DirectoryInfoFS) -> a) -> [(Text, [Text])]
       videosSortedWith f = nameAndSegments <$> sortWith f videoData
   let videosAlphabetical = videosSortedWith (\(_, i, _) -> i.directoryInfoTitle)

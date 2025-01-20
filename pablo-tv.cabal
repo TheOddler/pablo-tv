@@ -62,7 +62,6 @@ library
       , filepath
       , ghc
       , http-client
-      , list-shuffle
       , modern-uri
       , natural-sort
       , network-info
@@ -70,6 +69,8 @@ library
       , path-io
       , process
       , random
+      -- Later versions of random have a shuffle function, but for now we need this package
+      , random-shuffle
       , regex-tdfa
       , req
       , scientific
