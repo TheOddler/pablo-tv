@@ -49,19 +49,19 @@ function sendAction(action) {
    * @param {Point} a
    * @param {Point} b
   */
-  const angle = (a, b) => Math.atan2(b.y - a.y, b.x - a.x);
+  const getAngle = (a, b) => Math.atan2(b.y - a.y, b.x - a.x);
 
   /**
    * @param {Point} a
    * @param {Point} b
   */
-  const distance = (a, b) => Math.hypot(b.x - a.x, b.y - a.y);
+  const getDistance = (a, b) => Math.hypot(b.x - a.x, b.y - a.y);
 
   /**
    * @param {number} a
    * @param {number} b
   */
-  const angleDiff = (a, b) => {
+  const getAngleDiff = (a, b) => {
     const diff = b - a;
     const angle = Math.atan2(Math.sin(diff), Math.cos(diff));
     return Math.abs(angle);
@@ -114,8 +114,8 @@ function sendAction(action) {
       const point = getMiddle(element);
 
       // Only consider elements that are in the direction of the arrow key
-      const a = angleDiff(angle(curPos, point), wantedAngle);
-      if (a > Math.PI / 4) return;
+      const angle = getAngleDiff(getAngle(curPos, point), wantedAngle);
+      if (angle > Math.PI / 4) return;
 
       // Ignore elements too far off screen (a little off-screen we allow)
       const allowedOffScreen = 0.3;
@@ -126,7 +126,7 @@ function sendAction(action) {
       ) return;
 
       // Remember closest element
-      const dist = distance(curPos, point) / Math.cos(a * 1.8); // Scale by the angle so that we prefer elements in the direction
+      const dist = getDistance(curPos, point) / Math.cos(angle * 1.8); // Scale by the angle so that we prefer elements in the direction
       if (dist < minDistance) {
         minDistance = dist;
         targetElement = element;
