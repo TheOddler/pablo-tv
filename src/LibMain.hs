@@ -115,7 +115,6 @@ mkYesod
   "App"
   [parseRoutes|
 / HomeR GET POST
-/tv TVR GET
 /ips AllIPsR GET
 /input InputR GET
 /remote RemoteR GET
@@ -165,12 +164,6 @@ defaultLayout title widget = Yesod.defaultLayout $ do
   setTitle $ title <> " - Pablo TV"
   widget
 
-getHomeR :: Handler Html
-getHomeR = do
-  inputDevice <- getsYesod appInputDevice
-  webSockets $ actionsWebSocket inputDevice
-  defaultLayout "Home" $(widgetFile "home")
-
 postHomeR :: Handler ()
 postHomeR =
   parseCheckJsonBody >>= \case
@@ -217,13 +210,10 @@ parseSegments segmentsT = do
 
 getDirectoryR :: [Text] -> Handler Html
 getDirectoryR segments = do
-  isTv <- isTvRequest
   absPath <-
     parseSegments segments >>= \case
       Just (p, Nothing) -> pure p
-      _ ->
-        let home = if isTv then TVR else HomeR
-         in redirect $ maybe home DirectoryR $ removeLast segments
+      _ -> redirect $ maybe HomeR DirectoryR $ removeLast segments
 
   mPathAndInfo <- liftIO $ readDirectoryInfoRec absPath
   let mInfo = snd <$> mPathAndInfo
@@ -293,12 +283,17 @@ getInputR :: Handler Html
 getInputR = do
   defaultLayout "Input" $(widgetFile "input")
 
-getTVR :: Handler Html
-getTVR = do
-  -- TV has it's own web socket to not interfere with the rest of the app
+getHomeR :: Handler Html
+getHomeR = do
+  -- This can be a websocket request, so do that
   tvStateTVar <- getsYesod appTVState
-  webSockets $ onChanges tvStateTVar $ \tvState -> do
-    toUrl (tvPage tvState) >>= sendTextData
+  inputDevice <- getsYesod appInputDevice
+  let webSocketActionsListener = actionsWebSocket inputDevice
+  let webSocketStateChangeNotifier =
+        -- This is just some placeholder/debug stuff still, not actually used yet
+        onChanges tvStateTVar $ \tvState ->
+          toUrl (tvPage tvState) >>= sendTextData
+  webSockets $ race_ webSocketActionsListener webSocketStateChangeNotifier
 
   -- Do the non-websocket stuff
   networkInterfaces <- networkInterfacesShortList <$> liftIO getNetworkInterfaces
@@ -328,7 +323,7 @@ getTVR = do
   let videosNewest = videosSortedWith (\(_, _, i) -> -i.directoryDataLastModified)
   let videosUnseen = nameAndSegments <$> filter (\(_, _, i) -> i.directoryDataPlayedVideoFileCount < i.directoryDataVideoFileCount) videoData
 
-  defaultLayout "TV" $(widgetFile "tv")
+  defaultLayout "Home" $(widgetFile "home")
   where
     ipV4OrV6WithPort port i =
       ( if ipv4 i == IPv4 0
@@ -368,8 +363,8 @@ main = do
   videoDataRefreshTrigger <- newMVar ()
 
   let port = 8080
-  let (tvPath, _params) = renderRoute TVR
-  let url = "http://localhost:" ++ show port ++ "/" ++ unpack (intercalate "/" tvPath)
+  let (homePath, _params) = renderRoute HomeR
+  let url = "http://localhost:" ++ show port ++ "/" ++ unpack (intercalate "/" homePath)
   putStrLn $ "Running on port " ++ show port ++ " - " ++ url
   putStrLn $ "Development mode: " ++ show isDevelopment
 
