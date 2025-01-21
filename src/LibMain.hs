@@ -117,9 +117,6 @@ mkYesod
 / HomeR GET POST
 /tv TVR GET
 /ips AllIPsR GET
-/trackpad TrackpadR GET
-/pointer MousePointerR GET
-/keyboard KeyboardR GET
 /input InputR GET
 /remote RemoteR GET
 /dir/+Texts DirectoryR GET
@@ -183,18 +180,6 @@ postHomeR =
     Success action -> do
       inputDevice <- getsYesod appInputDevice
       liftIO $ performAction inputDevice action
-
-getTrackpadR :: Handler Html
-getTrackpadR =
-  defaultLayout "Trackpad" $(widgetFile "trackpad")
-
-getMousePointerR :: Handler Html
-getMousePointerR =
-  defaultLayout "Pointer" $(widgetFile "mouse-pointer")
-
-getKeyboardR :: Handler Html
-getKeyboardR =
-  defaultLayout "Keyboard" $(widgetFile "keyboard")
 
 -- | Turn the segments into a directory path and optionally a filename
 -- Also checks if the file/directory actually exists, if not, return Nothing

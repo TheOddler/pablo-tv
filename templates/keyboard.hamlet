@@ -1,3 +1,0 @@
-<form name="myform" action="javascript:sendText(text.value)">
-  <input name="Text" type="text" id="text"/>
-  <input name="Submit" type="submit" value="Update"/>
