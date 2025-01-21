@@ -4,7 +4,9 @@
   <div class="grow">
   $if isTv
     $maybe networkInterface <- mNetworkInterface
-      <a href=@{AllIPsR}>#{showIpV4OrV6WithPort port networkInterface}
+      <a href=@{AllIPsR}>
+        <i class="fa-solid fa-mobile-screen-button">
+        #{showIpV4OrV6WithPort port networkInterface}
       <div class="grow">
   $if not isTv || isDevelopment
     <a href=@{InputR}>
