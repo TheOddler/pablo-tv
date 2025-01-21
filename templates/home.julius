@@ -12,5 +12,5 @@ function listenToSocket(callback) {
 
 listenToSocket((event) => {
   const message = event.data;
-  debug.innerHTML = `<p>${message}</p>`;
+  console.log(`${message}`);
 });
