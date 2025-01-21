@@ -30,3 +30,6 @@
       $forall (name, segments) <- files
         <a class="el" href=@{DirectoryR segments}>
           <img src=@{ImageR segments} alt="#{name}" loading="lazy">
+  
+  <h1 class="center">
+    <a href=@{DirectoryR []}>View all
