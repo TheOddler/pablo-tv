@@ -1,9 +1,3 @@
-<p>Use your phone to connect to:
-$forall networkInterface <- networkInterfaces
-  <p class="xl">#{ipV4OrV6WithPort port networkInterface}
-
-<a href=@{AllIPsR}>View all IPs...
-
 <p><!-- Separator -->
 <p>Debug:
 <div id="debug">

@@ -2,6 +2,10 @@
   <a href="javascript:history.back()">
     <i class="fa-solid fa-chevron-left">
   <div class="grow">
+  $if isTv
+    $maybe networkInterface <- mNetworkInterface
+      <a href=@{AllIPsR}>#{showIpV4OrV6WithPort port networkInterface}
+      <div class="grow">
   $if not isTv || isDevelopment
     <a href=@{InputR}>
       <i class="fa-solid fa-wand-magic-sparkles">

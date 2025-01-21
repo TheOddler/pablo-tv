@@ -13,7 +13,7 @@ import GHC.Conc (TVar, atomically, readTVar, readTVarIO, retry)
 import GHC.List (uncons)
 import IsDevelopment (isDevelopment)
 import Language.Haskell.TH.Syntax (Exp, Q)
-import Network.Info (NetworkInterface (..))
+import Network.Info (IPv4 (..), NetworkInterface (..))
 import Text.Julius qualified as Julius
 import Yesod
 import Yesod.Default.Util (widgetFileNoReload, widgetFileReload)
@@ -50,12 +50,28 @@ onChanges tVar f = do
       f a'
       loop a'
 
--- | Get a list of network interfaces that most likely have the IP people will want to connect to with their phones
-networkInterfacesShortList :: [NetworkInterface] -> [NetworkInterface]
-networkInterfacesShortList = filter onShortList
+-- | Return how likely this is the network interface people will want to connect to with their phones.
+-- Mean to be used with `sortWith` so smaller numbers is more worthy.
+networkInterfaceWorthiness :: NetworkInterface -> Int
+networkInterfaceWorthiness NetworkInterface {name, ipv4, ipv6} =
+  8
+    - goodName `as` 4
+    + hasIpv4 `as` 2
+    + hasIpv6 `as` 1
   where
-    onShortList :: NetworkInterface -> Bool
-    onShortList NetworkInterface {name} = any (`isPrefixOf` name) ["en", "eth", "wl"]
+    bool `as` val = if bool then val else 0
+    goodName = any (`isPrefixOf` name) ["en", "eth", "wl"]
+    hasIpv4 = ipv4 /= minBound
+    hasIpv6 = ipv6 /= minBound
+
+showIpV4OrV6WithPort :: Int -> NetworkInterface -> [Char]
+showIpV4OrV6WithPort port i =
+  ( if ipv4 i == IPv4 0
+      then show $ ipv6 i
+      else show $ ipv4 i
+  )
+    ++ ":"
+    ++ show port
 
 -- | Convert a route to a URL for the current website
 toUrl :: (MonadHandler m, Yesod (HandlerSite m), RenderRoute a) => Route a -> m LBS.ByteString

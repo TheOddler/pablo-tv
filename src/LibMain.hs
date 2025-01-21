@@ -40,7 +40,7 @@ import GHC.Data.Maybe (firstJustsM, listToMaybe, orElse)
 import GHC.MVar (MVar, newMVar)
 import GHC.Utils.Misc (sortWith)
 import IsDevelopment (isDevelopment)
-import Network.Info (IPv4 (..), NetworkInterface (..), getNetworkInterfaces)
+import Network.Info (NetworkInterface (..), getNetworkInterfaces)
 import Network.Wai.Handler.Warp (run)
 import Path
   ( Abs,
@@ -69,9 +69,10 @@ import Text.Hamlet (hamletFile)
 import Text.Julius (RawJavascript (..))
 import Util
   ( asyncOnTrigger,
-    networkInterfacesShortList,
+    networkInterfaceWorthiness,
     onChanges,
     removeLast,
+    showIpV4OrV6WithPort,
     toUrl,
     unsnoc,
     widgetFile,
@@ -146,6 +147,12 @@ instance Yesod App where
               eruda.init();
             };
           |]
+
+      networkInterfaces <- liftIO getNetworkInterfaces
+      let mNetworkInterface =
+            listToMaybe $
+              sortWith networkInterfaceWorthiness networkInterfaces
+      port <- getsYesod appPort
 
       addScript $ StaticR static_reconnecting_websocket_js
       addStylesheet $ StaticR static_fontawesome_css_all_min_css
@@ -295,10 +302,6 @@ getHomeR = do
           toUrl (tvPage tvState) >>= sendTextData
   webSockets $ race_ webSocketActionsListener webSocketStateChangeNotifier
 
-  -- Do the non-websocket stuff
-  networkInterfaces <- networkInterfacesShortList <$> liftIO getNetworkInterfaces
-  port <- getsYesod appPort
-
   -- See if there are any files in the root, ideally there shouldn't be because
   -- we won't have info for them. But I do want to support it, so we'll still
   -- show them.
@@ -325,14 +328,6 @@ getHomeR = do
 
   defaultLayout "Home" $(widgetFile "home")
   where
-    ipV4OrV6WithPort port i =
-      ( if ipv4 i == IPv4 0
-          then show $ ipv6 i
-          else show $ ipv4 i
-      )
-        ++ ":"
-        ++ show port
-
     fileNameToSegments :: Path Rel a -> [Text]
     fileNameToSegments f = [T.pack $ toFilePath f]
 
@@ -343,7 +338,8 @@ getHomeR = do
 
 getAllIPsR :: Handler Html
 getAllIPsR = do
-  networkInterfaces <- liftIO getNetworkInterfaces
+  networkInterfaces' <- liftIO getNetworkInterfaces
+  let networkInterfaces = sortWith networkInterfaceWorthiness networkInterfaces'
   port <- getsYesod appPort
   defaultLayout "IPs" $(widgetFile "ips")
   where
