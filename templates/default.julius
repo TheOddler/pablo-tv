@@ -30,7 +30,26 @@ function sendAction(action) {
    * @param {Element} element
   */
   const getMiddle = (element) => {
-    const rect = element.getBoundingClientRect();
+    let rect = element.getBoundingClientRect();
+
+    // This makes the code pretend an element in a `fixed` container isn't fixed
+    // Essentially just a hack to make the header work a bit nicer
+    let parent = element;
+    while (parent) {
+      if (window.getComputedStyle(parent).position === 'fixed') {
+        rect = {
+          top: rect.top - window.scrollY,
+          right: rect.right - window.scrollX,
+          bottom: rect.bottom - window.scrollY,
+          left: rect.left - window.scrollX,
+          width: rect.width,
+          height: rect.height,
+        };
+        break;
+      }
+      parent = parent.parentElement;
+    }
+
     return {
       x: rect.left + rect.width / 2,
       y: rect.top + rect.height / 2,
@@ -115,7 +134,7 @@ function sendAction(action) {
 
       // Only consider elements that are in the direction of the arrow key
       const angle = getAngleDiff(getAngle(curPos, point), wantedAngle);
-      const maxAngle = Math.PI / 2.1;
+      const maxAngle = Math.PI / 3;
       if (angle > maxAngle) return;
 
       // Ignore elements too far off screen (a little off-screen we allow)
@@ -127,7 +146,7 @@ function sendAction(action) {
       ) return;
 
       // Remember closest element
-      const dist = getDistance(curPos, point) * (0.01 + angle / maxAngle); // Scale by the angle so that we prefer elements in the direction
+      const dist = getDistance(curPos, point) * (0.1 + angle / maxAngle); // Scale by the angle so that we prefer elements in the direction
       if (dist < minDistance) {
         minDistance = dist;
         targetElement = element;
