@@ -153,7 +153,7 @@ instance Yesod App where
       currentUrlBS <- toUrlRel currentRoute
       let currentUrl :: Text
           currentUrl = decodeUtf8Lenient $ BS.toStrict currentUrlBS
-      $(widgetFile "default") --
+      $(widgetFile "default")
     withUrlRenderer $
       $(hamletFile "templates/page-wrapper.hamlet")
 
@@ -167,6 +167,50 @@ defaultLayout :: Html -> Widget -> Handler Html
 defaultLayout title widget = Yesod.defaultLayout $ do
   setTitle $ title <> " - Pablo TV"
   widget
+
+getHomeR :: Handler Html
+getHomeR = do
+  -- This can be a websocket request, so do that
+  tvStateTVar <- getsYesod appTVState
+  inputDevice <- getsYesod appInputDevice
+  webSockets $
+    race_
+      (actionsWebSocket inputDevice tvStateTVar)
+      (tvStateWebSocket tvStateTVar)
+
+  -- See if there are any files in the root, ideally there shouldn't be because
+  -- we won't have info for them. But I do want to support it, so we'll still
+  -- show them.
+  videoDir <- liftIO getVideoDirPath
+  dirRaw <- liftIO $ readDirectoryRaw videoDir
+  let files = map (\f -> (niceFileNameT f, fileNameToSegments f)) dirRaw.directoryVideoFiles
+
+  -- Get proper data (we got this async from the state)
+  tvState <- liftIO $ readTVarIO tvStateTVar
+  let videoData = tvVideoData tvState
+
+  -- Different orderings of the video data that we want to use
+  randomGenerator <-
+    -- When in dev we auto-reload the page every second or so,
+    -- so we want the same random shuffle every time, otherwise the page
+    -- keeps changing which is annoying.
+    if isDevelopment then pure (mkStdGen 2) else initStdGen
+  let videosRandom = nameAndSegments <$> shuffle' videoData (length videoData) randomGenerator
+  let videosSortedWith :: (Ord a) => ((Path Abs Dir, DirectoryInfo, DirectoryInfoFS) -> a) -> [(Text, [Text])]
+      videosSortedWith f = nameAndSegments <$> sortWith f videoData
+  let videosAlphabetical = videosSortedWith (\(_, i, _) -> i.directoryInfoTitle)
+  let videosNewest = videosSortedWith (\(_, _, i) -> -i.directoryDataLastModified)
+  let videosUnseen = nameAndSegments <$> filter (\(_, _, i) -> i.directoryDataPlayedVideoFileCount < i.directoryDataVideoFileCount) videoData
+
+  defaultLayout "Home" $(widgetFile "home")
+  where
+    fileNameToSegments :: Path Rel a -> [Text]
+    fileNameToSegments f = [T.pack $ toFilePath f]
+
+    nameAndSegments :: (Path Abs Dir, DirectoryInfo, DirectoryInfoFS) -> (Text, [Text])
+    nameAndSegments (path, info, _) =
+      let segments = fileNameToSegments $ dirname path
+       in (directoryInfoTitle info, segments)
 
 postHomeR :: Handler ()
 postHomeR =
@@ -281,50 +325,6 @@ getImageR segments = do
 getInputR :: Handler Html
 getInputR = do
   defaultLayout "Input" $(widgetFile "input")
-
-getHomeR :: Handler Html
-getHomeR = do
-  -- This can be a websocket request, so do that
-  tvStateTVar <- getsYesod appTVState
-  inputDevice <- getsYesod appInputDevice
-  webSockets $
-    race_
-      (actionsWebSocket inputDevice tvStateTVar)
-      (tvStateWebSocket tvStateTVar)
-
-  -- See if there are any files in the root, ideally there shouldn't be because
-  -- we won't have info for them. But I do want to support it, so we'll still
-  -- show them.
-  videoDir <- liftIO getVideoDirPath
-  dirRaw <- liftIO $ readDirectoryRaw videoDir
-  let files = map (\f -> (niceFileNameT f, fileNameToSegments f)) dirRaw.directoryVideoFiles
-
-  -- Get proper data (we got this async from the state)
-  tvState <- liftIO $ readTVarIO tvStateTVar
-  let videoData = tvVideoData tvState
-
-  -- Different orderings of the video data that we want to use
-  randomGenerator <-
-    -- When in dev we auto-reload the page every second or so,
-    -- so we want the same random shuffle every time, otherwise the page
-    -- keeps changing which is annoying.
-    if isDevelopment then pure (mkStdGen 2) else initStdGen
-  let videosRandom = nameAndSegments <$> shuffle' videoData (length videoData) randomGenerator
-  let videosSortedWith :: (Ord a) => ((Path Abs Dir, DirectoryInfo, DirectoryInfoFS) -> a) -> [(Text, [Text])]
-      videosSortedWith f = nameAndSegments <$> sortWith f videoData
-  let videosAlphabetical = videosSortedWith (\(_, i, _) -> i.directoryInfoTitle)
-  let videosNewest = videosSortedWith (\(_, _, i) -> -i.directoryDataLastModified)
-  let videosUnseen = nameAndSegments <$> filter (\(_, _, i) -> i.directoryDataPlayedVideoFileCount < i.directoryDataVideoFileCount) videoData
-
-  defaultLayout "Home" $(widgetFile "home")
-  where
-    fileNameToSegments :: Path Rel a -> [Text]
-    fileNameToSegments f = [T.pack $ toFilePath f]
-
-    nameAndSegments :: (Path Abs Dir, DirectoryInfo, DirectoryInfoFS) -> (Text, [Text])
-    nameAndSegments (path, info, _) =
-      let segments = fileNameToSegments $ dirname path
-       in (directoryInfoTitle info, segments)
 
 getAllIPsR :: Handler Html
 getAllIPsR = do
