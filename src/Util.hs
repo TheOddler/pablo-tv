@@ -35,20 +35,20 @@ juliusFile =
     else Julius.juliusFileReload
 
 -- | Run an action whenever the value of the 'TVar' changes.
-onChanges :: (Eq a, MonadIO m) => TVar a -> (a -> m ()) -> m b
+onChanges :: (Eq a, MonadIO m) => TVar a -> (a -> a -> m ()) -> m b
 onChanges tVar f = do
   a <- liftIO $ readTVarIO tVar
-  f a
+  f a a
   loop a
   where
-    loop a = do
-      a' <- liftIO $ atomically $ do
-        a' <- readTVar tVar
+    loop prevVal = do
+      newVal <- liftIO $ atomically $ do
+        newVal <- readTVar tVar
         -- If value hasn't changed, retry, which will block until the value changes
-        when (a == a') retry
-        pure a'
-      f a'
-      loop a'
+        when (prevVal == newVal) retry
+        pure newVal
+      f prevVal newVal
+      loop newVal
 
 -- | Return how likely this is the network interface people will want to connect to with their phones.
 -- Mean to be used with `sortWith` so smaller numbers is more worthy.
@@ -81,6 +81,13 @@ toUrl route = do
   let (segments, parameters) = renderRoute route
   let root = getApprootText approot site request
   pure $ toLazyByteString $ joinPath site root segments parameters
+
+-- | Convert a route to a URL for the current website
+toUrlRel :: (MonadHandler m, Yesod (HandlerSite m), RenderRoute a) => Route a -> m LBS.ByteString
+toUrlRel route = do
+  site <- getYesod
+  let (segments, parameters) = renderRoute route
+  pure $ toLazyByteString $ joinPath site "" segments parameters
 
 mapLeft :: (t -> a) -> Either t b -> Either a b
 mapLeft f (Left x) = Left $ f x

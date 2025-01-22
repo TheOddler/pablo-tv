@@ -19,6 +19,8 @@
         <path d="M14 15H16" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
         <path d="M14 18H16" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
         <path d="M15 8C15 9.65685 13.6569 11 12 11C10.3431 11 9 9.65685 9 8C9 6.34315 10.3431 5 12 5C13.6569 5 15 6.34315 15 8Z" stroke="currentColor" stroke-width="1.5" />
+    <a href="#" onclick="sendAction({ tag: 'OpenUrlOnTV', url: '#{currentUrl}' })">
+      <i class="fa-solid fa-arrow-up-from-bracket">
   <a href=@{DirectoryR []}>
     <i class="fa-solid fa-file-video">
   <a href=@{HomeR}>

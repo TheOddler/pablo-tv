@@ -4,7 +4,6 @@ module Actions where
 
 import Autodocodec (Autodocodec (..), Discriminator, HasCodec (..), HasObjectCodec (..), ObjectCodec, discriminatedUnionCodec, eitherDecodeJSONViaCodec, mapToDecoder, mapToEncoder, object, pureCodec, requiredField', (.=))
 import Control.Monad (forever)
-import Data.ByteString.Lazy (ByteString)
 import Data.HashMap.Strict qualified as HashMap
 import Data.Int (Int32)
 import Data.List (dropWhileEnd, nub)
@@ -13,9 +12,11 @@ import Data.Text (Text)
 import Data.Void (Void)
 import Evdev.Codes
 import Evdev.Uinput
+import GHC.Conc (TVar, atomically, readTVar, writeTVar)
 import GHC.Generics (Generic)
 import SafeMaths (int32ToInteger)
 import System.Process (callProcess, readProcess)
+import TVState (TVState (..))
 import Util (boundedEnumCodec)
 import Yesod (FromJSON, MonadHandler, liftIO)
 import Yesod.WebSockets (WebSocketsT, receiveData)
@@ -36,6 +37,7 @@ data Action
   | ActionWrite String
   | ActionPlayPath String
   | ActionCloseWindow
+  | ActionOpenUrlOnTV Text
   deriving (Show, Eq, Generic)
   deriving (FromJSON) via (Autodocodec Action)
 
@@ -68,6 +70,7 @@ instance HasObjectCodec Action where
         ActionWrite t -> ("Write", oneFieldEncoder "text" t)
         ActionPlayPath path -> ("PlayPath", oneFieldEncoder "path" path)
         ActionCloseWindow -> ("CloseWindow", noFieldEncoder)
+        ActionOpenUrlOnTV url -> ("OpenUrlOnTV", oneFieldEncoder "url" url)
       dec :: HashMap.HashMap Discriminator (Text, ObjectCodec Void Action)
       dec =
         HashMap.fromList
@@ -78,7 +81,8 @@ instance HasObjectCodec Action where
             ("MouseScroll", ("ActionMouseScroll", oneFieldDecoder ActionMouseScroll "amount")),
             ("Write", ("ActionWrite", oneFieldDecoder ActionWrite "text")),
             ("PlayPath", ("ActionPlayPath", oneFieldDecoder ActionPlayPath "path")),
-            ("CloseWindow", ("ActionCloseWindow", noFieldDecoder ActionCloseWindow))
+            ("CloseWindow", ("ActionCloseWindow", noFieldDecoder ActionCloseWindow)),
+            ("OpenUrlOnTV", ("ActionOpenUrlOnTV", oneFieldDecoder ActionOpenUrlOnTV "url"))
           ]
 
 data MouseButton = MouseButtonLeft | MouseButtonRight
@@ -151,68 +155,71 @@ keyboardButtonToEvdevKey = \case
   KeyboardMediaBackward -> KeyRewind
   KeyboardMediaStop -> KeyStopcd
 
-actionsWebSocket :: (MonadHandler m) => Device -> WebSocketsT m ()
-actionsWebSocket inputDevice = forever $ do
+actionsWebSocket :: (MonadHandler m) => Device -> TVar TVState -> WebSocketsT m ()
+actionsWebSocket inputDevice tvStateTVar = forever $ do
   d <- receiveData
-  liftIO $ decodeAndPerformAction inputDevice d
+  liftIO $ case eitherDecodeJSONViaCodec d of
+    Left err -> putStrLn $ "Error decoding action: " <> err
+    Right action -> performAction inputDevice tvStateTVar action
 
-decodeAndPerformAction :: Device -> ByteString -> IO ()
-decodeAndPerformAction inputDevice websocketData = case eitherDecodeJSONViaCodec websocketData of
-  Left err -> putStrLn $ "Error decoding action: " <> err
-  Right action -> performAction inputDevice action
-
-performAction :: Device -> Action -> IO ()
-performAction inputDevice = \case
-  ActionClickMouse btn' ->
-    let btn = mouseButtonToEvdevKey btn'
-     in writeBatch
-          inputDevice
-          [ KeyEvent btn Pressed,
-            SyncEvent SynReport,
-            KeyEvent btn Released
-            -- Batch automatically adds a sync at the end too
-          ]
-  ActionPressKeyboard key' ->
-    let key = keyboardButtonToEvdevKey key'
-     in writeBatch
-          inputDevice
-          [ KeyEvent key Pressed,
-            SyncEvent SynReport,
-            KeyEvent key Released
-            -- Batch automatically adds a sync at the end too
-          ]
-  ActionMoveMouse x y ->
-    writeBatch
-      inputDevice
-      [ RelativeEvent RelX $ EventValue x,
-        RelativeEvent RelY $ EventValue y
-      ]
-  ActionPointMouse lr ud -> do
-    let -- I assume the screen is in landscape mode
-        fromInt32 int32 = scientific (int32ToInteger int32) 0
-        screenHalfSize = fromInt32 screenHeight / 2
-        centerX = fromInt32 screenWidth / 2
-        centerY = fromInt32 screenHeight / 2
-        pointerX = floor $ centerX + lr * screenHalfSize
-        pointerY = floor $ centerY + ud * screenHalfSize
-    writeBatch
-      inputDevice
-      [ AbsoluteEvent AbsX $ EventValue pointerX,
-        AbsoluteEvent AbsY $ EventValue pointerY
-      ]
-  ActionMouseScroll amount ->
-    writeBatch
-      inputDevice
-      [ RelativeEvent RelWheel $ EventValue amount
-      ]
-  ActionWrite text -> do
-    let events = concatMap (clickKeyCombo . charToKey) text
-    writeBatch inputDevice events
-  ActionPlayPath path -> do
-    defaultVideoPlayer <- readProcess "xdg-mime" ["query", "default", "video/x-msvideo"] ""
-    callProcess "gtk-launch" [dropWhileEnd (== '\n') defaultVideoPlayer, path]
-  ActionCloseWindow ->
-    writeBatch inputDevice $ clickKeyCombo [KeyLeftctrl, KeyQ]
+performAction :: Device -> TVar TVState -> Action -> IO ()
+performAction inputDevice tvStateTVar action = do
+  putStrLn $ "Performing action: " <> show action
+  case action of
+    ActionClickMouse btn' ->
+      let btn = mouseButtonToEvdevKey btn'
+       in writeBatch
+            inputDevice
+            [ KeyEvent btn Pressed,
+              SyncEvent SynReport,
+              KeyEvent btn Released
+              -- Batch automatically adds a sync at the end too
+            ]
+    ActionPressKeyboard key' ->
+      let key = keyboardButtonToEvdevKey key'
+       in writeBatch
+            inputDevice
+            [ KeyEvent key Pressed,
+              SyncEvent SynReport,
+              KeyEvent key Released
+              -- Batch automatically adds a sync at the end too
+            ]
+    ActionMoveMouse x y ->
+      writeBatch
+        inputDevice
+        [ RelativeEvent RelX $ EventValue x,
+          RelativeEvent RelY $ EventValue y
+        ]
+    ActionPointMouse lr ud -> do
+      let -- I assume the screen is in landscape mode
+          fromInt32 int32 = scientific (int32ToInteger int32) 0
+          screenHalfSize = fromInt32 screenHeight / 2
+          centerX = fromInt32 screenWidth / 2
+          centerY = fromInt32 screenHeight / 2
+          pointerX = floor $ centerX + lr * screenHalfSize
+          pointerY = floor $ centerY + ud * screenHalfSize
+      writeBatch
+        inputDevice
+        [ AbsoluteEvent AbsX $ EventValue pointerX,
+          AbsoluteEvent AbsY $ EventValue pointerY
+        ]
+    ActionMouseScroll amount ->
+      writeBatch
+        inputDevice
+        [ RelativeEvent RelWheel $ EventValue amount
+        ]
+    ActionWrite text -> do
+      let events = concatMap (clickKeyCombo . charToKey) text
+      writeBatch inputDevice events
+    ActionPlayPath path -> do
+      defaultVideoPlayer <- readProcess "xdg-mime" ["query", "default", "video/x-msvideo"] ""
+      callProcess "gtk-launch" [dropWhileEnd (== '\n') defaultVideoPlayer, path]
+    ActionCloseWindow ->
+      writeBatch inputDevice $ clickKeyCombo [KeyLeftctrl, KeyQ]
+    ActionOpenUrlOnTV url ->
+      liftIO $ atomically $ do
+        tvState <- readTVar tvStateTVar
+        writeTVar tvStateTVar $ tvState {tvPage = url}
   where
     clickKeyCombo keys =
       map (`KeyEvent` Pressed) keys

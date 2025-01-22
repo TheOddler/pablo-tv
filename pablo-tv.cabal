@@ -47,6 +47,7 @@ library
         SafeMaths
         SaferIO
         TVDB
+        TVState
         Util
     if flag(development)
         cpp-options: -DDEVELOPMENT

@@ -20,6 +20,27 @@ function sendAction(action) {
   });
 }
 
+(() => {
+  /**
+   * Code for making the tv listen for "open on tv" messages.
+   */
+  if ('#{ isTv }' === 'true') {
+    const tvWebSocket = new ReconnectingWebSocket('@{HomeR}');
+    tvWebSocket.debug = true;
+    tvWebSocket.onmessage = function (message) {
+      console.log('Received message:', message);
+      const url = message.data;
+      if (url.startsWith('/')) {
+        window.location.replace(url);
+      }
+      else {
+        window.open(url);
+      }
+    };
+  }
+
+})();
+
 
 (() => {
   /**

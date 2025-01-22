@@ -20,6 +20,7 @@ import Data.String (fromString)
 import Data.Text (Text, intercalate, unpack)
 import Data.Text qualified as T
 import Data.Text qualified as Text
+import Data.Text.Encoding (decodeUtf8Lenient)
 import Data.Text.Lazy.Builder (fromText)
 import Directory
   ( DirectoryInfo (..),
@@ -65,22 +66,22 @@ import System.Process (callProcess)
 import System.Random (initStdGen, mkStdGen)
 import System.Random.Shuffle (shuffle')
 import TVDB (TVDBToken (..))
+import TVState (TVState (..), startingTVState, tvStateWebSocket)
 import Text.Hamlet (hamletFile)
 import Text.Julius (RawJavascript (..))
 import Util
   ( asyncOnTrigger,
     networkInterfaceWorthiness,
-    onChanges,
     removeLast,
     showIpV4OrV6WithPort,
-    toUrl,
+    toUrlRel,
     unsnoc,
     widgetFile,
   )
 import Yesod hiding (defaultLayout, replace)
 import Yesod qualified
 import Yesod.EmbeddedStatic
-import Yesod.WebSockets (race_, sendTextData, webSockets)
+import Yesod.WebSockets (race_, webSockets)
 
 data App = App
   { appPort :: Int,
@@ -90,14 +91,6 @@ data App = App
     appGetStatic :: EmbeddedStatic,
     appVideoDataRefreshTrigger :: MVar ()
   }
-
-data TVState = TVState
-  { tvPage :: Route App,
-    tvVideoData :: [(Path Abs Dir, DirectoryInfo, DirectoryInfoFS)]
-  }
-
-instance (Eq (Route App)) => Eq TVState where
-  TVState a b == TVState a2 b2 = a == a2 && b == b2
 
 mkEmbeddedStatic
   False
@@ -156,7 +149,11 @@ instance Yesod App where
 
       addScript $ StaticR static_reconnecting_websocket_js
       addStylesheet $ StaticR static_fontawesome_css_all_min_css
-      $(widgetFile "default")
+      currentRoute <- fromMaybe HomeR <$> getCurrentRoute
+      currentUrlBS <- toUrlRel currentRoute
+      let currentUrl :: Text
+          currentUrl = decodeUtf8Lenient $ BS.toStrict currentUrlBS
+      $(widgetFile "default") --
     withUrlRenderer $
       $(hamletFile "templates/page-wrapper.hamlet")
 
@@ -179,7 +176,8 @@ postHomeR =
       invalidArgs [Text.pack s]
     Success action -> do
       inputDevice <- getsYesod appInputDevice
-      liftIO $ performAction inputDevice action
+      tvStateTVar <- getsYesod appTVState
+      liftIO $ performAction inputDevice tvStateTVar action
 
 -- | Turn the segments into a directory path and optionally a filename
 -- Also checks if the file/directory actually exists, if not, return Nothing
@@ -227,12 +225,6 @@ getDirectoryR segments = do
   dirRaw <- liftIO $ readDirectoryRaw absPath
   let filesWithNames = map (\f -> (niceFileNameT f, f)) dirRaw.directoryVideoFiles
       dirsWithNames = map (\d -> (niceDirNameT d, d)) dirRaw.directoryDirectories
-
-  -- Let the tv know what page we're on
-  tvStateTVar <- getsYesod appTVState
-  liftIO $ atomically $ do
-    state <- readTVar tvStateTVar
-    writeTVar tvStateTVar state {tvPage = DirectoryR segments}
 
   let mkSegments :: Path Rel x -> [Text]
       mkSegments d = segments ++ [T.pack $ dropTrailingPathSeparator $ toFilePath d]
@@ -295,12 +287,10 @@ getHomeR = do
   -- This can be a websocket request, so do that
   tvStateTVar <- getsYesod appTVState
   inputDevice <- getsYesod appInputDevice
-  let webSocketActionsListener = actionsWebSocket inputDevice
-  let webSocketStateChangeNotifier =
-        -- This is just some placeholder/debug stuff still, not actually used yet
-        onChanges tvStateTVar $ \tvState ->
-          toUrl (tvPage tvState) >>= sendTextData
-  webSockets $ race_ webSocketActionsListener webSocketStateChangeNotifier
+  webSockets $
+    race_
+      (actionsWebSocket inputDevice tvStateTVar)
+      (tvStateWebSocket tvStateTVar)
 
   -- See if there are any files in the root, ideally there shouldn't be because
   -- we won't have info for them. But I do want to support it, so we'll still
@@ -355,7 +345,7 @@ main = do
   tvdbToken <- TVDBToken . BS.pack <$> getEnv "TVDB_TOKEN"
 
   inputDevice <- mkInputDevice
-  tvState <- newTVarIO $ TVState HomeR []
+  tvState <- newTVarIO startingTVState
   videoDataRefreshTrigger <- newMVar ()
 
   let port = 8080
