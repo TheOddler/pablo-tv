@@ -14,6 +14,8 @@ import GHC.List (uncons)
 import IsDevelopment (isDevelopment)
 import Language.Haskell.TH.Syntax (Exp, Q)
 import Network.Info (IPv4 (..), NetworkInterface (..))
+import System.Random (RandomGen)
+import System.Random.Shuffle (shuffle')
 import Text.Julius qualified as Julius
 import Yesod
 import Yesod.Default.Util (widgetFileNoReload, widgetFileReload)
@@ -125,3 +127,7 @@ asyncOnTrigger trigger action = loop
       takeMVar trigger
       action
       loop
+
+shuffle :: (RandomGen gen) => [a] -> gen -> [a]
+shuffle [] _ = []
+shuffle list gen = shuffle' list (length list) gen

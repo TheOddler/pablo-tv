@@ -30,8 +30,6 @@
 
 .el {
   flex-shrink: 0;
-  width: #{elWidth};
-  height: #{elHeight};
   background-color: midnightblue;
   position: relative;
 
@@ -42,6 +40,13 @@
     width: #{elWidth};
     height: #{elHeight};
     object-fit: cover;
+
+    &.logo {
+      height: #{elWidth};
+      object-fit: contain;
+      background-color: white;
+      padding:calc(#{elWidth} * 0.05);
+    }
 
     /* Styles for the alt text */
     display: flex;

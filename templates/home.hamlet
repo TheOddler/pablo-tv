@@ -1,35 +1,19 @@
 <div class="container">
-  <h1>Newest
-  <div class="row">
-    $forall (name, segments) <- videosNewest
-      <a class="el" href=@{DirectoryR segments}>
-          <img src=@{ImageR segments} alt="#{name}" loading="lazy">
-
-  $if notNull files
-    <h1>Unseen
-    <div class="row">
-      $forall (name, segments) <- videosUnseen
-        <a class="el" href=@{DirectoryR segments}>
-            <img src=@{ImageR segments} alt="#{name}" loading="lazy">
-
-  <h1>Alphabetically
-  <div class="row">
-    $forall (name, segments) <- videosAlphabetical
-      <a class="el" href=@{DirectoryR segments}>
-        <img src=@{ImageR segments} alt="#{name}" loading="lazy">
-
-  <h1>Random
-  <div class="row">
-    $forall (name, segments) <- videosRandom
-      <a class="el" href=@{DirectoryR segments}>
-        <img src=@{ImageR segments} alt="#{name}" loading="lazy">
-  
-  $if notNull files
-    <h1>Files (Put in a folder if you want posters)
-    <div class="row">
-      $forall (name, segments) <- files
-        <a class="el" href=@{DirectoryR segments}>
-          <img src=@{ImageR segments} alt="#{name}" loading="lazy">
+  $forall section <- sections
+    $case section
+      $of LocalVideos name namedSegments
+        $if notNull namedSegments
+          <h1>#{name}
+          <div class="row">
+            $forall (name, segments) <- namedSegments
+              <a class="el" href=@{DirectoryR segments}>
+                  <img src=@{ImageR segments} alt="#{name}" loading="lazy">
+      $of ExternalLinks name links
+        <h1>#{name}
+        <div class="row">
+          $forall (name, img, link) <- links
+            <a class="el" href="#" onclick="sendAction({ tag: 'OpenUrlOnTV', url: '#{link}' })">
+                <img src="@{img}" alt="#{name}" class="logo" loading="lazy">
   
   <h1 class="center">
     <a href=@{DirectoryR []}>View all

@@ -64,7 +64,6 @@ import System.Environment (getEnv)
 import System.FilePath (dropTrailingPathSeparator)
 import System.Process (callProcess)
 import System.Random (initStdGen, mkStdGen)
-import System.Random.Shuffle (shuffle')
 import TVDB (TVDBToken (..))
 import TVState (TVState (..), startingTVState, tvStateWebSocket)
 import Text.Hamlet (hamletFile)
@@ -74,6 +73,7 @@ import Util
     networkInterfaceWorthiness,
     removeLast,
     showIpV4OrV6WithPort,
+    shuffle,
     toUrlRel,
     unsnoc,
     widgetFile,
@@ -102,7 +102,10 @@ mkEmbeddedStatic
     embedFile "static/fontawesome/webfonts/fa-regular-400.ttf",
     embedFile "static/fontawesome/webfonts/fa-regular-400.woff2",
     embedFile "static/fontawesome/webfonts/fa-solid-900.ttf",
-    embedFile "static/fontawesome/webfonts/fa-solid-900.woff2"
+    embedFile "static/fontawesome/webfonts/fa-solid-900.woff2",
+    embedFile "static/images/apple-tv-plus.png",
+    embedFile "static/images/netflix.png",
+    embedFile "static/images/youtube.png"
   ]
 
 mkYesod
@@ -168,6 +171,14 @@ defaultLayout title widget = Yesod.defaultLayout $ do
   setTitle $ title <> " - Pablo TV"
   widget
 
+type NamedSegments = (Text, [Text])
+
+type NamedLink = (Text, Route App, Text)
+
+data HomeSection
+  = LocalVideos Text [NamedSegments]
+  | ExternalLinks Text [NamedLink]
+
 getHomeR :: Handler Html
 getHomeR = do
   -- This can be a websocket request, so do that
@@ -183,24 +194,40 @@ getHomeR = do
   -- show them.
   videoDir <- liftIO getVideoDirPath
   dirRaw <- liftIO $ readDirectoryRaw videoDir
-  let files = map (\f -> (niceFileNameT f, fileNameToSegments f)) dirRaw.directoryVideoFiles
 
   -- Get proper data (we got this async from the state)
   tvState <- liftIO $ readTVarIO tvStateTVar
   let videoData = tvVideoData tvState
-
-  -- Different orderings of the video data that we want to use
-  randomGenerator <-
-    -- When in dev we auto-reload the page every second or so,
-    -- so we want the same random shuffle every time, otherwise the page
-    -- keeps changing which is annoying.
-    if isDevelopment then pure (mkStdGen 2) else initStdGen
-  let videosRandom = nameAndSegments <$> shuffle' videoData (length videoData) randomGenerator
+  let mkRandom =
+        -- When in dev we auto-reload the page every second or so,
+        -- so we want the same random shuffle every time, otherwise the page
+        -- keeps changing which is annoying.
+        if isDevelopment then pure (mkStdGen 2) else initStdGen
+  randomGenerator <- mkRandom
   let videosSortedWith :: (Ord a) => ((Path Abs Dir, DirectoryInfo, DirectoryInfoFS) -> a) -> [(Text, [Text])]
       videosSortedWith f = nameAndSegments <$> sortWith f videoData
-  let videosAlphabetical = videosSortedWith (\(_, i, _) -> i.directoryInfoTitle)
-  let videosNewest = videosSortedWith (\(_, _, i) -> -i.directoryDataLastModified)
-  let videosUnseen = nameAndSegments <$> filter (\(_, _, i) -> i.directoryDataPlayedVideoFileCount < i.directoryDataVideoFileCount) videoData
+
+  let sections =
+        [ LocalVideos "Recently Added" $
+            videosSortedWith (\(_, _, i) -> -i.directoryDataLastModified),
+          LocalVideos "Unwatched" $
+            let isUnwatched (_, _, i) = i.directoryDataPlayedVideoFileCount < i.directoryDataVideoFileCount
+                unwatched = filter isUnwatched videoData
+             in if notNull unwatched
+                  then nameAndSegments <$> shuffle unwatched randomGenerator
+                  else [],
+          ExternalLinks
+            "External Links"
+            [ ("YouTube", StaticR static_images_youtube_png, "https://www.youtube.com/feed/subscriptions"),
+              ("Netflix", StaticR static_images_netflix_png, "https://www.netflix.com"),
+              ("Apple TV+", StaticR static_images_apple_tv_plus_png, "https://tv.apple.com")
+            ],
+          LocalVideos "Random" $
+            nameAndSegments
+              <$> shuffle videoData randomGenerator,
+          LocalVideos "Files (Put in a folder if you want posters)" $
+            map (\f -> (niceFileNameT f, fileNameToSegments f)) dirRaw.directoryVideoFiles
+        ]
 
   defaultLayout "Home" $(widgetFile "home")
   where
@@ -383,6 +410,7 @@ main = do
               }
         run port $ defaultMiddlewaresNoLogging app
 
+  putStrLn "Starting race..."
   race_ appThread dataThread
 
   putStrLn "Server quite."
