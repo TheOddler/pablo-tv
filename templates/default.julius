@@ -123,11 +123,80 @@ function sendAction(action) {
     }
   };
 
+  /**
+   * @param {number} a
+   * @param {number} b
+   * @param {number} t
+  */
+  const lerp = (a, b, t) => a + (b - a) * t;
+
+  /**
+   * @param {number} t
+  */
+  const ease = (t) => t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
+
+  /**
+   * @param {number} t
+  */
+  const easeOut = (t) => 1 - Math.pow(1 - t, 3);
+
+  /**
+   * @param {number} x
+  */
+  const easeInOutElastic = (x) => {
+    const c5 = (2 * Math.PI) / 4.5;
+
+    return x === 0
+      ? 0
+      : x === 1
+        ? 1
+        : x < 0.5
+          ? -(Math.pow(2, 20 * x - 10) * Math.sin((20 * x - 11.125) * c5)) / 2
+          : (Math.pow(2, -20 * x + 10) * Math.sin((20 * x - 11.125) * c5)) / 2 + 1;
+  }
+
+  /**
+   * @param {number} x
+  */
+  const easeOutBounce = (x) => {
+    const n1 = 7.5625;
+    const d1 = 2.75;
+
+    if (x < 1 / d1) {
+      return n1 * x * x;
+    } else if (x < 2 / d1) {
+      return n1 * (x -= 1.5 / d1) * x + 0.75;
+    } else if (x < 2.5 / d1) {
+      return n1 * (x -= 2.25 / d1) * x + 0.9375;
+    } else {
+      return n1 * (x -= 2.625 / d1) * x + 0.984375;
+    }
+  }
+
+  /**
+   * @param {number} x
+  */
+  const easeInOutBounce = (x) => {
+    return x < 0.5
+      ? (1 - easeOutBounce(1 - 2 * x)) / 2
+      : (1 + easeOutBounce(2 * x - 1)) / 2;
+
+  }
+
   const getFocusableElements = () => {
     return Array.from(document.querySelectorAll(
       'a[href], area[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled]), iframe, object, embed, [tabindex], [contenteditable], audio[controls], video[controls], summary'
     )).filter(el => !el.hasAttribute('tabindex') || el.tabIndex >= 0);
   };
+
+
+  /** @type {Element | null} */
+  let targetElement = null;
+  let prevTargetElement = document.body;
+  let targetChangeTime = Date.now();
+  const highlightingElement = document.createElement('div');
+  highlightingElement.id = 'highlighting-element';
+  document.body.appendChild(highlightingElement);
 
   /**
    * @param {Direction} direction
@@ -144,8 +213,7 @@ function sendAction(action) {
     const curPos = getMiddle(currentElement);
     const wantedAngle = dirToAngle(direction);
 
-    /** @type {Element | null} */
-    let targetElement = null;
+    let newElement = null;
     let minDistance = Infinity;
 
     focusableElements.forEach((element) => {
@@ -170,19 +238,35 @@ function sendAction(action) {
       const dist = getDistance(curPos, point) * (0.1 + angle / maxAngle); // Scale by the angle so that we prefer elements in the direction
       if (dist < minDistance) {
         minDistance = dist;
-        targetElement = element;
+        newElement = element;
       }
     });
 
-    if (targetElement) {
-      targetElement.focus();
-      targetElement.scrollIntoView({
+    if (newElement) {
+      newElement.focus();
+      newElement.scrollIntoView({
         behavior: "smooth",
         block: "center",
         inline: "center",
       });
+      prevTargetElement = targetElement;
+      targetElement = newElement;
+      targetChangeTime = Date.now();
     }
   };
+
+  const loop = () => {
+    const targetRect = targetElement?.getBoundingClientRect() ?? { top: -1000, left: -1000, width: 0, height: 0 };
+    const prevRect = prevTargetElement?.getBoundingClientRect() ?? { top: -1000, left: -1000, width: 0, height: 0 };
+    const lerpPos = easeOut(Math.min(1, (Date.now() - targetChangeTime) / 300));
+    highlightingElement.style.top = lerp(prevRect.top, targetRect.top, lerpPos) + 'px';
+    highlightingElement.style.left = lerp(prevRect.left, targetRect.left, lerpPos) + 'px';
+    highlightingElement.style.width = lerp(prevRect.width, targetRect.width, lerpPos) + 'px';
+    highlightingElement.style.height = lerp(prevRect.height, targetRect.height, lerpPos) + 'px';
+
+    requestAnimationFrame(loop);
+  };
+  requestAnimationFrame(loop);
 
   let lastEventTime = 0; // To slow down repeat rate, but still allow key spamming
   document.addEventListener('keydown', (event) => {
