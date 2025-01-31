@@ -123,6 +123,109 @@ function sendAction(action) {
     }
   };
 
+  const getFocusableElements = () => {
+    return Array.from(document.querySelectorAll(
+      'a[href], area[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled]), iframe, object, embed, [tabindex], [contenteditable], audio[controls], video[controls], summary'
+    )).filter(el => !el.hasAttribute('tabindex') || el.tabIndex >= 0);
+  };
+
+  /**
+   * @param {Direction} direction
+  */
+  const moveFocus = (direction) => {
+    const currentElement = document.activeElement;
+    const focusableElements = getFocusableElements();
+    if (focusableElements.length === 0) return;
+    if (!currentElement) {
+      focusableElements[0].focus();
+      return;
+    }
+
+    const curPos = getMiddle(currentElement);
+    const wantedAngle = dirToAngle(direction);
+
+    let targetElement = null;
+    let minDistance = Infinity;
+
+    focusableElements.forEach((element) => {
+      if (element === currentElement) return;
+
+      const point = getMiddle(element);
+
+      // Only consider elements that are in the direction of the arrow key
+      const angle = getAngleDiff(getAngle(curPos, point), wantedAngle);
+      const maxAngle = Math.PI / 3;
+      if (angle > maxAngle) return;
+
+      // Ignore elements too far off screen (a little off-screen we allow)
+      const allowedOffScreen = 0.3;
+      if (point.x < -window.innerWidth * allowedOffScreen
+        || point.x > window.innerWidth * (1 + allowedOffScreen)
+        || point.y < -window.innerHeight * allowedOffScreen
+        || point.y > window.innerHeight * (1 + allowedOffScreen)
+      ) return;
+
+      // Remember closest element
+      const dist = getDistance(curPos, point) * (0.1 + angle / maxAngle); // Scale by the angle so that we prefer elements in the direction
+      if (dist < minDistance) {
+        minDistance = dist;
+        targetElement = element;
+      }
+    });
+
+    if (targetElement) {
+      targetElement.focus();
+      targetElement.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+        inline: "center",
+      });
+    }
+  };
+
+  let lastEventTime = 0; // To slow down repeat rate, but still allow key spamming
+  document.addEventListener('keydown', (event) => {
+    switch (event.key) {
+      case 'ArrowUp':
+      case 'ArrowDown':
+      case 'ArrowLeft':
+      case 'ArrowRight':
+        // Limit the repeat rate
+        if (Date.now() - lastEventTime > 100) {
+          moveFocus(event.key);
+          lastEventTime = Date.now();
+        }
+        // Prevent default (that is scrolling),
+        // as we scroll to the selected element
+        event.preventDefault();
+        break;
+      // Allow going back with the backspace key for better keyboard navigation
+      case 'Backspace':
+        history.back();
+        event.preventDefault();
+        break;
+    }
+  });
+  document.addEventListener('keyup', (event) => {
+    switch (event.key) {
+      case 'ArrowUp':
+      case 'ArrowDown':
+      case 'ArrowLeft':
+      case 'ArrowRight':
+        // Allow spamming by resetting the time
+        lastEventTime = 0;
+        event.preventDefault();
+        break;
+    }
+  });
+})();
+
+(() => {
+  /**
+   * Highlighter for the focused element
+   * Based on when the focus changes for any reason
+   */
+
   /**
    * @param {number} a
    * @param {number} b
@@ -180,85 +283,44 @@ function sendAction(action) {
     return x < 0.5
       ? (1 - easeOutBounce(1 - 2 * x)) / 2
       : (1 + easeOutBounce(2 * x - 1)) / 2;
-
   }
 
-  const getFocusableElements = () => {
-    return Array.from(document.querySelectorAll(
-      'a[href], area[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled]), iframe, object, embed, [tabindex], [contenteditable], audio[controls], video[controls], summary'
-    )).filter(el => !el.hasAttribute('tabindex') || el.tabIndex >= 0);
+  /**
+   * This function gives us the rect of the element where the highlighting
+   * should move to. If no element is selected we'll want to animate to outside
+   * the screen, so return a rect outside the screen.
+   * @param {HTMLElement | null} element
+  */
+  const getRect = (element) => {
+    if (element !== null) {
+      return element.getBoundingClientRect();
+    } else {
+      const offset = 100;
+      return {
+        top: -offset,
+        left: -offset,
+        width: window.screen.width + offset * 2,
+        height: window.screen.height + offset * 2,
+      }
+    }
   };
 
-
-  /** @type {Element | null} */
+  // Create our highlighting element
+  /** @type {HTMLElement | null} */
   let targetElement = null;
-  let prevTargetElement = document.body;
+  /** @type {HTMLElement | null} */
+  let prevTargetElement = null;
   let targetChangeTime = Date.now();
   const highlightingElement = document.createElement('div');
   highlightingElement.id = 'highlighting-element';
   document.body.appendChild(highlightingElement);
 
-  /**
-   * @param {Direction} direction
-  */
-  const moveFocus = (direction) => {
-    const currentElement = document.activeElement;
-    const focusableElements = getFocusableElements();
-    if (focusableElements.length === 0) return;
-    if (!currentElement) {
-      focusableElements[0].focus();
-      return;
-    }
-
-    const curPos = getMiddle(currentElement);
-    const wantedAngle = dirToAngle(direction);
-
-    let newElement = null;
-    let minDistance = Infinity;
-
-    focusableElements.forEach((element) => {
-      if (element === currentElement) return;
-
-      const point = getMiddle(element);
-
-      // Only consider elements that are in the direction of the arrow key
-      const angle = getAngleDiff(getAngle(curPos, point), wantedAngle);
-      const maxAngle = Math.PI / 3;
-      if (angle > maxAngle) return;
-
-      // Ignore elements too far off screen (a little off-screen we allow)
-      const allowedOffScreen = 0.3;
-      if (point.x < -window.innerWidth * allowedOffScreen
-        || point.x > window.innerWidth * (1 + allowedOffScreen)
-        || point.y < -window.innerHeight * allowedOffScreen
-        || point.y > window.innerHeight * (1 + allowedOffScreen)
-      ) return;
-
-      // Remember closest element
-      const dist = getDistance(curPos, point) * (0.1 + angle / maxAngle); // Scale by the angle so that we prefer elements in the direction
-      if (dist < minDistance) {
-        minDistance = dist;
-        newElement = element;
-      }
-    });
-
-    if (newElement) {
-      newElement.focus();
-      newElement.scrollIntoView({
-        behavior: "smooth",
-        block: "center",
-        inline: "center",
-      });
-      prevTargetElement = targetElement;
-      targetElement = newElement;
-      targetChangeTime = Date.now();
-    }
-  };
-
+  // The loop that animates our highlighting element to the target element
   const loop = () => {
-    const targetRect = targetElement?.getBoundingClientRect() ?? { top: -1000, left: -1000, width: 0, height: 0 };
-    const prevRect = prevTargetElement?.getBoundingClientRect() ?? { top: -1000, left: -1000, width: 0, height: 0 };
-    const lerpPos = easeOut(Math.min(1, (Date.now() - targetChangeTime) / 300));
+    const targetRect = getRect(targetElement);
+    const prevRect = getRect(prevTargetElement);
+    const animationTime = 300;
+    const lerpPos = easeOut(Math.min(1, (Date.now() - targetChangeTime) / animationTime));
     highlightingElement.style.top = lerp(prevRect.top, targetRect.top, lerpPos) + 'px';
     highlightingElement.style.left = lerp(prevRect.left, targetRect.left, lerpPos) + 'px';
     highlightingElement.style.width = lerp(prevRect.width, targetRect.width, lerpPos) + 'px';
@@ -268,39 +330,18 @@ function sendAction(action) {
   };
   requestAnimationFrame(loop);
 
-  let lastEventTime = 0; // To slow down repeat rate, but still allow key spamming
-  document.addEventListener('keydown', (event) => {
-    switch (event.key) {
-      case 'ArrowUp':
-      case 'ArrowDown':
-      case 'ArrowLeft':
-      case 'ArrowRight':
-        // Limit the repeat rate
-        if (Date.now() - lastEventTime > 100) {
-          moveFocus(event.key);
-          lastEventTime = Date.now();
-        }
-        // Prevent default (that is scrolling),
-        // as we scroll to the selected element
-        event.preventDefault();
-        break;
-      // Allow going back with the backspace key for better keyboard navigation
-      case 'Backspace':
-        history.back();
-        event.preventDefault();
-        break;
-    }
+  // Listen to the relevant events
+  document.addEventListener("focusout", (event) => {
+    prevTargetElement = event.target;
+    targetElement = null;
+    targetChangeTime = Date.now();
   });
-  document.addEventListener('keyup', (event) => {
-    switch (event.key) {
-      case 'ArrowUp':
-      case 'ArrowDown':
-      case 'ArrowLeft':
-      case 'ArrowRight':
-        // Allow spamming by resetting the time
-        lastEventTime = 0;
-        event.preventDefault();
-        break;
-    }
+
+  document.addEventListener("focusin", (event) => {
+    // Don't use `prevTargetElement = targetElement` here as the focusout event
+    // will have changes those values and we want to overwrite that here
+    prevTargetElement = event.relatedTarget;
+    targetElement = event.target;
+    targetChangeTime = Date.now();
   });
 })();

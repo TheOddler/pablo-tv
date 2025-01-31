@@ -23,6 +23,7 @@
   box-sizing: border-box;
   border: solid lightblue 2pt;
   box-shadow: inset 0 0 15pt 0 black;
+  pointer-events: none;
 }
 
 *:focus {
