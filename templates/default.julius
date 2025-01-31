@@ -48,36 +48,6 @@ function sendAction(action) {
    */
 
   /**
-   * @param {Element} element
-  */
-  const getMiddle = (element) => {
-    let rect = element.getBoundingClientRect();
-
-    // This makes the code pretend an element in a `fixed` container isn't fixed
-    // Essentially just a hack to make the header work a bit nicer
-    let parent = element;
-    while (parent) {
-      if (window.getComputedStyle(parent).position === 'fixed') {
-        rect = {
-          top: rect.top - window.scrollY,
-          right: rect.right - window.scrollX,
-          bottom: rect.bottom - window.scrollY,
-          left: rect.left - window.scrollX,
-          width: rect.width,
-          height: rect.height,
-        };
-        break;
-      }
-      parent = parent.parentElement;
-    }
-
-    return {
-      x: rect.left + rect.width / 2,
-      y: rect.top + rect.height / 2,
-    };
-  };
-
-  /**
    * @typedef {Object} Point
    * @property {number} x
    * @property {number} y
@@ -86,16 +56,107 @@ function sendAction(action) {
   /** @typedef {'ArrowUp' | 'ArrowDown' | 'ArrowLeft' | 'ArrowRight'} Direction */
 
   /**
-   * @param {Point} a
-   * @param {Point} b
+   * @param {Element} element
   */
-  const getAngle = (a, b) => Math.atan2(b.y - a.y, b.x - a.x);
+  const hasFixedPosition = (element) => {
+    while (element) {
+      if (window.getComputedStyle(element).position === 'fixed') {
+        return true;
+      }
+      element = element.parentElement;
+    }
+    return false;
+  };
+
+  /**
+   * @param {Element} element
+  */
+  const getRect = (element) => {
+    let rect = element.getBoundingClientRect();
+    if (hasFixedPosition(element)) {
+      // Pretend a fixed-position element is not really fixed pos, so we only
+      // really consider it when we haven't scrolled
+      rect = {
+        top: rect.top - window.scrollY,
+        right: rect.right - window.scrollX,
+        bottom: rect.bottom - window.scrollY,
+        left: rect.left - window.scrollX,
+        width: rect.width,
+        height: rect.height,
+      };
+    }
+    return rect;
+  };
+
+  /**
+   * @param {DOMRect} rectA
+   * @param {DOMRect} rectB
+  */
+  const getDistance = (rectA, rectB) => {
+    // Check alignment, that if wether the two elements would touch if
+    // move perfectly vertically
+    const areAlignedVertically = !(
+      rectA.right < rectB.left ||
+      rectA.left > rectB.right
+    );
+    const areAlignedHorizontally = !(
+      rectA.bottom < rectB.top ||
+      rectA.top > rectB.bottom
+    );
+
+    // Check for overlap
+    if (areAlignedVertically && areAlignedHorizontally) {
+      return {
+        distance: 0,
+        areAligned: true,
+      };
+    }
+
+    // Check for alignment
+    if (areAlignedVertically) {
+      return {
+        distance: Math.min(
+          Math.abs(rectA.top - rectB.bottom),
+          Math.abs(rectA.bottom - rectB.top)
+        ),
+        areAligned: true,
+      };
+    }
+
+    if (areAlignedHorizontally) {
+      return {
+        distance: Math.min(
+          Math.abs(rectA.left - rectB.right),
+          Math.abs(rectA.right - rectB.left)
+        ),
+        areAligned: true,
+      };
+    }
+
+    // If we're not aligned, we'll just return the distance between the two
+    // Might be good to use the shortest distance, rather than the middle
+    // but this is probably fine.
+    const middleA = getMiddle(rectA);
+    const middleB = getMiddle(rectB);
+    return {
+      distance: Math.hypot(middleA.x - middleB.x, middleA.y - middleB.y),
+      areAligned: false,
+    };
+  };
+
+  /**
+   * @param {DOMRect} rect
+   */
+  const getMiddle = (rect) => ({
+    x: rect.left + rect.width / 2,
+    y: rect.top + rect.height / 2,
+  });
 
   /**
    * @param {Point} a
    * @param {Point} b
   */
-  const getDistance = (a, b) => Math.hypot(b.x - a.x, b.y - a.y);
+  const getAngle = (a, b) => Math.atan2(b.y - a.y, b.x - a.x);
 
   /**
    * @param {number} a
@@ -141,35 +202,62 @@ function sendAction(action) {
       return;
     }
 
-    const curPos = getMiddle(currentElement);
+    const curRect = getRect(currentElement);
+    const curMiddle = getMiddle(curRect);
     const wantedAngle = dirToAngle(direction);
-
     let targetElement = null;
     let minDistance = Infinity;
+    let minAngle = Infinity;
+    let minIsAligned = false;
 
     focusableElements.forEach((element) => {
       if (element === currentElement) return;
 
-      const point = getMiddle(element);
+      // Some values we'll use later
+      const rect = getRect(element);
+      const middle = getMiddle(rect);
 
       // Only consider elements that are in the direction of the arrow key
-      const angle = getAngleDiff(getAngle(curPos, point), wantedAngle);
-      const maxAngle = Math.PI / 3;
+      const angle = getAngleDiff(getAngle(curMiddle, middle), wantedAngle);
+      const maxAngle = Math.PI / 4;
       if (angle > maxAngle) return;
 
-      // Ignore elements too far off screen (a little off-screen we allow)
-      const allowedOffScreen = 0.3;
-      if (point.x < -window.innerWidth * allowedOffScreen
-        || point.x > window.innerWidth * (1 + allowedOffScreen)
-        || point.y < -window.innerHeight * allowedOffScreen
-        || point.y > window.innerHeight * (1 + allowedOffScreen)
-      ) return;
+      // Some more values we'll need
+      const dist = getDistance(curRect, rect);
+      const allowedOffScreen = 0.2;
+      const isOffScreen = (rect.right < -window.innerWidth * allowedOffScreen
+        || rect.left > window.innerWidth * (1 + allowedOffScreen)
+        || rect.bottom < -window.innerHeight * allowedOffScreen
+        || rect.top > window.innerHeight * (1 + allowedOffScreen)
+      );
+
+      // Ignore elements too far off screen, but only if they are not aligned
+      if (!dist.areAligned && isOffScreen) return;
 
       // Remember closest element
-      const dist = getDistance(curPos, point) * (0.1 + angle / maxAngle); // Scale by the angle so that we prefer elements in the direction
-      if (dist < minDistance) {
-        minDistance = dist;
+      // First prefer aligned elements, regardless of distance
+      if (!minIsAligned && dist.isAligned) {
         targetElement = element;
+        minDistance = dist.distance;
+        minAngle = angle;
+        minIsAligned = true;
+        return;
+      }
+      // Then prefer closer elements
+      if (dist.distance < minDistance) {
+        targetElement = element;
+        minDistance = dist.distance;
+        minAngle = angle;
+        minIsAligned = dist.areAligned;
+        return;
+      }
+      // Then prefer smaller angles, and consider distance with 10% tolerance
+      if (dist.distance < minDistance * 1.1 && angle < minAngle) {
+        targetElement = element;
+        minDistance = dist.distance;
+        minAngle = angle;
+        minIsAligned = dist.areAligned;
+        return;
       }
     });
 
