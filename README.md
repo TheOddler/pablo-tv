@@ -58,5 +58,11 @@ watchexec -e hs,cabal --restart cabal test
 If you want to work on golden tests:
 
 ```bash
-watchexec --restart "cabal test --test-options=\"--golden-reset --golden-start\""
+watchexec -e hs,cabal --restart "cabal test --test-options=\"--golden-reset --golden-start\""
+```
+
+Or want to run only a specific test:
+
+```bash
+watchexec -e hs,cabal --restart "cabal test --test-options=\"--match \\\"TEST_NAME_HERE\\\"\""
 ```

@@ -5,9 +5,9 @@ import Data.ByteString.Char8 qualified as BS
 import Data.Text (Text)
 import Data.Text qualified as T
 import Directory
-import Path (Abs, Dir, File, Path, Rel, fromRelFile, parseAbsDir, parseRelDir, parseRelFile)
+import Path (fromRelFile, parseAbsDir, parseRelDir, parseRelFile)
 import Test.Syd (Spec, describe, expectationFailure, it, pureGoldenByteStringFile, pureGoldenTextFile, shouldBe)
-import TestUtils (labeledExpectationFailure)
+import TestUtils (forceAbsDir, forceRelFile)
 
 spec :: Spec
 spec = do
@@ -153,18 +153,6 @@ spec = do
     case decoded of
       Left err -> expectationFailure $ show err
       Right x -> x `shouldBe` example
-
-forceRelFile :: FilePath -> Path Rel File
-forceRelFile file =
-  case parseRelFile file of
-    Left err -> labeledExpectationFailure "Failed forceRelFile" err
-    Right f -> f
-
-forceAbsDir :: FilePath -> Path Abs Dir
-forceAbsDir file =
-  case parseAbsDir file of
-    Left err -> labeledExpectationFailure "Failed forceRelFile" err
-    Right f -> f
 
 mkGuess :: DirectoryKind -> Text -> Maybe Int -> DirectoryInfo
 mkGuess kind title year = DirectoryInfo kind title year Nothing Nothing Nothing Nothing Nothing

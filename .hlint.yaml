@@ -123,7 +123,9 @@
       - SafeMaths
   - {name: fromInteger, within: []}
 
-  - {name: 'read', within: []} # Partial, use `Text.Read.readMaybe` instead.
+  - name: 'read'
+    within: WatchedSpec
+    message: Partial, use `Text.Read.readMaybe` instead.
   
   # Deprecated, use `pure` instead.
   # See https://gitlab.haskell.org/ghc/ghc/-/wikis/proposal/monad-of-no-return
