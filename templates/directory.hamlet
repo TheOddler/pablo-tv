@@ -19,8 +19,8 @@ $if (not $ null filesWithNames)
           <i class="fa-solid fa-play">
           <span>Play All
     $forall (name, path) <- filesWithNames
-      <li class="#{watchedClass path}">
-        <a href="#" onclick="playPath('#{mkAbsFilePath path}')">
+      <li class="#{watchedClass path}" data-path="#{mkAbsFilePath path}">
+        <a href="#" onclick="playPath(this)">
           <i class="fa-solid fa-play">
           <span>#{name}
 

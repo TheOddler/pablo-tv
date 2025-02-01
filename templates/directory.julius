@@ -1,7 +1,26 @@
-async function playPath(path) {
-  await sendAction({ tag: "PlayPath", path });
-  // Refresh the page to get the now watched info
-  location.reload();
+async function playPath(self) {
+  const pathElement = findElementWithPath(self);
+  if (!pathElement) {
+    return;
+  }
+
+  const path = pathElement.dataset.path;
+  const response = await sendAction({ tag: "PlayPath", path });
+
+  if (response.ok) {
+    pathElement.classList.add("watched");
+  }
+}
+
+/**
+ * @param {Element} element
+ * @returns {Element | null}
+*/
+function findElementWithPath(element) {
+  while (element && element.dataset.path === undefined) {
+    element = element.parentElement;
+  }
+  return element;
 }
 
 function playAll() {
