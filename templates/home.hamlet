@@ -1,19 +1,25 @@
 <div class="container">
   $forall section <- sections
     $case section
-      $of LocalVideos name namedSegments
-        $if notNull namedSegments
+      $of LocalVideos name dirData
+        $if notNull dirData
           <h1>#{name}
           <div class="row">
-            $forall (name, segments) <- namedSegments
+            $forall (name, segments, watchedCount, totalCount) <- dirData
               <a class="el" href=@{DirectoryR segments}>
-                  <img src=@{ImageR segments} alt="#{name}" loading="lazy">
+                <img src=@{ImageR segments} alt="#{name}" loading="lazy">
+                <div class="watched">
+                  <i class="fa-regular fa-eye">
+                  $if watchedCount >= totalCount
+                    <i class="fa-solid fa-check">
+                  $if (&&) (watchedCount >= 0) (watchedCount < totalCount)
+                    #{watchedCount}/#{totalCount} 
       $of ExternalLinks name links
         <h1>#{name}
         <div class="row">
           $forall (name, img, link) <- links
             <a class="el" href="#" onclick="sendAction({ tag: 'OpenUrlOnTV', url: '#{link}' })">
-                <img src="@{img}" alt="#{name}" class="logo" loading="lazy">
+              <img src="@{img}" alt="#{name}" class="logo" loading="lazy">
   
   <h1 class="center">
     <a href=@{DirectoryR []}>View all

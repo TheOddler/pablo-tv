@@ -27,7 +27,6 @@ import Directory
   ( DirectoryInfo (..),
     DirectoryKind (..),
     DirectoryRaw (..),
-    getVideoDirPath,
     niceDirNameT,
     niceFileNameT,
     readDirectoryInfoRec,
@@ -171,12 +170,24 @@ defaultLayout title widget = Yesod.defaultLayout $ do
   setTitle $ title <> " - Pablo TV"
   widget
 
-type NamedSegments = (Text, [Text])
+type DirName = Text
 
-type NamedLink = (Text, Route App, Text)
+type DirSegments = [Text]
+
+type WatchedCount = Int
+
+type TotalCount = Int
+
+type DirData = (DirName, DirSegments, WatchedCount, TotalCount)
+
+type ImageRoute = Route App
+
+type Link = Text
+
+type NamedLink = (Text, ImageRoute, Link)
 
 data HomeSection
-  = LocalVideos Text [NamedSegments]
+  = LocalVideos Text [DirData]
   | ExternalLinks Text [NamedLink]
 
 getHomeR :: Handler Html
@@ -188,12 +199,6 @@ getHomeR = do
     race_
       (actionsWebSocket inputDevice tvStateTVar)
       (tvStateWebSocket tvStateTVar)
-
-  -- See if there are any files in the root, ideally there shouldn't be because
-  -- we won't have info for them. But I do want to support it, so we'll still
-  -- show them.
-  videoDir <- liftIO getVideoDirPath
-  dirRaw <- liftIO $ readDirectoryRaw videoDir
 
   -- Get proper data (we got this async from the state)
   tvState <- liftIO $ readTVarIO tvStateTVar
@@ -207,8 +212,8 @@ getHomeR = do
   let videosSortedWith ::
         (Ord a) =>
         ((Path Abs Dir, DirectoryInfo, WatchedInfoAgg) -> a) ->
-        [(Text, [Text])]
-      videosSortedWith f = nameAndSegments <$> sortWith f videoData
+        [DirData]
+      videosSortedWith f = mkDirData <$> sortWith f videoData
 
   let sections =
         [ LocalVideos "Recently Added" $
@@ -217,7 +222,7 @@ getHomeR = do
             let isUnwatched (_, _, i) = i.watchedInfoPlayedVideoFileCount < i.watchedInfoVideoFileCount
                 unwatched = filter isUnwatched videoData
              in if notNull unwatched
-                  then nameAndSegments <$> shuffle unwatched randomGenerator
+                  then mkDirData <$> shuffle unwatched randomGenerator
                   else [],
           ExternalLinks
             "External Links"
@@ -226,10 +231,8 @@ getHomeR = do
               ("Apple TV+", StaticR static_images_apple_tv_plus_png, "https://tv.apple.com")
             ],
           LocalVideos "Random" $
-            nameAndSegments
-              <$> shuffle videoData randomGenerator,
-          LocalVideos "Files (Put in a folder if you want posters)" $
-            map (\f -> (niceFileNameT f, fileNameToSegments f)) dirRaw.directoryVideoFiles
+            mkDirData
+              <$> shuffle videoData randomGenerator
         ]
 
   defaultLayout "Home" $(widgetFile "home")
@@ -237,11 +240,15 @@ getHomeR = do
     fileNameToSegments :: Path Rel a -> [Text]
     fileNameToSegments f = [T.pack $ toFilePath f]
 
-    nameAndSegments ::
-      (Path Abs Dir, DirectoryInfo, WatchedInfoAgg) -> (Text, [Text])
-    nameAndSegments (path, info, _) =
+    mkDirData ::
+      (Path Abs Dir, DirectoryInfo, WatchedInfoAgg) -> DirData
+    mkDirData (path, info, watchedInfo) =
       let segments = fileNameToSegments $ dirname path
-       in (directoryInfoTitle info, segments)
+       in ( directoryInfoTitle info,
+            segments,
+            watchedInfo.watchedInfoPlayedVideoFileCount,
+            watchedInfo.watchedInfoVideoFileCount
+          )
 
 postHomeR :: Handler ()
 postHomeR =

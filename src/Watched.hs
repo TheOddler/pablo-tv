@@ -14,7 +14,7 @@ import Data.Time (UTCTime (..))
 import Directory (DirectoryRaw (..), isVideoFile, readDirectoryRaw)
 import Foreign.C (CTime (..))
 import GHC.Data.Maybe (catMaybes, firstJusts, fromMaybe)
-import Path (Abs, Dir, File, Path, Rel, filename, mkRelFile, (</>))
+import Path (Abs, Dir, File, Path, Rel, filename, mkRelFile, parent, (</>))
 import SaferIO (FSRead (..), FSWrite (..), Logger (..), TimeRead (..))
 import System.Posix qualified as Posix
 import Text.Read (readMaybe)
@@ -77,16 +77,32 @@ readWatchedInfo dir = do
           logStr $ "Failed to decode watched file: " ++ show err
           pure $ WatchedFiles mempty
 
-markFileAsWatched :: (FSRead m, TimeRead m) => WatchedFiles -> Path Abs File -> m WatchedFiles
-markFileAsWatched (WatchedFiles currentState) file = do
-  stats <- getFileStatus file
-  time <- getCurrentTime
-  let newState = Map.insert (filename file) (time, Posix.fileID stats) currentState
-  pure $ WatchedFiles newState
+readAndCleanWatchedInfo :: (FSWrite m, FSRead m, Logger m, MonadCatch m) => Path Abs Dir -> m WatchedFiles
+readAndCleanWatchedInfo dir = do
+  currentState <- readWatchedInfo dir
+  cleanedInfo <- cleanWatchedInfo dir currentState
+  writeWatchedInfo dir cleanedInfo
+  pure cleanedInfo
 
 writeWatchedInfo :: (FSWrite m) => Path Abs Dir -> WatchedFiles -> m ()
 writeWatchedInfo dir info = do
   writeFileBS (mkWatchedInfoPath dir) (encodeYamlViaCodec info)
+
+markFileAsWatched :: (FSWrite m, FSRead m, TimeRead m, Logger m) => Path Abs File -> m ()
+markFileAsWatched file = do
+  stats <- getFileStatus file
+  time <- getCurrentTime
+  let dir = parent file
+  WatchedFiles currentState <- readWatchedInfo dir
+  let newState = Map.insert (filename file) (time, Posix.fileID stats) currentState
+  writeWatchedInfo dir $ WatchedFiles newState
+
+markFileAsUnwatched :: (FSWrite m, FSRead m, Logger m) => Path Abs File -> m ()
+markFileAsUnwatched file = do
+  let dir = parent file
+  WatchedFiles currentState <- readWatchedInfo dir
+  let newState = Map.delete (filename file) currentState
+  writeWatchedInfo dir $ WatchedFiles newState
 
 cleanWatchedInfo ::
   (MonadCatch m, FSRead m) =>
@@ -153,7 +169,8 @@ data WatchedInfoAgg = WatchedInfoAgg
 -- | Gather data about the directory and all subdirectories recursively and return the aggregated value.
 readWatchedInfoAgg :: (FSRead m, Logger m) => Path Abs Dir -> m WatchedInfoAgg
 readWatchedInfoAgg dir = do
-  (dirs, files') <- listDirRecur dir
+  (dirs', files') <- listDirRecur dir
+  let dirs = dir : dirs'
   let files = filter isVideoFile files'
 
   fileStatuses <- traverse getFileStatus files

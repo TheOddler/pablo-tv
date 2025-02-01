@@ -61,4 +61,22 @@
     transform: scale(#{elFocusScale});
     z-index: 10;
   }
+
+  .watched {
+    font-size: 1.8rem;
+    position: absolute;
+    bottom: 0;
+    right: 0;
+    padding: 0.2em 0.4em 0.3em 0.5em;
+    color: white;
+    background-color: rgba(0, 0, 0, 0.5);
+    border-top-left-radius: 0.7em;
+    display: flex;
+    align-items: center;
+    gap: 0.2em;
+
+    .fa-eye {
+      font-size: 0.8em;
+    }
+  }
 }
