@@ -10,8 +10,6 @@ module Directory
     getVideoDirPath,
     niceFileNameT,
     niceDirNameT,
-    DirectoryInfoFS (..),
-    readDirectoryInfoFS,
     -- For testing
     guessDirectoryInfo,
     isVideoFile,
@@ -38,10 +36,8 @@ import Data.Char (toLower)
 import Data.List (sortBy)
 import Data.List.NonEmpty (group)
 import Data.List.NonEmpty qualified as NE
-import Data.List.NonEmpty.Extra qualified as NE
 import Data.Text (Text, breakOn, replace, strip)
 import Data.Text qualified as T
-import Foreign.C (CTime (..))
 import GHC.Data.Maybe
   ( firstJusts,
     fromMaybe,
@@ -55,7 +51,6 @@ import GHC.Exts (sortWith)
 import Path (Abs, Dir, File, Path, Rel, addExtension, dirname, fileExtension, filename, fromRelDir, fromRelFile, mkRelDir, mkRelFile, parent, parseRelFile, splitExtension, toFilePath, (</>))
 import SaferIO (FSRead (..), FSWrite (..), Logger (..), NetworkRead)
 import System.FilePath (dropTrailingPathSeparator)
-import System.Posix qualified as Posix
 import TVDB (TVDBData (..), TVDBToken, TVDBType (..), getInfoFromTVDB)
 import Text.Read (readMaybe)
 import Text.Regex.TDFA ((=~))
@@ -110,18 +105,6 @@ data DirectoryRaw = DirectoryRaw
   }
   deriving (Show, Eq)
 
--- | Directory info we get directly from the file system.
-data DirectoryInfoFS = DirectoryInfoFS
-  { -- | The last time this directory, or any of it's files/subdir (recursively) was modified.
-    directoryDataLastModified :: Posix.EpochTime,
-    directoryDataLastAccessed :: Posix.EpochTime,
-    -- | Total number of files in this directory or any subdirs (recursively)
-    directoryDataVideoFileCount :: Int,
-    -- | Count of files that have an accessed time > modified time
-    directoryDataPlayedVideoFileCount :: Int
-  }
-  deriving (Eq)
-
 getVideoDirPath :: (FSRead m) => m (Path Abs Dir)
 getVideoDirPath = do
   home <- getHomeDir
@@ -167,30 +150,6 @@ readDirectoryInfoRec dir = do
           if parentDir == dir
             then pure Nothing
             else readDirectoryInfoRec parentDir
-
--- | This reads the info file from a directory and returns it if it exists.
--- If a file with the correct name exists, but it can't be decoded, it will
--- also return `Nothing` and print an error in the console.
-readDirectoryInfoFS :: (FSRead m) => Path Abs Dir -> m DirectoryInfoFS
-readDirectoryInfoFS dir = do
-  (_dirs, files') <- listDirRecur dir
-  let files = filter isVideoFile files'
-
-  fileStatuses <- traverse getFileStatus files
-  let fileStatusesNE = NE.nonEmpty fileStatuses
-
-  let accessTimes = fmap Posix.accessTime <$> fileStatusesNE
-  let modificationTimes = fmap Posix.modificationTime <$> fileStatusesNE
-
-  pure
-    DirectoryInfoFS
-      { directoryDataLastModified = maybe (CTime minBound) NE.maximum1 modificationTimes,
-        directoryDataLastAccessed = maybe (CTime minBound) NE.maximum1 accessTimes,
-        directoryDataVideoFileCount = length files,
-        directoryDataPlayedVideoFileCount = length $ filter beenPlayed fileStatuses
-      }
-  where
-    beenPlayed status = Posix.accessTime status > Posix.modificationTime status
 
 type Image = (ContentType, BS.ByteString)
 

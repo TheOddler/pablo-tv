@@ -8,9 +8,11 @@ import Autodocodec.Yaml (eitherDecodeYamlViaCodec, encodeYamlViaCodec)
 import Control.Exception (SomeException)
 import Control.Monad.Catch (MonadCatch (..))
 import Data.List.Extra (trimStart)
+import Data.List.NonEmpty.Extra qualified as NE
 import Data.Map qualified as Map
 import Data.Time (UTCTime (..))
-import Directory (DirectoryRaw (..), readDirectoryRaw)
+import Directory (DirectoryRaw (..), isVideoFile, readDirectoryRaw)
+import Foreign.C (CTime (..))
 import GHC.Data.Maybe (catMaybes, firstJusts, fromMaybe)
 import Path (Abs, Dir, File, Path, Rel, filename, mkRelFile, (</>))
 import SaferIO (FSRead (..), FSWrite (..), Logger (..), TimeRead (..))
@@ -134,3 +136,41 @@ cleanWatchedInfo dir (WatchedFiles currentState) = do
   let stateAsList = Map.toList currentState
   cleanedStateAsList <- catMaybes <$> traverse clean stateAsList
   pure $ WatchedFiles $ Map.fromList cleanedStateAsList
+
+-- | Aggregated data about a whole directory, including recursive subdirectories and files.
+data WatchedInfoAgg = WatchedInfoAgg
+  { -- | The last time this directory, or any of it's files/subdir (recursively) was modified.
+    watchedInfoLastModified :: Posix.EpochTime,
+    watchedInfoLastAccessed :: Posix.EpochTime,
+    -- | Total number of video files in this directory or any subdirs (recursively)
+    watchedInfoVideoFileCount :: Int,
+    -- | Count of files that were watched.
+    -- Here we take the watched files as gospel, and don't check if the files still exist.
+    watchedInfoPlayedVideoFileCount :: Int
+  }
+  deriving (Eq)
+
+-- | Gather data about the directory and all subdirectories recursively and return the aggregated value.
+readWatchedInfoAgg :: (FSRead m, Logger m) => Path Abs Dir -> m WatchedInfoAgg
+readWatchedInfoAgg dir = do
+  (dirs, files') <- listDirRecur dir
+  let files = filter isVideoFile files'
+
+  fileStatuses <- traverse getFileStatus files
+  let fileStatusesNE = NE.nonEmpty fileStatuses
+  let accessTimes = fmap Posix.accessTime <$> fileStatusesNE
+  let modificationTimes = fmap Posix.modificationTime <$> fileStatusesNE
+
+  watchedCounts <- traverse readWatchedFileCount dirs
+
+  pure
+    WatchedInfoAgg
+      { watchedInfoLastModified = maybe (CTime minBound) NE.maximum1 modificationTimes,
+        watchedInfoLastAccessed = maybe (CTime minBound) NE.maximum1 accessTimes,
+        watchedInfoVideoFileCount = length files,
+        watchedInfoPlayedVideoFileCount = sum watchedCounts
+      }
+  where
+    readWatchedFileCount d = do
+      WatchedFiles watchedFiles <- readWatchedInfo d
+      pure $ Map.size watchedFiles

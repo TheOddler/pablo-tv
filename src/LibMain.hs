@@ -22,15 +22,14 @@ import Data.Text qualified as T
 import Data.Text qualified as Text
 import Data.Text.Encoding (decodeUtf8Lenient)
 import Data.Text.Lazy.Builder (fromText)
+import Data.Time (diffUTCTime, getCurrentTime)
 import Directory
   ( DirectoryInfo (..),
-    DirectoryInfoFS (..),
     DirectoryKind (..),
     DirectoryRaw (..),
     getVideoDirPath,
     niceDirNameT,
     niceFileNameT,
-    readDirectoryInfoFS,
     readDirectoryInfoRec,
     readDirectoryRaw,
     updateAllDirectoryInfos,
@@ -78,6 +77,7 @@ import Util
     unsnoc,
     widgetFile,
   )
+import Watched (WatchedInfoAgg (..), readWatchedInfoAgg)
 import Yesod hiding (defaultLayout, replace)
 import Yesod qualified
 import Yesod.EmbeddedStatic
@@ -204,14 +204,17 @@ getHomeR = do
         -- keeps changing which is annoying.
         if isDevelopment then pure (mkStdGen 2) else initStdGen
   randomGenerator <- mkRandom
-  let videosSortedWith :: (Ord a) => ((Path Abs Dir, DirectoryInfo, DirectoryInfoFS) -> a) -> [(Text, [Text])]
+  let videosSortedWith ::
+        (Ord a) =>
+        ((Path Abs Dir, DirectoryInfo, WatchedInfoAgg) -> a) ->
+        [(Text, [Text])]
       videosSortedWith f = nameAndSegments <$> sortWith f videoData
 
   let sections =
         [ LocalVideos "Recently Added" $
-            videosSortedWith (\(_, _, i) -> -i.directoryDataLastModified),
+            videosSortedWith (\(_, _, i) -> -i.watchedInfoLastModified),
           LocalVideos "Unwatched" $
-            let isUnwatched (_, _, i) = i.directoryDataPlayedVideoFileCount < i.directoryDataVideoFileCount
+            let isUnwatched (_, _, i) = i.watchedInfoPlayedVideoFileCount < i.watchedInfoVideoFileCount
                 unwatched = filter isUnwatched videoData
              in if notNull unwatched
                   then nameAndSegments <$> shuffle unwatched randomGenerator
@@ -234,7 +237,8 @@ getHomeR = do
     fileNameToSegments :: Path Rel a -> [Text]
     fileNameToSegments f = [T.pack $ toFilePath f]
 
-    nameAndSegments :: (Path Abs Dir, DirectoryInfo, DirectoryInfoFS) -> (Text, [Text])
+    nameAndSegments ::
+      (Path Abs Dir, DirectoryInfo, WatchedInfoAgg) -> (Text, [Text])
     nameAndSegments (path, info, _) =
       let segments = fileNameToSegments $ dirname path
        in (directoryInfoTitle info, segments)
@@ -388,14 +392,17 @@ main = do
 
   let dataThread =
         asyncOnTrigger videoDataRefreshTrigger $ do
+          startTime <- getCurrentTime
           infosWithPath <- updateAllDirectoryInfos tvdbToken
           let addFSInfo (path, info) = do
-                infoFS <- readDirectoryInfoFS path
+                infoFS <- readWatchedInfoAgg path
                 pure (path, info, infoFS)
           infos <- mapM addFSInfo infosWithPath
           atomically $ do
             state <- readTVar tvState
             writeTVar tvState state {tvVideoData = infos}
+          endTime <- getCurrentTime
+          putStrLn $ "Refreshed video data in " ++ show (diffUTCTime endTime startTime)
 
   let appThread = do
         app <-
