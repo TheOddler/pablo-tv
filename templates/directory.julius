@@ -1,15 +1,29 @@
-async function playPath(self) {
-  const pathElement = findElementWithPath(self);
-  if (!pathElement) {
-    return;
-  }
+function playPath(self) {
+  mkWatchedChangingFunction("PlayPath", true)(self);
+}
 
-  const path = pathElement.dataset.path;
-  const response = await sendAction({ tag: "PlayPath", path });
+function markAsWatched(self) {
+  mkWatchedChangingFunction("MarkAsWatched", true)(self);
+}
 
-  if (response.ok) {
-    pathElement.classList.add("watched");
-  }
+function markAsUnwatched(self) {
+  mkWatchedChangingFunction("MarkAsUnwatched", false)(self);
+}
+
+function mkWatchedChangingFunction(actionTag, watchedStatus) {
+  return async function (self) {
+    const pathElement = findElementWithPath(self);
+    if (!pathElement) {
+      return;
+    }
+
+    const path = pathElement.dataset.path;
+    const response = await sendAction({ tag: actionTag, path });
+
+    if (response.ok) {
+      pathElement.classList.toggle("watched", watchedStatus);
+    }
+  };
 }
 
 /**

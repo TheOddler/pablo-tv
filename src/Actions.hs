@@ -18,7 +18,7 @@ import SafeMaths (int32ToInteger)
 import System.Process (callProcess, readProcess)
 import TVState (TVState (..))
 import Util (boundedEnumCodec)
-import Watched (markFileAsWatched)
+import Watched (markFileAsUnwatched, markFileAsWatched)
 import Yesod (FromJSON, MonadHandler, liftIO)
 import Yesod.WebSockets (WebSocketsT, receiveData)
 
@@ -42,6 +42,8 @@ data Action
   | ActionMouseScroll Int32
   | ActionWrite String
   | ActionPlayPath DirOrFile
+  | ActionMarkAsWatched (Path Abs File)
+  | ActionMarkAsUnwatched (Path Abs File)
   | ActionCloseWindow
   | ActionOpenUrlOnTV Text
   deriving (Show, Eq)
@@ -76,9 +78,15 @@ instance HasObjectCodec Action where
         let mFile = parseAbsFile str
             mDir = parseAbsDir str
          in case (mFile, mDir) of
-              (Nothing, Nothing) -> Left $ "Failed parsing abs file path: " ++ show str
+              (Nothing, Nothing) -> Left $ "Failed parsing dir or file: " ++ show str
               (Just file, _) -> Right $ File file
               (_, Just dir) -> Right $ Dir dir
+
+      strToFile :: String -> Either String (Path Abs File)
+      strToFile str =
+        case parseAbsFile str of
+          Nothing -> Left $ "Failed parsing abs file path: " ++ show str
+          Just file -> Right file
 
       enc :: Action -> (Discriminator, ObjectCodec a ())
       enc = \case
@@ -89,6 +97,8 @@ instance HasObjectCodec Action where
         ActionMouseScroll amount -> ("MouseScroll", oneFieldEncoder "amount" amount)
         ActionWrite t -> ("Write", oneFieldEncoder "text" t)
         ActionPlayPath path -> ("PlayPath", oneFieldEncoder "path" $ dirOrFileToStr path)
+        ActionMarkAsWatched path -> ("MarkAsWatched", oneFieldEncoder "path" $ fromAbsFile path)
+        ActionMarkAsUnwatched path -> ("MarkAsUnwatched", oneFieldEncoder "path" $ fromAbsFile path)
         ActionCloseWindow -> ("CloseWindow", noFieldEncoder)
         ActionOpenUrlOnTV url -> ("OpenUrlOnTV", oneFieldEncoder "url" url)
       dec :: HashMap.HashMap Discriminator (Text, ObjectCodec Void Action)
@@ -104,6 +114,20 @@ instance HasObjectCodec Action where
               ( "ActionPlayPath",
                 mapToDecoder ActionPlayPath $
                   bimapCodec strToDirOrFile id $
+                    requiredField' "path"
+              )
+            ),
+            ( "MarkAsWatched",
+              ( "ActionMarkAsWatched",
+                mapToDecoder ActionMarkAsWatched $
+                  bimapCodec strToFile id $
+                    requiredField' "path"
+              )
+            ),
+            ( "MarkAsUnwatched",
+              ( "ActionMarkAsUnwatched",
+                mapToDecoder ActionMarkAsUnwatched $
+                  bimapCodec strToFile id $
                     requiredField' "path"
               )
             ),
@@ -250,6 +274,10 @@ performAction inputDevice tvStateTVar action = do
             File path -> fromAbsFile path
             Dir path -> fromAbsDir path
         ]
+    ActionMarkAsWatched file ->
+      markFileAsWatched file
+    ActionMarkAsUnwatched file ->
+      markFileAsUnwatched file
     ActionCloseWindow ->
       writeBatch inputDevice $ clickKeyCombo [KeyLeftctrl, KeyQ]
     ActionOpenUrlOnTV url ->
