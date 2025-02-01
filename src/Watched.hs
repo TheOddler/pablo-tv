@@ -77,31 +77,32 @@ readWatchedInfo dir = do
           logStr $ "Failed to decode watched file: " ++ show err
           pure $ WatchedFiles mempty
 
-readAndCleanWatchedInfo :: (FSWrite m, FSRead m, Logger m, MonadCatch m) => Path Abs Dir -> m WatchedFiles
-readAndCleanWatchedInfo dir = do
-  currentState <- readWatchedInfo dir
-  cleanedInfo <- cleanWatchedInfo dir currentState
-  writeWatchedInfo dir cleanedInfo
-  pure cleanedInfo
-
 writeWatchedInfo :: (FSWrite m) => Path Abs Dir -> WatchedFiles -> m ()
 writeWatchedInfo dir info = do
   writeFileBS (mkWatchedInfoPath dir) (encodeYamlViaCodec info)
 
-markFileAsWatched :: (FSWrite m, FSRead m, TimeRead m, Logger m) => Path Abs File -> m ()
+markFileAsWatched ::
+  (FSWrite m, FSRead m, TimeRead m, Logger m, MonadCatch m) =>
+  Path Abs File ->
+  m ()
 markFileAsWatched file = do
   stats <- getFileStatus file
   time <- getCurrentTime
   let dir = parent file
-  WatchedFiles currentState <- readWatchedInfo dir
-  let newState = Map.insert (filename file) (time, Posix.fileID stats) currentState
+  currentState <- readWatchedInfo dir
+  WatchedFiles cleanedState <- cleanWatchedInfo dir currentState
+  let newState = Map.insert (filename file) (time, Posix.fileID stats) cleanedState
   writeWatchedInfo dir $ WatchedFiles newState
 
-markFileAsUnwatched :: (FSWrite m, FSRead m, Logger m) => Path Abs File -> m ()
+markFileAsUnwatched ::
+  (FSWrite m, FSRead m, Logger m, MonadCatch m) =>
+  Path Abs File ->
+  m ()
 markFileAsUnwatched file = do
   let dir = parent file
-  WatchedFiles currentState <- readWatchedInfo dir
-  let newState = Map.delete (filename file) currentState
+  currentState <- readWatchedInfo dir
+  WatchedFiles cleanedState <- cleanWatchedInfo dir currentState
+  let newState = Map.delete (filename file) cleanedState
   writeWatchedInfo dir $ WatchedFiles newState
 
 cleanWatchedInfo ::

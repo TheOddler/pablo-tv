@@ -2,7 +2,7 @@
 
 module Actions where
 
-import Autodocodec (Autodocodec (..), Discriminator, HasCodec (..), HasObjectCodec (..), ObjectCodec, discriminatedUnionCodec, eitherDecodeJSONViaCodec, mapToDecoder, mapToEncoder, object, pureCodec, requiredField', (.=))
+import Autodocodec (Autodocodec (..), Discriminator, HasCodec (..), HasObjectCodec (..), ObjectCodec, bimapCodec, discriminatedUnionCodec, eitherDecodeJSONViaCodec, mapToDecoder, mapToEncoder, object, pureCodec, requiredField', (.=))
 import Control.Monad (forever)
 import Data.HashMap.Strict qualified as HashMap
 import Data.Int (Int32)
@@ -13,13 +13,19 @@ import Data.Void (Void)
 import Evdev.Codes
 import Evdev.Uinput
 import GHC.Conc (TVar, atomically, readTVar, writeTVar)
-import GHC.Generics (Generic)
+import Path (Abs, Dir, File, Path, fromAbsDir, fromAbsFile, parseAbsDir, parseAbsFile)
 import SafeMaths (int32ToInteger)
 import System.Process (callProcess, readProcess)
 import TVState (TVState (..))
 import Util (boundedEnumCodec)
+import Watched (markFileAsWatched)
 import Yesod (FromJSON, MonadHandler, liftIO)
 import Yesod.WebSockets (WebSocketsT, receiveData)
+
+data DirOrFile
+  = Dir (Path Abs Dir)
+  | File (Path Abs File)
+  deriving (Show, Eq)
 
 data Action
   = ActionClickMouse MouseButton
@@ -35,10 +41,10 @@ data Action
     ActionPointMouse Scientific Scientific -- leftRight, upDown
   | ActionMouseScroll Int32
   | ActionWrite String
-  | ActionPlayPath String
+  | ActionPlayPath DirOrFile
   | ActionCloseWindow
   | ActionOpenUrlOnTV Text
-  deriving (Show, Eq, Generic)
+  deriving (Show, Eq)
   deriving (FromJSON) via (Autodocodec Action)
 
 instance HasCodec Action where
@@ -60,6 +66,20 @@ instance HasObjectCodec Action where
       twoFieldDecoder constructor firstName secondName =
         mapToDecoder (uncurry constructor) (twoFieldCodec firstName secondName)
 
+      dirOrFileToStr :: DirOrFile -> String
+      dirOrFileToStr = \case
+        Dir dir -> fromAbsDir dir
+        File file -> fromAbsFile file
+
+      strToDirOrFile :: String -> Either String DirOrFile
+      strToDirOrFile str =
+        let mFile = parseAbsFile str
+            mDir = parseAbsDir str
+         in case (mFile, mDir) of
+              (Nothing, Nothing) -> Left $ "Failed parsing abs file path: " ++ show str
+              (Just file, _) -> Right $ File file
+              (_, Just dir) -> Right $ Dir dir
+
       enc :: Action -> (Discriminator, ObjectCodec a ())
       enc = \case
         ActionClickMouse btn -> ("ClickMouse", oneFieldEncoder "button" btn)
@@ -68,7 +88,7 @@ instance HasObjectCodec Action where
         ActionPointMouse lr ud -> ("PointMouse", twoFieldEncoder "leftRight" lr "upDown" ud)
         ActionMouseScroll amount -> ("MouseScroll", oneFieldEncoder "amount" amount)
         ActionWrite t -> ("Write", oneFieldEncoder "text" t)
-        ActionPlayPath path -> ("PlayPath", oneFieldEncoder "path" path)
+        ActionPlayPath path -> ("PlayPath", oneFieldEncoder "path" $ dirOrFileToStr path)
         ActionCloseWindow -> ("CloseWindow", noFieldEncoder)
         ActionOpenUrlOnTV url -> ("OpenUrlOnTV", oneFieldEncoder "url" url)
       dec :: HashMap.HashMap Discriminator (Text, ObjectCodec Void Action)
@@ -80,13 +100,19 @@ instance HasObjectCodec Action where
             ("PointMouse", ("ActionPointMouse", twoFieldDecoder ActionPointMouse "leftRight" "upDown")),
             ("MouseScroll", ("ActionMouseScroll", oneFieldDecoder ActionMouseScroll "amount")),
             ("Write", ("ActionWrite", oneFieldDecoder ActionWrite "text")),
-            ("PlayPath", ("ActionPlayPath", oneFieldDecoder ActionPlayPath "path")),
+            ( "PlayPath",
+              ( "ActionPlayPath",
+                mapToDecoder ActionPlayPath $
+                  bimapCodec strToDirOrFile id $
+                    requiredField' "path"
+              )
+            ),
             ("CloseWindow", ("ActionCloseWindow", noFieldDecoder ActionCloseWindow)),
             ("OpenUrlOnTV", ("ActionOpenUrlOnTV", oneFieldDecoder ActionOpenUrlOnTV "url"))
           ]
 
 data MouseButton = MouseButtonLeft | MouseButtonRight
-  deriving (Show, Eq, Bounded, Enum, Generic)
+  deriving (Show, Eq, Bounded, Enum)
   deriving (FromJSON) via (Autodocodec MouseButton)
 
 instance HasCodec MouseButton where
@@ -116,7 +142,7 @@ data KeyboardButton
   | KeyboardMediaForward
   | KeyboardMediaBackward
   | KeyboardMediaStop
-  deriving (Show, Eq, Bounded, Enum, Generic)
+  deriving (Show, Eq, Bounded, Enum)
 
 instance HasCodec KeyboardButton where
   codec =
@@ -211,9 +237,19 @@ performAction inputDevice tvStateTVar action = do
     ActionWrite text -> do
       let events = concatMap (clickKeyCombo . charToKey) text
       writeBatch inputDevice events
-    ActionPlayPath path -> do
-      defaultVideoPlayer <- readProcess "xdg-mime" ["query", "default", "video/x-msvideo"] ""
-      callProcess "gtk-launch" [dropWhileEnd (== '\n') defaultVideoPlayer, path]
+    ActionPlayPath dirOrFile -> do
+      defaultVideoPlayer' <- readProcess "xdg-mime" ["query", "default", "video/x-msvideo"] ""
+      let defaultVideoPlayer = dropWhileEnd (== '\n') defaultVideoPlayer'
+      case dirOrFile of
+        Dir _ -> pure ()
+        File path -> markFileAsWatched path
+      callProcess
+        "gtk-launch"
+        [ defaultVideoPlayer,
+          case dirOrFile of
+            File path -> fromAbsFile path
+            Dir path -> fromAbsDir path
+        ]
     ActionCloseWindow ->
       writeBatch inputDevice $ clickKeyCombo [KeyLeftctrl, KeyQ]
     ActionOpenUrlOnTV url ->
