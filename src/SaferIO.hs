@@ -6,6 +6,7 @@ module SaferIO where
 
 import Control.Exception (SomeException, try)
 import Data.ByteString qualified as BS8
+import Data.Time qualified as Time
 import GHC.Data.Maybe (rightToMaybe)
 import Network.HTTP.Req qualified as HTTP
 import Path (Abs, Dir, File, Path, Rel)
@@ -49,6 +50,12 @@ class (Monad m) => NetworkRead m where
 
 instance NetworkRead IO where
   runReqSafe c = try . HTTP.runReq c
+
+class (Monad m) => TimeRead m where
+  getCurrentTime :: m Time.UTCTime
+
+instance TimeRead IO where
+  getCurrentTime = Time.getCurrentTime
 
 class (Monad m) => Logger m where
   logStr :: String -> m ()
