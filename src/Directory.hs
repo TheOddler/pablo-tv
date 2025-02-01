@@ -142,15 +142,13 @@ readDirectoryRaw dir = do
 -- also return `Nothing` and print an error in the console.
 readDirectoryInfo :: (FSRead m, Logger m) => Path Abs Dir -> m (Maybe DirectoryInfo)
 readDirectoryInfo dir = do
-  mInfoFile <- readFileBSSafe $ dir </> $(mkRelFile "info.yaml")
+  mInfoFile <- readFileBSSafe $ mkDirInfoFilePath dir
   case mInfoFile of
     Nothing -> pure Nothing
     Just infoFile ->
       case eitherDecodeYamlViaCodec infoFile of
         Right info -> pure $ Just info
         Left err -> do
-          -- If there's an error, move it to a backup file
-          -- We'll need to make a new guess and download info again later
           logStr $ "Failed to decode info file: " ++ show err
           pure Nothing
 
@@ -302,8 +300,11 @@ updateAllDirectoryInfos tvdbToken = do
     info <- updateDirectoryInfo tvdbToken absPath
     pure (absPath, info)
 
+dirInfoFileName :: Path Rel File
+dirInfoFileName = $(mkRelFile "info.yaml")
+
 mkDirInfoFilePath :: Path Abs Dir -> Path Abs File
-mkDirInfoFilePath root = root </> $(mkRelFile "info.yaml")
+mkDirInfoFilePath root = root </> dirInfoFileName
 
 writeImage :: (FSWrite m) => Path Abs Dir -> ContentType -> BS.ByteString -> m ()
 writeImage rootDir contentType imgBytes =
