@@ -113,6 +113,9 @@ function sendAction(action) {
         distance: 0,
         areAligned: true,
         angle,
+        // Not sure what the minAngle should be here, but for the rest of the
+        // code just using angle here is OK.
+        minAngle: angle,
       };
     }
 
@@ -124,7 +127,8 @@ function sendAction(action) {
           Math.abs(rectA.bottom - rectB.top)
         ),
         areAligned: true,
-        angle: rectA.top < rectB.bottom ? Math.PI / 2 : Math.PI * 3 / 2,
+        angle,
+        minAngle: rectA.top < rectB.bottom ? Math.PI / 2 : Math.PI * 3 / 2,
       };
     }
 
@@ -135,7 +139,8 @@ function sendAction(action) {
           Math.abs(rectA.right - rectB.left)
         ),
         areAligned: true,
-        angle: rectA.left < rectB.right ? 0 : Math.PI,
+        angle,
+        minAngle: rectA.left < rectB.right ? 0 : Math.PI,
       };
     }
 
@@ -143,9 +148,16 @@ function sendAction(action) {
     // Might be good to use the shortest distance, rather than the middle
     // but this is probably fine.
     return {
+      // This isn't the real distance, there is a shorter distance between the
+      // two rects. But for now this is fine and works well enough.
       distance: Math.hypot(middleA.x - middleB.x, middleA.y - middleB.y),
       areAligned: false,
       angle,
+      // Like above, not sure what the minAngle should be here, but angle works
+      // with the rest of the code just fine, but we might want to consider
+      // actually calculating the angle of the shortest line between the two
+      // rects.
+      minAngle: angle,
     };
   };
 
@@ -222,9 +234,9 @@ function sendAction(action) {
       const diff = getRectDiff(curRect, rect);
 
       // Only consider elements that are in the direction of the arrow key
-      const angle = getAngleDiff(diff.angle, wantedAngle);
+      // Use the min-angle so we don't overly-eagerly ignore elements
       const maxAngle = Math.PI / 4;
-      if (angle > maxAngle) return;
+      if (getAngleDiff(diff.minAngle, wantedAngle) > maxAngle) return;
 
       // Some more values we'll need
       const allowedOffScreen = 0.2;
@@ -238,6 +250,7 @@ function sendAction(action) {
       if (!diff.areAligned && isOffScreen) return;
 
       // Remember closest element
+      const angle = getAngleDiff(diff.angle, wantedAngle);
       // First prefer aligned elements, regardless of distance
       if (!minIsAligned && diff.isAligned) {
         targetElement = element;
