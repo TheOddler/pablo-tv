@@ -1,7 +1,7 @@
-function playPath(path) {
-  // Remove the link from the local history so that the back button works as expected
-  window.location.replace(window.location.href);
-  sendAction({ tag: "PlayPath", path });
+async function playPath(path) {
+  await sendAction({ tag: "PlayPath", path });
+  // Refresh the page to get the now watched info
+  location.reload();
 }
 
 function playAll() {

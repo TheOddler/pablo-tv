@@ -77,6 +77,10 @@ readWatchedInfo dir = do
           logStr $ "Failed to decode watched file: " ++ show err
           pure $ WatchedFiles mempty
 
+hasBeenWatched :: WatchedFiles -> Path a File -> Bool
+hasBeenWatched (WatchedFiles watchedFiles) file =
+  filename file `Map.member` watchedFiles
+
 writeWatchedInfo :: (FSWrite m) => Path Abs Dir -> WatchedFiles -> m ()
 writeWatchedInfo dir info = do
   writeFileBS (mkWatchedInfoPath dir) (encodeYamlViaCodec info)

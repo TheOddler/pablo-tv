@@ -51,6 +51,22 @@ ul {
         flex-grow: 1;
       }
     }
+
+    &:not(.watched) {
+      color: lightblue;
+
+      a {
+        color: inherit;
+      }
+    }
+
+    &.watched {
+      color: pink;
+
+      a {
+        color: inherit;
+      }
+    }
   }
 }
 

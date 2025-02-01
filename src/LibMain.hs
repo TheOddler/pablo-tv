@@ -76,7 +76,7 @@ import Util
     unsnoc,
     widgetFile,
   )
-import Watched (WatchedInfoAgg (..), readWatchedInfoAgg)
+import Watched (WatchedInfoAgg (..), hasBeenWatched, readWatchedInfo, readWatchedInfoAgg)
 import Yesod hiding (defaultLayout, replace)
 import Yesod qualified
 import Yesod.EmbeddedStatic
@@ -305,7 +305,8 @@ getDirectoryR segments = do
   mPathAndInfo <- liftIO $ readDirectoryInfoRec absPath
   let mInfo = snd <$> mPathAndInfo
   dirRaw <- liftIO $ readDirectoryRaw absPath
-  let filesWithNames = map (\f -> (niceFileNameT f, f)) dirRaw.directoryVideoFiles
+  let filesWithNames :: [(Text, Path Abs File)]
+      filesWithNames = map (\f -> (niceFileNameT f, absPath </> f)) dirRaw.directoryVideoFiles
       dirsWithNames = map (\d -> (niceDirNameT d, d)) dirRaw.directoryDirectories
 
   let mkSegments :: Path Rel x -> [Text]
@@ -314,8 +315,19 @@ getDirectoryR segments = do
       absPathJS :: RawJavascript
       absPathJS = RawJavascript . fromText . T.pack $ toFilePath absPath
 
-      mkAbsFilePath :: Path Rel File -> String
-      mkAbsFilePath filename = replace "'" "\\'" $ fromAbsFile $ absPath </> filename
+      mkAbsFilePath :: Path Abs File -> String
+      mkAbsFilePath filePath = replace "'" "\\'" $ fromAbsFile filePath
+
+  watchedFiles <- liftIO $ readWatchedInfo absPath
+  let watchedClass :: Path Abs File -> String
+      watchedClass filePath =
+        if hasBeenWatched watchedFiles filePath
+          then "watched"
+          else ""
+
+      -- For now we just never have a class here
+      allWatchedClass :: String
+      allWatchedClass = ""
 
   let title = toHtml $ (directoryInfoTitle <$> mInfo) `orElse` "Videos"
   defaultLayout title $(widgetFile "directory")

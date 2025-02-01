@@ -14,13 +14,13 @@ $if (not $ null filesWithNames)
   
   <ul>
     $if (length filesWithNames > 1)
-      <li>
-        <a href="#play-all" class="large" onclick="playAll()">
+      <li class="#{allWatchedClass}">
+        <a href="#" class="large" onclick="playAll()">
           <i class="fa-solid fa-play">
           <span>Play All
     $forall (name, path) <- filesWithNames
-      <li>
-        <a href="##{mkAbsFilePath path}" onclick="playPath('#{mkAbsFilePath path}')">
+      <li class="#{watchedClass path}">
+        <a href="#" onclick="playPath('#{mkAbsFilePath path}')">
           <i class="fa-solid fa-play">
           <span>#{name}
 
