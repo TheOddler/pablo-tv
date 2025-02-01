@@ -32,7 +32,6 @@ import Control.Monad (forM)
 import Control.Monad.Extra (whenJust)
 import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BS8
-import Data.Char (toLower)
 import Data.List (sortBy)
 import Data.List.NonEmpty (group)
 import Data.List.NonEmpty qualified as NE
@@ -116,8 +115,8 @@ getVideoDirPath = do
 readDirectoryRaw :: (FSRead m) => Path Abs Dir -> m DirectoryRaw
 readDirectoryRaw dir = do
   (dirNames, fileNames) <- listDirRel dir
-  let files = smartPathSort $ filter isVideoFile fileNames
-  let directories = smartPathSort dirNames
+  let files = smartFileSort $ filter isVideoFile fileNames
+  let directories = smartDirSort dirNames
   pure $ DirectoryRaw dir files directories
 
 -- | This reads the info file from a directory and returns it if it exists.
@@ -413,11 +412,20 @@ isVideoFile file =
     Just ext -> ext `elem` [".mp4", ".mkv", ".avi", ".webm"]
     Nothing -> False
 
--- | Sorts the paths, taking into account numbers properly
-smartPathSort :: [Path Rel a] -> [Path Rel a]
-smartPathSort = sortBy sorting
+-- | Sorts the dirs, taking into account numbers properly
+smartDirSort :: [Path Rel Dir] -> [Path Rel Dir]
+smartDirSort = sortBy sorting
   where
     sorting a b =
       Natural.compare
-        (toLower <$> toFilePath a)
-        (toLower <$> toFilePath b)
+        (T.toLower $ niceDirNameT a)
+        (T.toLower $ niceDirNameT b)
+
+-- | Sorts the dirs, taking into account numbers properly
+smartFileSort :: [Path Rel File] -> [Path Rel File]
+smartFileSort = sortBy sorting
+  where
+    sorting a b =
+      Natural.compare
+        (T.toLower $ niceFileNameT a)
+        (T.toLower $ niceFileNameT b)
