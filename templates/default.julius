@@ -391,19 +391,52 @@ async function sendAction(action) {
   }
 
   /**
+   * @param {number} pt
+  */
+  function ptToPx(pt) {
+    return pt * (96 / 72);
+  }
+
+  /**
    * This function gives us the rect of the element where the highlighting
    * should move to. If no element is selected we'll want to animate to outside
    * the screen, so return a rect outside the screen.
    * @param {HTMLElement | null} element
+   * @returns {{x: number, y: number, width: number, height: number}}
   */
   const getRect = (element) => {
     if (element !== null) {
-      return element.getBoundingClientRect();
+      const rect = element.getBoundingClientRect();
+      const styles = window.getComputedStyle(element);
+
+      // Get the padding
+      const paddingTop = parseFloat(styles.paddingTop);
+      const paddingLeft = parseFloat(styles.paddingLeft);
+      const paddingRight = parseFloat(styles.paddingRight);
+      const paddingBottom = parseFloat(styles.paddingBottom);
+
+      // We want at least 8px around each side, but if there's padding already
+      // that's fine. If we want the border to still touch the element, this 
+      // should be kept in sync with the css.
+      const wanted = ptToPx(2); // 2pt, like in the css
+      const top = Math.max(0, wanted - paddingTop);
+      const left = Math.max(0, wanted - paddingLeft);
+      const right = Math.max(0, wanted - paddingRight);
+      const bottom = Math.max(0, wanted - paddingBottom);
+
+      // Update the sizes
+      // Not that rec.top and rect.left are read-only, so use x and y instead
+      rect.x -= left;
+      rect.y -= top;
+      rect.width += left + right;
+      rect.height += top + bottom;
+
+      return rect;
     } else {
       const offset = 100;
       return {
-        top: -offset,
-        left: -offset,
+        x: -offset,
+        y: -offset,
         width: window.screen.width + offset * 2,
         height: window.screen.height + offset * 2,
       }
@@ -426,8 +459,8 @@ async function sendAction(action) {
     const prevRect = getRect(prevTargetElement);
     const animationTime = 300;
     const lerpPos = easeOut(Math.min(1, (Date.now() - targetChangeTime) / animationTime));
-    highlightingElement.style.top = lerp(prevRect.top, targetRect.top, lerpPos) + 'px';
-    highlightingElement.style.left = lerp(prevRect.left, targetRect.left, lerpPos) + 'px';
+    highlightingElement.style.top = lerp(prevRect.y, targetRect.y, lerpPos) + 'px';
+    highlightingElement.style.left = lerp(prevRect.x, targetRect.x, lerpPos) + 'px';
     highlightingElement.style.width = lerp(prevRect.width, targetRect.width, lerpPos) + 'px';
     highlightingElement.style.height = lerp(prevRect.height, targetRect.height, lerpPos) + 'px';
 
