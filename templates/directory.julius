@@ -1,18 +1,21 @@
-function playPath(self) {
-  mkWatchedChangingFunction("PlayPath", true)(self);
+function playPath(event) {
+  mkWatchedChangingFunction("PlayPath", true)(event);
 }
 
-function markAsWatched(self) {
-  mkWatchedChangingFunction("MarkAsWatched", true)(self);
+function markAsWatched(event) {
+  mkWatchedChangingFunction("MarkAsWatched", true)(event);
 }
 
-function markAsUnwatched(self) {
-  mkWatchedChangingFunction("MarkAsUnwatched", false)(self);
+function markAsUnwatched(event) {
+  mkWatchedChangingFunction("MarkAsUnwatched", false)(event);
 }
 
 function mkWatchedChangingFunction(actionTag, watchedStatus) {
-  return async function (self) {
-    const pathElement = findElementWithPath(self);
+  return async function (event) {
+    // This prevents scrolling to the top of the page when pressing the link
+    event.preventDefault();
+
+    const pathElement = findElementWithPath(event.target);
     if (!pathElement) {
       return;
     }
@@ -37,6 +40,16 @@ function findElementWithPath(element) {
   return element;
 }
 
-function playAll() {
-  playPath("#{absPathJS}");
+async function playAll(event) {
+  // This prevents scrolling to the top of the page when pressing the link
+  event.preventDefault();
+
+  const response = await sendAction({ tag: "PlayPath", path: "#{absPathJS}" });
+
+  if (response.ok) {
+    const elements = document.querySelectorAll('[data-path]');
+    elements.forEach((element) => {
+      element.classList.toggle("watched", true);
+    });
+  }
 }

@@ -18,7 +18,7 @@ import SafeMaths (int32ToInteger)
 import System.Process (callProcess, readProcess)
 import TVState (TVState (..))
 import Util (boundedEnumCodec)
-import Watched (markFileAsUnwatched, markFileAsWatched)
+import Watched (markAllAsWatched, markFileAsUnwatched, markFileAsWatched)
 import Yesod (FromJSON, MonadHandler, liftIO)
 import Yesod.WebSockets (WebSocketsT, receiveData)
 
@@ -265,7 +265,7 @@ performAction inputDevice tvStateTVar action = do
       defaultVideoPlayer' <- readProcess "xdg-mime" ["query", "default", "video/x-msvideo"] ""
       let defaultVideoPlayer = dropWhileEnd (== '\n') defaultVideoPlayer'
       case dirOrFile of
-        Dir _ -> pure ()
+        Dir path -> markAllAsWatched path
         File path -> markFileAsWatched path
       callProcess
         "gtk-launch"

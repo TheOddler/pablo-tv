@@ -6,6 +6,7 @@ module Watched where
 import Autodocodec (HasCodec (..), bimapCodec, dimapCodec)
 import Autodocodec.Yaml (eitherDecodeYamlViaCodec, encodeYamlViaCodec)
 import Control.Exception (SomeException)
+import Control.Monad (foldM)
 import Control.Monad.Catch (MonadCatch (..))
 import Data.List.Extra (trimStart)
 import Data.List.NonEmpty.Extra qualified as NE
@@ -90,13 +91,37 @@ markFileAsWatched ::
   Path Abs File ->
   m ()
 markFileAsWatched file = do
+  let dir = parent file
+  currentState <- readWatchedInfo dir
+  updatedSate <- markFileAsWatched' currentState file
+  writeWatchedInfo dir updatedSate
+
+-- | This is a version of markFileAsWatched that doesn't read nor write the
+-- file to disk.
+markFileAsWatched' ::
+  (FSRead m, TimeRead m, MonadCatch m) =>
+  WatchedFiles ->
+  Path Abs File ->
+  m WatchedFiles
+markFileAsWatched' startState file = do
   stats <- getFileStatus file
   time <- getCurrentTime
   let dir = parent file
-  currentState <- readWatchedInfo dir
-  WatchedFiles cleanedState <- cleanWatchedInfo dir currentState
+  WatchedFiles cleanedState <- cleanWatchedInfo dir startState
   let newState = Map.insert (filename file) (time, Posix.fileID stats) cleanedState
-  writeWatchedInfo dir $ WatchedFiles newState
+  pure $ WatchedFiles newState
+
+markAllAsWatched ::
+  (FSWrite m, FSRead m, TimeRead m, Logger m, MonadCatch m) =>
+  Path Abs Dir ->
+  m ()
+markAllAsWatched dir = do
+  currentState <- readWatchedInfo dir
+  dirRaw <- readDirectoryRaw dir
+  let files = dirRaw.directoryVideoFiles
+      filesAbs = (dir </>) <$> files
+  updatedSate <- foldM markFileAsWatched' currentState filesAbs
+  writeWatchedInfo dir updatedSate
 
 markFileAsUnwatched ::
   (FSWrite m, FSRead m, Logger m, MonadCatch m) =>

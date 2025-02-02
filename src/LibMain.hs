@@ -325,10 +325,6 @@ getDirectoryR segments = do
           then "watched"
           else ""
 
-      -- For now we just never have a class here
-      allWatchedClass :: String
-      allWatchedClass = ""
-
   let title = toHtml $ (directoryInfoTitle <$> mInfo) `orElse` "Videos"
   defaultLayout title $(widgetFile "directory")
 
