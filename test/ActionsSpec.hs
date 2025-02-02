@@ -5,10 +5,30 @@ module ActionsSpec where
 import Actions
 import Autodocodec (eitherDecodeJSONViaCodec, encodeJSONViaCodec)
 import Data.ByteString.Lazy.Char8 qualified as BS
+import GHC.Generics (Generic)
 import Generic.Random (genericArbitrary, uniform)
+import Path (Abs, Dir, File, Path)
 import Test.QuickCheck (Arbitrary (..), property)
 import Test.QuickCheck.Instances ()
 import Test.Syd
+import TestUtils (forceAbsDir)
+
+deriving instance Generic Action
+
+deriving instance Generic DirOrFile
+
+deriving instance Generic MouseButton
+
+deriving instance Generic KeyboardButton
+
+instance Arbitrary (Path Abs File) where
+  arbitrary = genericArbitrary uniform
+
+instance Arbitrary (Path Abs Dir) where
+  arbitrary = genericArbitrary uniform
+
+instance Arbitrary DirOrFile where
+  arbitrary = genericArbitrary uniform
 
 instance Arbitrary Action where
   arbitrary = genericArbitrary uniform
@@ -56,7 +76,7 @@ decodeExamples =
     ( "{\"tag\":\"Write\",\"text\":\"w () r |_ |}\"}",
       ActionWrite "w () r |_ |}"
     ),
-    ( "{\"tag\":\"PlayPath\",\"path\":\"/path/to/file/or/folder\"}",
-      ActionPlayPath "/path/to/file/or/folder"
+    ( "{\"tag\":\"PlayPath\",\"path\":\"/path/to/file/or/folder/\"}",
+      ActionPlayPath $ Dir $ forceAbsDir "/path/to/file/or/folder/"
     )
   ]
