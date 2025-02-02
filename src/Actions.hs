@@ -13,12 +13,12 @@ import Data.Void (Void)
 import Evdev.Codes
 import Evdev.Uinput
 import GHC.Conc (TVar, atomically, readTVar, writeTVar)
-import Path (Abs, Dir, File, Path, fromAbsDir, fromAbsFile, parseAbsDir, parseAbsFile)
+import Path (Abs, Dir, File, Path, fromAbsDir, fromAbsFile, isProperPrefixOf, parseAbsDir, parseAbsFile)
 import SafeMaths (int32ToInteger)
 import System.Process (callProcess, readProcess)
 import TVState (TVState (..))
 import Util (boundedEnumCodec)
-import Watched (markAllAsWatched, markFileAsUnwatched, markFileAsWatched)
+import Watched (MarkAsUnwatchedResult (..), MarkAsWatchedResult (..), WatchedInfoAgg (..), markAllAsWatched, markFileAsUnwatched, markFileAsWatched)
 import Yesod (FromJSON, MonadHandler, liftIO)
 import Yesod.WebSockets (WebSocketsT, receiveData)
 
@@ -265,8 +265,11 @@ performAction inputDevice tvStateTVar action = do
       defaultVideoPlayer' <- readProcess "xdg-mime" ["query", "default", "video/x-msvideo"] ""
       let defaultVideoPlayer = dropWhileEnd (== '\n') defaultVideoPlayer'
       case dirOrFile of
-        Dir path -> markAllAsWatched path
-        File path -> markFileAsWatched path
+        Dir path -> markAllAsWatched path >>= addToAggWatched path
+        File path ->
+          markFileAsWatched path >>= \case
+            AlreadyWatched -> pure ()
+            MarkedAsWatched -> addToAggWatched path 1
       callProcess
         "gtk-launch"
         [ defaultVideoPlayer,
@@ -275,9 +278,13 @@ performAction inputDevice tvStateTVar action = do
             Dir path -> fromAbsDir path
         ]
     ActionMarkAsWatched file ->
-      markFileAsWatched file
+      markFileAsWatched file >>= \case
+        AlreadyWatched -> pure ()
+        MarkedAsWatched -> addToAggWatched file 1
     ActionMarkAsUnwatched file ->
-      markFileAsUnwatched file
+      markFileAsUnwatched file >>= \case
+        AlreadyUnwatched -> pure ()
+        MarkedAsUnwatched -> addToAggWatched file (-1)
     ActionCloseWindow ->
       writeBatch inputDevice $ clickKeyCombo [KeyLeftctrl, KeyQ]
     ActionOpenUrlOnTV url ->
@@ -290,6 +297,24 @@ performAction inputDevice tvStateTVar action = do
         ++ [SyncEvent SynReport]
         ++ map (`KeyEvent` Released) (reverse keys)
         ++ [SyncEvent SynReport]
+
+    addToAggWatched :: Path Abs a -> Int -> IO ()
+    addToAggWatched _ 0 = pure ()
+    addToAggWatched path amount = atomically $ do
+      tvState <- readTVar tvStateTVar
+      let updatedState = tvState {tvVideoData = doUpdate <$> tvState.tvVideoData}
+      writeTVar tvStateTVar updatedState
+      where
+        doUpdate (p, dirIfo, watchedInfo)
+          | p `isProperPrefixOf` path =
+              ( p,
+                dirIfo,
+                watchedInfo
+                  { watchedInfoPlayedVideoFileCount =
+                      watchedInfo.watchedInfoPlayedVideoFileCount + amount
+                  }
+              )
+        doUpdate x = x
 
 charToKey :: Char -> [Key]
 charToKey = \case

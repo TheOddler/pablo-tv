@@ -86,53 +86,72 @@ writeWatchedInfo :: (FSWrite m) => Path Abs Dir -> WatchedFiles -> m ()
 writeWatchedInfo dir info = do
   writeFileBS (mkWatchedInfoPath dir) (encodeYamlViaCodec info)
 
+data MarkAsWatchedResult = AlreadyWatched | MarkedAsWatched
+
 markFileAsWatched ::
   (FSWrite m, FSRead m, TimeRead m, Logger m, MonadCatch m) =>
   Path Abs File ->
-  m ()
+  m MarkAsWatchedResult
 markFileAsWatched file = do
   let dir = parent file
   currentState <- readWatchedInfo dir
   updatedSate <- markFileAsWatched' currentState file
-  writeWatchedInfo dir updatedSate
+  cleanedState <- cleanWatchedInfo dir updatedSate
+  writeWatchedInfo dir cleanedState
+  pure $
+    if hasBeenWatched currentState file
+      then AlreadyWatched
+      else MarkedAsWatched
 
 -- | This is a version of markFileAsWatched that doesn't read nor write the
 -- file to disk.
 markFileAsWatched' ::
-  (FSRead m, TimeRead m, MonadCatch m) =>
+  (FSRead m, TimeRead m) =>
   WatchedFiles ->
   Path Abs File ->
   m WatchedFiles
-markFileAsWatched' startState file = do
+markFileAsWatched' (WatchedFiles startState) file = do
   stats <- getFileStatus file
   time <- getCurrentTime
-  let dir = parent file
-  WatchedFiles cleanedState <- cleanWatchedInfo dir startState
-  let newState = Map.insert (filename file) (time, Posix.fileID stats) cleanedState
+  let newState = Map.insert (filename file) (time, Posix.fileID stats) startState
   pure $ WatchedFiles newState
 
+-- | Returns how many files were marked as watched. This could be lower than
+-- the number of files in the directory if some files were already marked as
+-- watched.
 markAllAsWatched ::
   (FSWrite m, FSRead m, TimeRead m, Logger m, MonadCatch m) =>
   Path Abs Dir ->
-  m ()
+  m Int
 markAllAsWatched dir = do
   currentState <- readWatchedInfo dir
   dirRaw <- readDirectoryRaw dir
   let files = dirRaw.directoryVideoFiles
       filesAbs = (dir </>) <$> files
   updatedSate <- foldM markFileAsWatched' currentState filesAbs
-  writeWatchedInfo dir updatedSate
+  cleanedState <- cleanWatchedInfo dir updatedSate
+  writeWatchedInfo dir cleanedState
+
+  let watchedOld = Map.size $ unWatchedFiles currentState
+      watchedNew = Map.size $ unWatchedFiles cleanedState
+  pure $ watchedOld - watchedNew
+
+data MarkAsUnwatchedResult = AlreadyUnwatched | MarkedAsUnwatched
 
 markFileAsUnwatched ::
   (FSWrite m, FSRead m, Logger m, MonadCatch m) =>
   Path Abs File ->
-  m ()
+  m MarkAsUnwatchedResult
 markFileAsUnwatched file = do
   let dir = parent file
   currentState <- readWatchedInfo dir
   WatchedFiles cleanedState <- cleanWatchedInfo dir currentState
   let newState = Map.delete (filename file) cleanedState
   writeWatchedInfo dir $ WatchedFiles newState
+  pure $
+    if hasBeenWatched currentState file
+      then MarkedAsUnwatched
+      else AlreadyUnwatched
 
 cleanWatchedInfo ::
   (MonadCatch m, FSRead m) =>
