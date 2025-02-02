@@ -15,7 +15,7 @@ $if (not $ null filesWithNames)
   <ul>
     $if (length filesWithNames > 1)
       <li>
-        <a href="#" class="name large" onclick="playAll(event)">
+        <a href="#" class="large" onclick="playAll(event)">
           <i class="fa-solid fa-play">
           <span>Play All
     $forall (name, path) <- filesWithNames
