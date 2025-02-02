@@ -267,10 +267,11 @@ async function sendAction(action) {
         minIsAligned = diff.areAligned;
         return;
       }
-      // Then prefer smaller angles, and consider distance with 10% tolerance
-      if (diff.distance < minDistance * 1.1 && angle < minAngle) {
+      // Prefer smaller angles, allow a few pixels of tolerance
+      const tolerance = 5;
+      if (diff.distance <= minDistance + tolerance && angle < minAngle) {
         targetElement = element;
-        minDistance = diff.distance;
+        minDistance = Math.min(minDistance, diff.distance);
         minAngle = angle;
         minIsAligned = diff.areAligned;
         return;
