@@ -39,6 +39,13 @@ $if (not $ null dirsWithNames)
   <ul>
     $forall (name, path) <- dirsWithNames
       <li>
-        <a href=@{DirectoryR $ mkSegments path}>
+        <a href=@{DirectoryR $ mkSegments path} class="name">
           <i class="fa-regular fa-folder-open">
           <span>#{name}
+
+
+$if showRefreshButton
+  <h2 class="refresh">
+    <a href="#" onclick="refreshLibrary(event)">
+      <i class="fa-solid fa-arrows-rotate">
+      Refresh library

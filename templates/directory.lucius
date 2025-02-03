@@ -82,3 +82,17 @@ h2 {
   margin: 0;
   text-align: center;
 }
+
+.refresh {
+  text-decoration: none;
+  padding-bottom: 1em;
+
+  a {
+    padding: 0.5em;
+  }
+
+  a.disabled {
+    pointer-events: none;
+    color: grey;
+  }
+}

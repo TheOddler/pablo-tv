@@ -49,7 +49,16 @@ async function playAll(event) {
   if (response.ok) {
     const elements = document.querySelectorAll('[data-path]');
     elements.forEach((element) => {
-      element.classList.toggle("watched", true);
+      element.classList.add("watched");
     });
   }
+}
+
+function refreshLibrary(event) {
+  // This prevents scrolling to the top of the page when pressing the link
+  event.preventDefault();
+  // Do the actual action
+  sendAction({ tag: "RefreshTVState" });
+  // Disable the button to prevent multiple clicks
+  event.target.classList.add("disabled");
 }

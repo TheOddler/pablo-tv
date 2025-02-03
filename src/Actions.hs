@@ -3,7 +3,8 @@
 module Actions where
 
 import Autodocodec (Autodocodec (..), Discriminator, HasCodec (..), HasObjectCodec (..), ObjectCodec, bimapCodec, discriminatedUnionCodec, eitherDecodeJSONViaCodec, mapToDecoder, mapToEncoder, object, pureCodec, requiredField', (.=))
-import Control.Monad (forever)
+import Control.Concurrent (MVar, tryPutMVar)
+import Control.Monad (forever, when)
 import Data.HashMap.Strict qualified as HashMap
 import Data.Int (Int32)
 import Data.List (dropWhileEnd, nub)
@@ -46,6 +47,7 @@ data Action
   | ActionMarkAsUnwatched (Path Abs File)
   | ActionCloseWindow
   | ActionOpenUrlOnTV Text
+  | ActionRefreshTVState
   deriving (Show, Eq)
   deriving (FromJSON) via (Autodocodec Action)
 
@@ -101,6 +103,7 @@ instance HasObjectCodec Action where
         ActionMarkAsUnwatched path -> ("MarkAsUnwatched", oneFieldEncoder "path" $ fromAbsFile path)
         ActionCloseWindow -> ("CloseWindow", noFieldEncoder)
         ActionOpenUrlOnTV url -> ("OpenUrlOnTV", oneFieldEncoder "url" url)
+        ActionRefreshTVState -> ("RefreshTVState", noFieldEncoder)
       dec :: HashMap.HashMap Discriminator (Text, ObjectCodec Void Action)
       dec =
         HashMap.fromList
@@ -132,7 +135,8 @@ instance HasObjectCodec Action where
               )
             ),
             ("CloseWindow", ("ActionCloseWindow", noFieldDecoder ActionCloseWindow)),
-            ("OpenUrlOnTV", ("ActionOpenUrlOnTV", oneFieldDecoder ActionOpenUrlOnTV "url"))
+            ("OpenUrlOnTV", ("ActionOpenUrlOnTV", oneFieldDecoder ActionOpenUrlOnTV "url")),
+            ("RefreshTVState", ("ActionRefreshTVState", noFieldDecoder ActionRefreshTVState))
           ]
 
 data MouseButton = MouseButtonLeft | MouseButtonRight
@@ -205,15 +209,15 @@ keyboardButtonToEvdevKey = \case
   KeyboardMediaBackward -> KeyRewind
   KeyboardMediaStop -> KeyStopcd
 
-actionsWebSocket :: (MonadHandler m) => Device -> TVar TVState -> WebSocketsT m ()
-actionsWebSocket inputDevice tvStateTVar = forever $ do
+actionsWebSocket :: (MonadHandler m) => Device -> TVar TVState -> MVar () -> WebSocketsT m ()
+actionsWebSocket inputDevice tvStateTVar videoDataRefreshTrigger = forever $ do
   d <- receiveData
   liftIO $ case eitherDecodeJSONViaCodec d of
     Left err -> putStrLn $ "Error decoding action: " <> err
-    Right action -> performAction inputDevice tvStateTVar action
+    Right action -> performAction inputDevice tvStateTVar videoDataRefreshTrigger action
 
-performAction :: Device -> TVar TVState -> Action -> IO ()
-performAction inputDevice tvStateTVar action = do
+performAction :: Device -> TVar TVState -> MVar () -> Action -> IO ()
+performAction inputDevice tvStateTVar videoDataRefreshTrigger action = do
   putStrLn $ "Performing action: " <> show action
   case action of
     ActionClickMouse btn' ->
@@ -291,6 +295,10 @@ performAction inputDevice tvStateTVar action = do
       liftIO $ atomically $ do
         tvState <- readTVar tvStateTVar
         writeTVar tvStateTVar $ tvState {tvPage = url}
+    ActionRefreshTVState -> do
+      success <- tryPutMVar videoDataRefreshTrigger ()
+      when (not success) $
+        putStrLn "Already refreshing"
   where
     clickKeyCombo keys =
       map (`KeyEvent` Pressed) keys

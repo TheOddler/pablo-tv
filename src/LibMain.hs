@@ -195,9 +195,10 @@ getHomeR = do
   -- This can be a websocket request, so do that
   tvStateTVar <- getsYesod appTVState
   inputDevice <- getsYesod appInputDevice
+  videoDataRefreshTrigger <- getsYesod appVideoDataRefreshTrigger
   webSockets $
     race_
-      (actionsWebSocket inputDevice tvStateTVar)
+      (actionsWebSocket inputDevice tvStateTVar videoDataRefreshTrigger)
       (tvStateWebSocket tvStateTVar)
 
   -- Get proper data (we got this async from the state)
@@ -259,7 +260,8 @@ postHomeR =
     Success action -> do
       inputDevice <- getsYesod appInputDevice
       tvStateTVar <- getsYesod appTVState
-      liftIO $ performAction inputDevice tvStateTVar action
+      videoDataRefreshTrigger <- getsYesod appVideoDataRefreshTrigger
+      liftIO $ performAction inputDevice tvStateTVar videoDataRefreshTrigger action
 
 -- | Turn the segments into a directory path and optionally a filename
 -- Also checks if the file/directory actually exists, if not, return Nothing
@@ -326,6 +328,7 @@ getDirectoryR segments = do
           else ""
 
   let title = toHtml $ (directoryInfoTitle <$> mInfo) `orElse` "Videos"
+  let showRefreshButton = null segments
   defaultLayout title $(widgetFile "directory")
 
 getRemoteR :: Handler Html
