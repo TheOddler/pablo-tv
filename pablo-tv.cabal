@@ -57,6 +57,7 @@ library
       , autodocodec
       , autodocodec-yaml
       , binary
+      , blaze-markup
       , bytestring
       , containers
       , data-default

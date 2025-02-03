@@ -5,16 +5,16 @@
     <a class="button" href=@{DirectoryR []}>
       <i class="fa-solid fa-file-video">
     <div>
-    <button class="red" onclick="sendAction({ tag: 'CloseWindow' })">
+    <button class="red" onclick="sendAction('#{ActionCloseWindow}')">
       <i class="fa-solid fa-power-off">
 
   <div class="row">
     <div>
-    <button onclick="sendAction({ tag: 'PressKeyboard', key: 'mediaPrevious' })">
+    <button onclick="sendAction('#{ActionPressKeyboard KeyboardMediaPrevious}')">
       <i class="fa-solid fa-angles-left">
     <div class="large">
       Play<wbr>list
-    <button onclick="sendAction({ tag: 'PressKeyboard', key: 'mediaNext' })">
+    <button onclick="sendAction('#{ActionPressKeyboard KeyboardMediaNext}')">
       <i class="fa-solid fa-angles-right">
     <div>
 
@@ -22,22 +22,22 @@
 
   <div class="row">
     <div>
-    <button class="large" onclick="sendAction({ tag: 'PressKeyboard', key: 'playPause' })">
+    <button class="large" onclick="sendAction('#{ActionPressKeyboard KeyboardPlayPause}')">
       $# The extra div makes the scaling look better when button is pressed
       <div>
         <i class="fa-solid fa-play">
         <i class="fa-solid fa-pause">
     <div class="double-button">
-      <button onclick="sendAction({ tag: 'PressKeyboard', key: 'volumeUp' })">
+      <button onclick="sendAction('#{ActionPressKeyboard KeyboardVolumeUp}')">
         <i class="fa-solid fa-plus">
       <i class="fa-solid fa-volume-high">
-      <button onclick="sendAction({ tag: 'PressKeyboard', key: 'volumeDown' })">
+      <button onclick="sendAction('#{ActionPressKeyboard KeyboardVolumeDown}')">
         <i class="fa-solid fa-minus">
 
   <div class="row">
     <div>
-    <button onclick="sendAction({ tag: 'PressKeyboard', key: 'mediaBackward' })">
+    <button onclick="sendAction('#{ActionPressKeyboard KeyboardMediaBackward}')">
       <i class="fa-solid fa-backward-step">
-    <button onclick="sendAction({ tag: 'PressKeyboard', key: 'mediaForward' })">
+    <button onclick="sendAction('#{ActionPressKeyboard KeyboardMediaForward}')">
       <i class="fa-solid fa-forward-step">
     <div>

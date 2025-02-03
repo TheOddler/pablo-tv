@@ -1,10 +1,4 @@
 // Helper
-function clickMouse(button) {
-  sendAction({ tag: "ClickMouse", button });
-}
-function pressKey(key) {
-  sendAction({ tag: "PressKeyboard", key });
-}
 function isTouchDevice() {
   return (('ontouchstart' in window) ||
     (navigator.maxTouchPoints > 0) ||
@@ -37,11 +31,11 @@ const handleTouchMove = throttle((event) => {
 });
 trackpad.addEventListener("touchstart", e => previousTouches = e.touches);
 trackpad.addEventListener("touchmove", handleTouchMove);
-trackpad.addEventListener("click", () => clickMouse("left")); // Don't use clickEvent as that would make the touchpad click way too much
+trackpad.addEventListener("click", () => sendAction('#{ActionClickMouse MouseButtonLeft}')); // Don't use clickEvent as that would make the touchpad click way too much
 
 // Click buttons
-document.getElementById("left").addEventListener(clickEvent, () => clickMouse("left"));
-document.getElementById("right").addEventListener(clickEvent, () => clickMouse("right"));
+document.getElementById("left").addEventListener(clickEvent, () => sendAction('#{ActionClickMouse MouseButtonLeft}'));
+document.getElementById("right").addEventListener(clickEvent, () => sendAction('#{ActionClickMouse MouseButtonRight}'));
 
 // Pointer
 (() => {
@@ -128,6 +122,6 @@ document.getElementById("keyboard").addEventListener(clickEvent, () => {
   if (text !== null) sendAction({ tag: "Write", text });
 });
 
-document.getElementById("move-cursor-left").addEventListener(clickEvent, () => pressKey("left"));
-document.getElementById("move-cursor-right").addEventListener(clickEvent, () => pressKey("right"));
-document.getElementById("backspace").addEventListener(clickEvent, () => pressKey("backspace"));
+document.getElementById("move-cursor-left").addEventListener(clickEvent, () => sendAction('#{ActionPressKeyboard KeyboardLeftArrow}'));
+document.getElementById("move-cursor-right").addEventListener(clickEvent, () => sendAction('#{ActionPressKeyboard KeyboardRightArrow}'));
+document.getElementById("backspace").addEventListener(clickEvent, () => sendAction('#{ActionPressKeyboard KeyboardBackspace}'));

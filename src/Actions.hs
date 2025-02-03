@@ -2,7 +2,8 @@
 
 module Actions where
 
-import Autodocodec (Autodocodec (..), Discriminator, HasCodec (..), HasObjectCodec (..), ObjectCodec, bimapCodec, discriminatedUnionCodec, eitherDecodeJSONViaCodec, mapToDecoder, mapToEncoder, object, pureCodec, requiredField', (.=))
+import Autodocodec (Autodocodec (..), Discriminator, HasCodec (..), HasObjectCodec (..), ObjectCodec, bimapCodec, discriminatedUnionCodec, eitherDecodeJSONViaCodec, encodeJSONViaCodec, mapToDecoder, mapToEncoder, object, pureCodec, requiredField', (.=))
+import Autodocodec.Aeson (toJSONViaCodec)
 import Control.Concurrent (MVar, tryPutMVar)
 import Control.Monad (forever, when)
 import Data.HashMap.Strict qualified as HashMap
@@ -10,6 +11,7 @@ import Data.Int (Int32)
 import Data.List (dropWhileEnd, nub)
 import Data.Scientific (Scientific, scientific)
 import Data.Text (Text)
+import Data.Text.Lazy.Encoding qualified as T
 import Data.Void (Void)
 import Evdev.Codes
 import Evdev.Uinput
@@ -18,6 +20,8 @@ import Path (Abs, Dir, File, Path, fromAbsDir, fromAbsFile, isProperPrefixOf, pa
 import SafeMaths (int32ToInteger)
 import System.Process (callProcess, readProcess)
 import TVState (TVState (..))
+import Text.Blaze qualified as Blaze
+import Text.Julius (ToJavascript (..))
 import Util (boundedEnumCodec)
 import Watched (MarkAsUnwatchedResult (..), MarkAsWatchedResult (..), WatchedInfoAgg (..), markAllAsWatched, markFileAsUnwatched, markFileAsWatched)
 import Yesod (FromJSON, MonadHandler, liftIO)
@@ -138,6 +142,12 @@ instance HasObjectCodec Action where
             ("OpenUrlOnTV", ("ActionOpenUrlOnTV", oneFieldDecoder ActionOpenUrlOnTV "url")),
             ("RefreshTVState", ("ActionRefreshTVState", noFieldDecoder ActionRefreshTVState))
           ]
+
+instance ToJavascript Action where
+  toJavascript = toJavascript . toJSONViaCodec
+
+instance Blaze.ToMarkup Action where
+  toMarkup = Blaze.lazyText . T.decodeUtf8 . encodeJSONViaCodec
 
 data MouseButton = MouseButtonLeft | MouseButtonRight
   deriving (Show, Eq, Bounded, Enum)

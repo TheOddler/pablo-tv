@@ -44,7 +44,7 @@ async function playAll(event) {
   // This prevents scrolling to the top of the page when pressing the link
   event.preventDefault();
 
-  const response = await sendAction({ tag: "PlayPath", path: "#{absPathJS}" });
+  const response = await sendAction('#{ActionPlayPath $ Dir absPath}');
 
   if (response.ok) {
     const elements = document.querySelectorAll('[data-path]');
@@ -58,7 +58,7 @@ function refreshLibrary(event) {
   // This prevents scrolling to the top of the page when pressing the link
   event.preventDefault();
   // Do the actual action
-  sendAction({ tag: "RefreshTVState" });
+  sendAction('#{ActionRefreshTVState}');
   // Disable the button to prevent multiple clicks
   event.target.classList.add("disabled");
 }

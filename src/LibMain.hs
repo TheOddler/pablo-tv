@@ -8,7 +8,15 @@
 
 module LibMain where
 
-import Actions (actionsWebSocket, mkInputDevice, performAction)
+import Actions
+  ( Action (..),
+    DirOrFile (..),
+    KeyboardButton (..),
+    MouseButton (..),
+    actionsWebSocket,
+    mkInputDevice,
+    performAction,
+  )
 import Control.Monad (filterM, when)
 import Data.Aeson (Result (..))
 import Data.ByteString.Char8 qualified as BS
@@ -21,7 +29,6 @@ import Data.Text (Text, intercalate, unpack)
 import Data.Text qualified as T
 import Data.Text qualified as Text
 import Data.Text.Encoding (decodeUtf8Lenient)
-import Data.Text.Lazy.Builder (fromText)
 import Data.Time (diffUTCTime, getCurrentTime)
 import Directory
   ( DirectoryInfo (..),
@@ -65,7 +72,6 @@ import System.Random (initStdGen, mkStdGen)
 import TVDB (TVDBToken (..))
 import TVState (TVState (..), startingTVState, tvStateWebSocket)
 import Text.Hamlet (hamletFile)
-import Text.Julius (RawJavascript (..))
 import Util
   ( asyncOnTrigger,
     networkInterfaceWorthiness,
@@ -313,9 +319,6 @@ getDirectoryR segments = do
 
   let mkSegments :: Path Rel x -> [Text]
       mkSegments d = segments ++ [T.pack $ dropTrailingPathSeparator $ toFilePath d]
-
-      absPathJS :: RawJavascript
-      absPathJS = RawJavascript . fromText . T.pack $ toFilePath absPath
 
       mkAbsFilePath :: Path Abs File -> String
       mkAbsFilePath filePath = replace "'" "\\'" $ fromAbsFile filePath
