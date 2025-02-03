@@ -12,6 +12,7 @@ import Data.List.Extra (trimStart)
 import Data.List.NonEmpty.Extra qualified as NE
 import Data.Map qualified as Map
 import Data.Time (UTCTime (..))
+import Data.Time.Clock.POSIX (posixSecondsToUTCTime)
 import Directory (DirectoryRaw (..), isVideoFile, readDirectoryRaw)
 import Foreign.C (CTime (..))
 import GHC.Data.Maybe (catMaybes, firstJusts, fromMaybe)
@@ -207,6 +208,7 @@ data WatchedInfoAgg = WatchedInfoAgg
   { -- | The last time this directory, or any of it's files/subdir (recursively) was modified.
     watchedInfoLastModified :: Posix.EpochTime,
     watchedInfoLastAccessed :: Posix.EpochTime,
+    watchedInfoLastWatched :: UTCTime,
     -- | Total number of video files in this directory or any subdirs (recursively)
     watchedInfoVideoFileCount :: Int,
     -- | Count of files that were watched.
@@ -227,16 +229,23 @@ readWatchedInfoAgg dir = do
   let accessTimes = fmap Posix.accessTime <$> fileStatusesNE
   let modificationTimes = fmap Posix.modificationTime <$> fileStatusesNE
 
-  watchedCounts <- traverse readWatchedFileCount dirs
+  watchedInfos <- traverse readWatchedInfo dirs
+  let watchedInfosNE = NE.nonEmpty watchedInfos
+  let watchedCount = sum $ Map.size . unWatchedFiles <$> watchedInfos
+  let epoch = posixSecondsToUTCTime 0
+      lastWatchedFrom :: WatchedFiles -> UTCTime
+      lastWatchedFrom (WatchedFiles wfs) =
+        maybe epoch NE.maximum1
+          . NE.nonEmpty
+          $ fst <$> Map.elems wfs
+      lastWatched =
+        maybe epoch (NE.maximum1 . fmap lastWatchedFrom) watchedInfosNE
 
   pure
     WatchedInfoAgg
       { watchedInfoLastModified = maybe (CTime minBound) NE.maximum1 modificationTimes,
         watchedInfoLastAccessed = maybe (CTime minBound) NE.maximum1 accessTimes,
+        watchedInfoLastWatched = lastWatched,
         watchedInfoVideoFileCount = length files,
-        watchedInfoPlayedVideoFileCount = sum watchedCounts
+        watchedInfoPlayedVideoFileCount = watchedCount
       }
-  where
-    readWatchedFileCount d = do
-      WatchedFiles watchedFiles <- readWatchedInfo d
-      pure $ Map.size watchedFiles

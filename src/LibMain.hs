@@ -239,7 +239,9 @@ getHomeR = do
             ],
           LocalVideos "Random" $
             mkDirData
-              <$> shuffle videoData randomGenerator
+              <$> shuffle videoData randomGenerator,
+          LocalVideos "Recently Watched" . reverse $
+            videosSortedWith (\(_, _, i) -> (i.watchedInfoLastWatched, i.watchedInfoLastAccessed))
         ]
 
   defaultLayout "Home" $(widgetFile "home")
