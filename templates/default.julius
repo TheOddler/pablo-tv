@@ -32,7 +32,10 @@ async function sendAction(action) {
     tvWebSocket.onmessage = function (message) {
       console.log('Received message:', message);
       const url = message.data;
-      if (url.startsWith('/')) {
+      if (url === "refresh") {
+        window.location.reload();
+      }
+      else if (url.startsWith('/')) {
         window.location.replace(url);
       }
       else {

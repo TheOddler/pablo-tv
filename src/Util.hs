@@ -40,7 +40,6 @@ juliusFile =
 onChanges :: (Eq a, MonadIO m) => TVar a -> (a -> a -> m ()) -> m b
 onChanges tVar f = do
   a <- liftIO $ readTVarIO tVar
-  f a a
   loop a
   where
     loop prevVal = do

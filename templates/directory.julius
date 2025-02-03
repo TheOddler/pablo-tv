@@ -60,5 +60,10 @@ function refreshLibrary(event) {
   // Do the actual action
   sendAction('#{ActionRefreshTVState}');
   // Disable the button to prevent multiple clicks
-  event.target.classList.add("disabled");
+  const target = event.target;
+  target.classList.add("disabled");
+  // Re-enable the button after 5 seconds
+  setTimeout(() => {
+    target.classList.remove("disabled");
+  }, 5000);
 }
