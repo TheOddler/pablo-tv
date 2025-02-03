@@ -440,7 +440,6 @@ async function sendAction(action) {
     const max = Math.max(rect.height, rect.width);
     // We currently only support uniform scaling
     const scale = rect.width / element.offsetWidth;
-    console.log(scale);
     return {
       topLeft: Math.min(max, scale * parseFloat(styles.borderTopLeftRadius)),
       topRight: Math.min(max, scale * parseFloat(styles.borderTopRightRadius)),
