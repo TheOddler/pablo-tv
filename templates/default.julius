@@ -417,32 +417,7 @@ async function sendAction(action) {
       }
     }
 
-    const rect = element.getBoundingClientRect();
-    const styles = window.getComputedStyle(element);
-
-    // Get the padding
-    const paddingTop = parseFloat(styles.paddingTop);
-    const paddingLeft = parseFloat(styles.paddingLeft);
-    const paddingRight = parseFloat(styles.paddingRight);
-    const paddingBottom = parseFloat(styles.paddingBottom);
-
-    // We want at least 8px around each side, but if there's padding already
-    // that's fine. If we want the border to still touch the element, this 
-    // should be kept in sync with the css.
-    const wanted = ptToPx(2); // 2pt, like in the css
-    const top = Math.max(0, wanted - paddingTop);
-    const left = Math.max(0, wanted - paddingLeft);
-    const right = Math.max(0, wanted - paddingRight);
-    const bottom = Math.max(0, wanted - paddingBottom);
-
-    // Update the sizes
-    // Not that rec.top and rect.left are read-only, so use x and y instead
-    rect.x -= left;
-    rect.y -= top;
-    rect.width += left + right;
-    rect.height += top + bottom;
-
-    return rect;
+    return element.getBoundingClientRect();
   };
 
   /**
@@ -463,11 +438,14 @@ async function sendAction(action) {
     const styles = window.getComputedStyle(element);
     const rect = element.getBoundingClientRect();
     const max = Math.max(rect.height, rect.width);
+    // We currently only support uniform scaling
+    const scale = rect.width / element.offsetWidth;
+    console.log(scale);
     return {
-      topLeft: Math.min(max, parseFloat(styles.borderTopLeftRadius)),
-      topRight: Math.min(max, parseFloat(styles.borderTopRightRadius)),
-      bottomLeft: Math.min(max, parseFloat(styles.borderBottomLeftRadius)),
-      bottomRight: Math.min(max, parseFloat(styles.borderBottomRightRadius)),
+      topLeft: Math.min(max, scale * parseFloat(styles.borderTopLeftRadius)),
+      topRight: Math.min(max, scale * parseFloat(styles.borderTopRightRadius)),
+      bottomLeft: Math.min(max, scale * parseFloat(styles.borderBottomLeftRadius)),
+      bottomRight: Math.min(max, scale * parseFloat(styles.borderBottomRightRadius)),
     };
   };
 
