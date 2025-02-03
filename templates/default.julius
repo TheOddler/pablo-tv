@@ -407,34 +407,7 @@ async function sendAction(action) {
    * @returns {{x: number, y: number, width: number, height: number}}
   */
   const getRect = (element) => {
-    if (element !== null) {
-      const rect = element.getBoundingClientRect();
-      const styles = window.getComputedStyle(element);
-
-      // Get the padding
-      const paddingTop = parseFloat(styles.paddingTop);
-      const paddingLeft = parseFloat(styles.paddingLeft);
-      const paddingRight = parseFloat(styles.paddingRight);
-      const paddingBottom = parseFloat(styles.paddingBottom);
-
-      // We want at least 8px around each side, but if there's padding already
-      // that's fine. If we want the border to still touch the element, this 
-      // should be kept in sync with the css.
-      const wanted = ptToPx(2); // 2pt, like in the css
-      const top = Math.max(0, wanted - paddingTop);
-      const left = Math.max(0, wanted - paddingLeft);
-      const right = Math.max(0, wanted - paddingRight);
-      const bottom = Math.max(0, wanted - paddingBottom);
-
-      // Update the sizes
-      // Not that rec.top and rect.left are read-only, so use x and y instead
-      rect.x -= left;
-      rect.y -= top;
-      rect.width += left + right;
-      rect.height += top + bottom;
-
-      return rect;
-    } else {
+    if (element === null) {
       const offset = 100;
       return {
         x: -offset,
@@ -443,6 +416,59 @@ async function sendAction(action) {
         height: window.screen.height + offset * 2,
       }
     }
+
+    const rect = element.getBoundingClientRect();
+    const styles = window.getComputedStyle(element);
+
+    // Get the padding
+    const paddingTop = parseFloat(styles.paddingTop);
+    const paddingLeft = parseFloat(styles.paddingLeft);
+    const paddingRight = parseFloat(styles.paddingRight);
+    const paddingBottom = parseFloat(styles.paddingBottom);
+
+    // We want at least 8px around each side, but if there's padding already
+    // that's fine. If we want the border to still touch the element, this 
+    // should be kept in sync with the css.
+    const wanted = ptToPx(2); // 2pt, like in the css
+    const top = Math.max(0, wanted - paddingTop);
+    const left = Math.max(0, wanted - paddingLeft);
+    const right = Math.max(0, wanted - paddingRight);
+    const bottom = Math.max(0, wanted - paddingBottom);
+
+    // Update the sizes
+    // Not that rec.top and rect.left are read-only, so use x and y instead
+    rect.x -= left;
+    rect.y -= top;
+    rect.width += left + right;
+    rect.height += top + bottom;
+
+    return rect;
+  };
+
+  /**
+   * This function gives us the border radius of the element.
+   * It corrects for when the radius is set super big to create nice circles
+   * @param {HTMLElement | null} element
+  */
+  const getBorderRadius = (element) => {
+    if (element === null) {
+      return {
+        topLeft: 0,
+        topRight: 0,
+        bottomLeft: 0,
+        bottomRight: 0,
+      };
+    }
+
+    const styles = window.getComputedStyle(element);
+    const rect = element.getBoundingClientRect();
+    const max = Math.max(rect.height, rect.width);
+    return {
+      topLeft: Math.min(max, parseFloat(styles.borderTopLeftRadius)),
+      topRight: Math.min(max, parseFloat(styles.borderTopRightRadius)),
+      bottomLeft: Math.min(max, parseFloat(styles.borderBottomLeftRadius)),
+      bottomRight: Math.min(max, parseFloat(styles.borderBottomRightRadius)),
+    };
   };
 
   // Create our highlighting element
@@ -457,14 +483,24 @@ async function sendAction(action) {
 
   // The loop that animates our highlighting element to the target element
   const loop = () => {
-    const targetRect = getRect(targetElement);
-    const prevRect = getRect(prevTargetElement);
     const animationTime = 300;
     const lerpPos = easeOut(Math.min(1, (Date.now() - targetChangeTime) / animationTime));
+
+    //  Positioning
+    const targetRect = getRect(targetElement);
+    const prevRect = getRect(prevTargetElement);
     highlightingElement.style.top = lerp(prevRect.y, targetRect.y, lerpPos) + 'px';
     highlightingElement.style.left = lerp(prevRect.x, targetRect.x, lerpPos) + 'px';
     highlightingElement.style.width = lerp(prevRect.width, targetRect.width, lerpPos) + 'px';
     highlightingElement.style.height = lerp(prevRect.height, targetRect.height, lerpPos) + 'px';
+
+    // Border radius
+    const prevRadius = getBorderRadius(prevTargetElement);
+    const targetRadius = getBorderRadius(targetElement);
+    highlightingElement.style.borderTopLeftRadius = lerp(prevRadius.topLeft, targetRadius.topLeft, lerpPos) + 'px';
+    highlightingElement.style.borderTopRightRadius = lerp(prevRadius.topRight, targetRadius.topRight, lerpPos) + 'px';
+    highlightingElement.style.borderBottomLeftRadius = lerp(prevRadius.bottomLeft, targetRadius.bottomLeft, lerpPos) + 'px';
+    highlightingElement.style.borderBottomRightRadius = lerp(prevRadius.bottomRight, targetRadius.bottomRight, lerpPos) + 'px';
 
     requestAnimationFrame(loop);
   };
