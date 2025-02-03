@@ -30,23 +30,29 @@
 
 .el {
   flex-shrink: 0;
-  background-color: midnightblue;
   position: relative;
+  background-color: midnightblue;
+  width: #{elWidth};
+  height: #{elHeight};
+
+  &.logo {
+    height: #{elWidth};
+    background-color: white;
+    border-radius: calc(#{elWidth} * 0.2);
+
+    img {
+      object-fit: contain;
+      padding: calc(#{elWidth} * 0.05);
+    }
+  }
 
   /* This removed the line under the alt-text. The rest of the styling is later */
   text-decoration: none;
 
   img {
-    width: #{elWidth};
-    height: #{elHeight};
+    width: 100%;
+    height: 100%;
     object-fit: cover;
-
-    &.logo {
-      height: #{elWidth};
-      object-fit: contain;
-      background-color: white;
-      padding:calc(#{elWidth} * 0.05);
-    }
 
     /* Styles for the alt text */
     display: flex;

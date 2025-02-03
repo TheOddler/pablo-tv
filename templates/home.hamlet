@@ -18,8 +18,8 @@
         <h1>#{name}
         <div class="row">
           $forall (name, img, link) <- links
-            <a class="el" href="#" onclick="sendAction('#{ActionOpenUrlOnTV link}')">
-              <img src="@{img}" alt="#{name}" class="logo" loading="lazy">
+            <a class="el logo" href="#" onclick="sendAction('#{ActionOpenUrlOnTV link}')">
+              <img src="@{img}" alt="#{name}" loading="lazy">
   
   <h1 class="center">
     <a href=@{DirectoryR []}>View all
