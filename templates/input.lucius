@@ -16,14 +16,3 @@ body {
     -0.5pt 1pt 1pt 1.5pt rgba(255, 255, 255, 0.3),
     0 0 50pt 5pt rgba(255, 255, 255, 0.2);
 }
-
-.row {
-  i {
-    font-size: 5svw;
-  }
-
-  svg {
-    height: 7svw;
-    width: 7svw;
-  }
-}

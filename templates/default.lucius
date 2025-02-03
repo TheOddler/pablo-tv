@@ -126,6 +126,9 @@ pre {
   justify-content: space-between;
   height: 100%;
 
+  .spacer {
+    flex: 1;
+  }
 
   .row {
     display: flex;
@@ -134,6 +137,7 @@ pre {
     align-items: center;
     gap: 10pt;
     width: 100%;
+    max-width: 70vh;
     padding: 15pt;
 
     >* {
@@ -143,6 +147,16 @@ pre {
       &.large {
         flex: 1.5;
       }
+    }
+
+
+    i {
+      font-size: 5svh;
+    }
+
+    svg {
+      height: 7svh;
+      width: 7svh;
     }
 
     >button,
