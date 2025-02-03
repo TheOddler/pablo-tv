@@ -1,43 +1,13 @@
-{-# OPTIONS_GHC -Wno-orphans #-}
-
 module ActionsSpec where
 
 import Actions
 import Autodocodec (eitherDecodeJSONViaCodec, encodeJSONViaCodec)
 import Data.ByteString.Lazy.Char8 qualified as BS
-import GHC.Generics (Generic)
-import Generic.Random (genericArbitrary, uniform)
-import Path (Abs, Dir, File, Path)
-import Test.QuickCheck (Arbitrary (..), property)
+import Orphanage ()
+import Test.QuickCheck (property)
 import Test.QuickCheck.Instances ()
 import Test.Syd
 import TestUtils (forceAbsDir)
-
-deriving instance Generic Action
-
-deriving instance Generic DirOrFile
-
-deriving instance Generic MouseButton
-
-deriving instance Generic KeyboardButton
-
-instance Arbitrary (Path Abs File) where
-  arbitrary = genericArbitrary uniform
-
-instance Arbitrary (Path Abs Dir) where
-  arbitrary = genericArbitrary uniform
-
-instance Arbitrary DirOrFile where
-  arbitrary = genericArbitrary uniform
-
-instance Arbitrary Action where
-  arbitrary = genericArbitrary uniform
-
-instance Arbitrary MouseButton where
-  arbitrary = genericArbitrary uniform
-
-instance Arbitrary KeyboardButton where
-  arbitrary = genericArbitrary uniform
 
 spec :: Spec
 spec = do
