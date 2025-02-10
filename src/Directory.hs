@@ -266,10 +266,11 @@ mkDirInfoFilePath root = root </> dirInfoFileName
 
 writeImage :: (FSWrite m) => Path Abs Dir -> ContentType -> BS.ByteString -> m ()
 writeImage rootDir contentType imgBytes =
-  let extension =
+  let extension' =
         if BS.isPrefixOf "image/" contentType
           then Just $ BS.drop 6 contentType
           else Nothing
+      extension = if extension' == Just "jpeg" then Just "jpg" else extension'
       fallbackName = $(mkRelFile "poster.jpg")
       name = fromMaybe fallbackName $ do
         ext <- extension
