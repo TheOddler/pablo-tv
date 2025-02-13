@@ -9,11 +9,11 @@
               <a class="el" href=@{DirectoryR segments}>
                 <img src=@{ImageR segments} alt="#{name}" loading="lazy">
                 <div class="watched">
-                  <i class="fa-regular fa-eye">
-                  $if watchedCount >= totalCount
+                  $if watchedCount < totalCount
+                    <i class="fa-regular fa-eye">
+                  $else
                     <i class="fa-solid fa-check">
-                  $if (&&) (watchedCount >= 0) (watchedCount < totalCount)
-                    #{watchedCount}/#{totalCount} 
+                  #{watchedCount}/#{totalCount} 
       $of ExternalLinks name links
         <h1>#{name}
         <div class="row">
