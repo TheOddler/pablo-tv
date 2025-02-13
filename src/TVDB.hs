@@ -88,8 +88,8 @@ instance HasCodec RawResponseRemoteId where
 
 newtype TVDBToken = TVDBToken BS.ByteString
 
-getInfoFromTVDB :: (NetworkRead m, Logger m) => TVDBToken -> Text -> TVDBType -> Maybe Int -> m (Maybe TVDBData)
-getInfoFromTVDB (TVDBToken tvdbToken) title type' mYear = do
+getInfoFromTVDB :: (NetworkRead m, Logger m) => TVDBToken -> Text -> TVDBType -> Maybe Text -> Maybe Int -> m (Maybe TVDBData)
+getInfoFromTVDB (TVDBToken tvdbToken) title type' mRemoteId mYear = do
   response <- runReqSafe defaultHttpConfig $ do
     response <-
       req GET (https "api4.thetvdb.com" /: "v4" /: "search") NoReqBody jsonResponse $
@@ -101,12 +101,15 @@ getInfoFromTVDB (TVDBToken tvdbToken) title type' mYear = do
             case mYear of
               Just year -> "year" =: year
               Nothing -> mempty,
+            case mRemoteId of
+              Just remoteId -> "remote_id" =: remoteId
+              Nothing -> mempty,
             "limit" =: (1 :: Int),
             oAuth2Bearer tvdbToken
           ]
     pure $ listToMaybe $ rawResponseData $ responseBody response
 
-  let debugInfo = (title, type', mYear)
+  let debugInfo = (title, type', mRemoteId, mYear)
 
   case response of
     Left err -> do

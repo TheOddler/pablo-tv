@@ -41,6 +41,7 @@ import Data.Text qualified as T
 import GHC.Data.Maybe
   ( catMaybes,
     firstJusts,
+    firstJustsM,
     fromMaybe,
     isJust,
     isNothing,
@@ -157,22 +158,45 @@ type Image = (ContentType, BS.ByteString)
 -- | This downloads more information about a directory from TVDB and returns it.
 -- This will always try and download info, even if it's already available, to
 -- see if there's any update to the values.
-downloadDirectoryInfo :: (NetworkRead m, Logger m) => TVDBToken -> DirectoryInfo -> m (DirectoryInfo, Maybe Image)
+downloadDirectoryInfo :: forall m. (NetworkRead m, Logger m) => TVDBToken -> DirectoryInfo -> m (DirectoryInfo, Maybe Image)
 downloadDirectoryInfo tvdbToken startingInfo = do
   let tvdbType = case directoryInfoKind startingInfo of
         DirectoryKindMovie -> TVDBTypeMovie
         DirectoryKindSeries -> TVDBTypeSeries
   (usedInfo, mTVDBData) <- do
-    let getInfoForYear = getInfoFromTVDB tvdbToken (directoryInfoTitle startingInfo) tvdbType
-    attemptWithYear <- getInfoForYear startingInfo.directoryInfoYear
-    case attemptWithYear of
-      Just d -> pure (startingInfo, Just d)
-      -- Fallback to not using the year in case we guessed it wrong.
-      -- I had this happen when a series had a special episode that had a year in the name, but that was the year
-      -- the special was made, not the series.
-      Nothing | isJust startingInfo.directoryInfoYear -> do
-        attemptWithoutYear <- getInfoForYear Nothing
-        pure (startingInfo {directoryInfoYear = Nothing}, attemptWithoutYear)
+    -- This
+    let getInfo :: DirectoryInfo -> m (Maybe TVDBData)
+        getInfo info =
+          getInfoFromTVDB
+            tvdbToken
+            startingInfo.directoryInfoTitle
+            tvdbType
+            info.directoryInfoImdb
+            info.directoryInfoYear
+    -- A list of infos to try, starting with just what we got, and then removing
+    -- year or imdb id, or both.
+    let infos =
+          catMaybes
+            [ Just startingInfo,
+              if isJust startingInfo.directoryInfoYear
+                then Just startingInfo {directoryInfoYear = Nothing}
+                else Nothing,
+              if isJust startingInfo.directoryInfoImdb
+                then Just startingInfo {directoryInfoImdb = Nothing}
+                else Nothing,
+              if isJust startingInfo.directoryInfoYear && isJust startingInfo.directoryInfoImdb
+                then Just startingInfo {directoryInfoYear = Nothing, directoryInfoImdb = Nothing}
+                else Nothing
+            ]
+        attempt :: DirectoryInfo -> m (Maybe (DirectoryInfo, TVDBData))
+        attempt info = do
+          tvdbInfo <- getInfo info
+          pure $ (info,) <$> tvdbInfo
+        attempts :: [m (Maybe (DirectoryInfo, TVDBData))]
+        attempts = attempt <$> infos
+    result <- firstJustsM attempts
+    case result of
+      Just (usedInfo, tvdbData) -> pure (usedInfo, Just tvdbData)
       Nothing -> pure (startingInfo, Nothing)
 
   -- If we're doing a force update, that means someone corrected it manually, so we do not want to overwrite
