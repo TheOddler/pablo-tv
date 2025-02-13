@@ -6,6 +6,7 @@ module Directory
     DirectoryInfo (..),
     DirectoryKind (..),
     readDirectoryInfoRec,
+    readAllDirectoryInfos,
     updateAllDirectoryInfos,
     getVideoDirPath,
     niceFileNameT,
@@ -38,7 +39,8 @@ import Data.List.NonEmpty qualified as NE
 import Data.Text (Text, breakOn, replace, strip)
 import Data.Text qualified as T
 import GHC.Data.Maybe
-  ( firstJusts,
+  ( catMaybes,
+    firstJusts,
     fromMaybe,
     isJust,
     isNothing,
@@ -236,9 +238,22 @@ updateDirectoryInfo tvdbToken dir = do
       writeDirectoryInfo dir extendedInfo mImage
       pure extendedInfo
 
+-- | This reads all the directory infos in the video directory.
+-- This will not update anything. For that use `updateAllDirectoryInfos`
+readAllDirectoryInfos :: (FSRead m, Logger m) => m [(Path Abs Dir, DirectoryInfo)]
+readAllDirectoryInfos = do
+  videoDirPath <- getVideoDirPath
+  videoDirRaw <- readDirectoryRaw videoDirPath
+
+  infos <- forM videoDirRaw.directoryDirectories $ \dir -> do
+    let absPath = videoDirPath </> dir
+    info <- readDirectoryInfo absPath
+    pure $ (absPath,) <$> info
+
+  pure $ catMaybes infos
+
 -- | This updates all directory infos in the video directory.
--- It will optionally download more information from TVDB, and write the new info to disk.
--- The refresh level can be overwritten by setting `force-update` in the info file.
+-- It will download more information from TVDB, and write the new info to disk.
 updateAllDirectoryInfos :: (FSRead m, NetworkRead m, FSWrite m, Logger m) => TVDBToken -> m [(Path Abs Dir, DirectoryInfo)]
 updateAllDirectoryInfos tvdbToken = do
   videoDirPath <- getVideoDirPath

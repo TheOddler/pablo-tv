@@ -36,6 +36,7 @@ import Directory
     DirectoryRaw (..),
     niceDirNameT,
     niceFileNameT,
+    readAllDirectoryInfos,
     readDirectoryInfoRec,
     readDirectoryRaw,
     updateAllDirectoryInfos,
@@ -409,17 +410,22 @@ main = do
   when (not isDevelopment) $ do
     callProcess "xdg-open" [url]
 
+  let dataUpdate getInfos = do
+        infosWithPath <- getInfos
+        let addFSInfo (path, info) = do
+              infoFS <- readWatchedInfoAgg path
+              pure (path, info, infoFS)
+        infos <- mapM addFSInfo infosWithPath
+        atomically $ do
+          state <- readTVar tvState
+          writeTVar tvState state {tvVideoData = infos}
+
+  dataUpdate readAllDirectoryInfos
+
   let dataThread =
         asyncOnTrigger videoDataRefreshTrigger $ do
           startTime <- getCurrentTime
-          infosWithPath <- updateAllDirectoryInfos tvdbToken
-          let addFSInfo (path, info) = do
-                infoFS <- readWatchedInfoAgg path
-                pure (path, info, infoFS)
-          infos <- mapM addFSInfo infosWithPath
-          atomically $ do
-            state <- readTVar tvState
-            writeTVar tvState state {tvVideoData = infos}
+          dataUpdate $ updateAllDirectoryInfos tvdbToken
           endTime <- getCurrentTime
           putStrLn $ "Refreshed video data in " ++ show (diffUTCTime endTime startTime)
 
