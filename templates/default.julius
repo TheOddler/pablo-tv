@@ -46,7 +46,6 @@ async function sendAction(action) {
 
 })();
 
-
 (() => {
   /**
    * Code to make arrow keys navigate between focusable elements.
@@ -59,39 +58,6 @@ async function sendAction(action) {
    */
 
   /** @typedef {'ArrowUp' | 'ArrowDown' | 'ArrowLeft' | 'ArrowRight'} Direction */
-
-  /**
-   * @param {Element} element
-  */
-  const hasFixedPosition = (element) => {
-    while (element) {
-      if (window.getComputedStyle(element).position === 'fixed') {
-        return true;
-      }
-      element = element.parentElement;
-    }
-    return false;
-  };
-
-  /**
-   * @param {Element} element
-  */
-  const getRect = (element) => {
-    let rect = element.getBoundingClientRect();
-    if (hasFixedPosition(element)) {
-      // Pretend a fixed-position element is not really fixed pos, so we only
-      // really consider it when we haven't scrolled
-      rect = {
-        top: rect.top - window.scrollY,
-        right: rect.right - window.scrollX,
-        bottom: rect.bottom - window.scrollY,
-        left: rect.left - window.scrollX,
-        width: rect.width,
-        height: rect.height,
-      };
-    }
-    return rect;
-  };
 
   /**
    * @param {DOMRect} rectA
@@ -110,17 +76,17 @@ async function sendAction(action) {
     );
     const middleA = getMiddle(rectA);
     const middleB = getMiddle(rectB);
-    const angle = getAngle(middleA, middleB);
+    const midAngle = getAngle(middleA, middleB);
 
     // Check for overlap
     if (areAlignedVertically && areAlignedHorizontally) {
       return {
         distance: 0,
         areAligned: true,
-        angle,
+        midAngle,
         // Not sure what the minAngle should be here, but for the rest of the
         // code just using angle here is OK.
-        minAngle: angle,
+        minAngle: midAngle,
       };
     }
 
@@ -132,7 +98,7 @@ async function sendAction(action) {
           Math.abs(rectA.bottom - rectB.top)
         ),
         areAligned: true,
-        angle,
+        midAngle,
         minAngle: rectA.top < rectB.bottom ? Math.PI / 2 : Math.PI * 3 / 2,
       };
     }
@@ -144,7 +110,7 @@ async function sendAction(action) {
           Math.abs(rectA.right - rectB.left)
         ),
         areAligned: true,
-        angle,
+        midAngle,
         minAngle: rectA.left < rectB.right ? 0 : Math.PI,
       };
     }
@@ -157,12 +123,12 @@ async function sendAction(action) {
       // two rects. But for now this is fine and works well enough.
       distance: Math.hypot(middleA.x - middleB.x, middleA.y - middleB.y),
       areAligned: false,
-      angle,
+      midAngle,
       // Like above, not sure what the minAngle should be here, but angle works
       // with the rest of the code just fine, but we might want to consider
       // actually calculating the angle of the shortest line between the two
       // rects.
-      minAngle: angle,
+      minAngle: midAngle,
     };
   };
 
@@ -190,22 +156,6 @@ async function sendAction(action) {
     return Math.abs(angle);
   };
 
-  /**
-   * @param {Direction} direction
-  */
-  const dirToAngle = (direction) => {
-    switch (direction) {
-      case 'ArrowUp':
-        return Math.PI * 3 / 2;
-      case 'ArrowDown':
-        return Math.PI / 2;
-      case 'ArrowLeft':
-        return Math.PI;
-      case 'ArrowRight':
-        return 0;
-    }
-  };
-
   const getFocusableElements = () => {
     return Array.from(document.querySelectorAll(
       'a[href], area[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled]), iframe, object, embed, [tabindex], [contenteditable], audio[controls], video[controls], summary'
@@ -213,9 +163,9 @@ async function sendAction(action) {
   };
 
   /**
-   * @param {Direction} direction
+   * @param {Number} moveAngle
   */
-  const moveFocus = (direction) => {
+  const moveFocus = (moveAngle) => {
     const currentElement = document.activeElement;
     const focusableElements = getFocusableElements();
     if (focusableElements.length === 0) return;
@@ -224,68 +174,77 @@ async function sendAction(action) {
       return;
     }
 
-    const curRect = getRect(currentElement);
-    const wantedAngle = dirToAngle(direction);
-    let targetElement = null;
-    let minDistance = Infinity;
-    let minAngle = Infinity;
-    let minIsAligned = false;
+    const curRect = currentElement.getBoundingClientRect();
 
-    focusableElements.forEach((element) => {
-      if (element === currentElement) return;
+    const elements = focusableElements
+      // Remove the current element, as we don't want to move to that
+      .filter((element) => element != currentElement)
+      // Remove invisible elements
+      .filter((element) => {
+        return element.checkVisibility({
+          contentVisibilityAuto: true,
+          opacityProperty: true,
+          visibilityProperty: true,
+        })
+      })
+      // Get the distance infos for each element
+      .map((element) => {
+        const rect = element.getBoundingClientRect();
+        return { element, rect, ...getRectDiff(curRect, rect) };
+      })
+      // Remove elements that are outside the direction code
+      .filter((info) => {
+        const maxAngle = Math.PI / 4;
+        // Use minAngle here, as midAngle might give wrong results
+        const angleDiff = getAngleDiff(info.minAngle, moveAngle);
+        return angleDiff <= maxAngle;
+      })
+      // Remove off-screen elements, but allow those that are aligned
+      .filter((info) => {
+        if (info.areAligned) return true;
 
-      // Some values we'll use later
-      const rect = getRect(element);
-      const diff = getRectDiff(curRect, rect);
+        const allowedOffScreen = 0.2;
+        const scrWidth = window.innerWidth;
+        const scrHeight = window.innerHeight;
+        const isOffScreen =
+          info.rect.right < -scrWidth * allowedOffScreen
+          || info.rect.left > scrWidth + scrWidth * allowedOffScreen
+          || info.rect.bottom < -scrHeight * allowedOffScreen
+          || info.rect.top > scrHeight + scrHeight * allowedOffScreen;
+        return !isOffScreen;
+      })
+      // Sort them by preferred order
+      .sort((a, b) => {
+        const aSmallest = -1;
+        const bSmallest = 1;
+        // Prefer aligned elements
+        if (a.areAligned && !b.areAligned) return aSmallest;
+        if (!a.areAligned && b.areAligned) return bSmallest;
+        // Prefer closer elements
+        if (a.distance < b.distance) return aSmallest;
+        if (b.distance < a.distance) return bSmallest;
+        // Prefer elements with smaller angles
+        // Use mid-angle here, as the minAngle for aligned elements are often the same
+        const aAngle = getAngleDiff(a.midAngle, moveAngle);
+        const bAngle = getAngleDiff(a.midAngle, moveAngle);
+        if (aAngle < bAngle) return aSmallest;
+        if (bAngle < aAngle) return bSmallest;
+        // If all is the same, they are the same
+        return 0;
+      });
+    ;
 
-      // Only consider elements that are in the direction of the arrow key
-      // Use the min-angle so we don't overly-eagerly ignore elements
-      const maxAngle = Math.PI / 4;
-      if (getAngleDiff(diff.minAngle, wantedAngle) > maxAngle) return;
-
-      // Some more values we'll need
-      const allowedOffScreen = 0.2;
-      const isOffScreen = (rect.right < -window.innerWidth * allowedOffScreen
-        || rect.left > window.innerWidth * (1 + allowedOffScreen)
-        || rect.bottom < -window.innerHeight * allowedOffScreen
-        || rect.top > window.innerHeight * (1 + allowedOffScreen)
-      );
-
-      // Ignore elements too far off screen and not aligned
-      if (!diff.areAligned && isOffScreen) return;
-
-      // Remember closest element
-      const angle = getAngleDiff(diff.angle, wantedAngle);
-      // First prefer aligned elements, regardless of distance
-      if (!minIsAligned && diff.isAligned) {
-        targetElement = element;
-        minDistance = diff.distance;
-        minAngle = angle;
-        minIsAligned = true;
-        return;
-      }
-      // Then prefer closer elements
-      if (diff.distance < minDistance) {
-        targetElement = element;
-        minDistance = diff.distance;
-        minAngle = angle;
-        minIsAligned = diff.areAligned;
-        return;
-      }
-      // Prefer smaller angles, allow a few pixels of tolerance
-      const tolerance = 5;
-      if (diff.distance <= minDistance + tolerance && angle < minAngle) {
-        targetElement = element;
-        minDistance = Math.min(minDistance, diff.distance);
-        minAngle = angle;
-        minIsAligned = diff.areAligned;
-        return;
-      }
+    // Focus the first element that is willing to be focussed
+    const focussed = elements.find((info) => {
+      info.element.focus({
+        preventScroll: true // We'll do that smoothly next
+      });
+      // Sometimes elements can't be focused for whatever reason, and then `focus()` just silently fails.
+      // To allow this, we return wether the call succeeded, if not it'll try the next element.
+      return info.element === document.activeElement;
     });
-
-    if (targetElement) {
-      targetElement.focus();
-      targetElement.scrollIntoView({
+    if (focussed) {
+      focussed.element.scrollIntoView({
         behavior: "smooth",
         block: "center",
         inline: "center",
@@ -293,39 +252,57 @@ async function sendAction(action) {
     }
   };
 
+  /**
+   * @param {string} key
+  */
+  const keyToAngle = (key) => {
+    switch (key) {
+      case 'ArrowUp':
+        return Math.PI * 3 / 2;
+      case 'ArrowDown':
+        return Math.PI / 2;
+      case 'ArrowLeft':
+        return Math.PI;
+      case 'ArrowRight':
+        return 0;
+      case 'w':
+        return Math.PI * 3 / 2;
+      case 's':
+        return Math.PI / 2;
+      case 'a':
+        return Math.PI;
+      case 'd':
+        return 0;
+      default:
+        null;
+    }
+  };
+
   let lastEventTime = 0; // To slow down repeat rate, but still allow key spamming
   document.addEventListener('keydown', (event) => {
-    switch (event.key) {
-      case 'ArrowUp':
-      case 'ArrowDown':
-      case 'ArrowLeft':
-      case 'ArrowRight':
-        // Limit the repeat rate
-        if (Date.now() - lastEventTime > 100) {
-          moveFocus(event.key);
-          lastEventTime = Date.now();
-        }
-        // Prevent default (that is scrolling),
-        // as we scroll to the selected element
-        event.preventDefault();
-        break;
-      // Allow going back with the backspace key for better keyboard navigation
-      case 'Backspace':
-        history.back();
-        event.preventDefault();
-        break;
+    const angle = keyToAngle(event.key);
+    if (angle !== null) {
+      // Limit the repeat rate
+      if (Date.now() - lastEventTime > 100) {
+        moveFocus(angle);
+        lastEventTime = Date.now();
+      }
+      // Prevent default (that is scrolling),
+      // as we scroll to the selected element
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    } else if (event.key == 'Backspace') {
+      history.back();
+      event.preventDefault();
+      event.stopImmediatePropagation();
     }
   });
   document.addEventListener('keyup', (event) => {
-    switch (event.key) {
-      case 'ArrowUp':
-      case 'ArrowDown':
-      case 'ArrowLeft':
-      case 'ArrowRight':
-        // Allow spamming by resetting the time
-        lastEventTime = 0;
-        event.preventDefault();
-        break;
+    const angle = keyToAngle(event.key);
+    if (angle !== null) {
+      // Allow spamming by resetting the time
+      lastEventTime = 0;
+      event.preventDefault();
     }
   });
 })();
@@ -410,7 +387,9 @@ async function sendAction(action) {
    * @returns {{x: number, y: number, width: number, height: number}}
   */
   const getRect = (element) => {
-    if (element === null) {
+    if (element === null
+      || element === document.body
+    ) {
       const offset = 100;
       return {
         x: -offset,
@@ -457,12 +436,23 @@ async function sendAction(action) {
   /** @type {HTMLElement | null} */
   let prevTargetElement = null;
   let targetChangeTime = Date.now();
-  const highlightingElement = document.createElement('div');
-  highlightingElement.id = 'highlighting-element';
-  document.body.appendChild(highlightingElement);
+
+  const highlightingId = 'highlighting-element';
+  let highlightingElement = document.getElementById(highlightingId);
+  if (!highlightingElement) {
+    highlightingElement = document.createElement('div');
+    highlightingElement.id = 'highlighting-element';
+    document.body.appendChild(highlightingElement);
+  }
 
   // The loop that animates our highlighting element to the target element
   const loop = () => {
+    if (targetElement != document.activeElement) {
+      prevTargetElement = targetElement;
+      targetElement = document.activeElement;
+      targetChangeTime = Date.now();
+    }
+
     const animationTime = 300;
     const lerpPos = easeOut(Math.min(1, (Date.now() - targetChangeTime) / animationTime));
 
@@ -485,19 +475,4 @@ async function sendAction(action) {
     requestAnimationFrame(loop);
   };
   requestAnimationFrame(loop);
-
-  // Listen to the relevant events
-  document.addEventListener("focusout", (event) => {
-    prevTargetElement = event.target;
-    targetElement = null;
-    targetChangeTime = Date.now();
-  });
-
-  document.addEventListener("focusin", (event) => {
-    // Don't use `prevTargetElement = targetElement` here as the focusout event
-    // will have changes those values and we want to overwrite that here
-    prevTargetElement = event.relatedTarget;
-    targetElement = event.target;
-    targetChangeTime = Date.now();
-  });
 })();
