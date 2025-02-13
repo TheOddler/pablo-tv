@@ -295,7 +295,7 @@ async function sendAction(action) {
       case 'd':
         return 0;
       default:
-        null;
+        return null;
     }
   };
 
