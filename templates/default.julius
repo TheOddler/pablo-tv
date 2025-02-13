@@ -186,12 +186,11 @@ async function sendAction(action) {
     const currentElement = document.activeElement;
     const focusableElements = getFocusableElements();
     if (focusableElements.length === 0) return;
-    if (!currentElement) {
-      focusableElements[0].focus();
-      return;
-    }
 
-    const curRect = currentElement.getBoundingClientRect();
+    const somethingSelected = currentElement && currentElement !== document.body;
+    const curRect = somethingSelected
+      ? currentElement.getBoundingClientRect()
+      : new DOMRect(0, 0, window.innerWidth, 0);
 
     const elements = focusableElements
       // Remove the current element, as we don't want to move to that
