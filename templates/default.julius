@@ -66,14 +66,12 @@ async function sendAction(action) {
   const getRectDiff = (rectA, rectB) => {
     // Check alignment, that if wether the two elements would touch if
     // move perfectly vertically
-    const areAlignedVertically = !(
-      rectA.right < rectB.left ||
-      rectA.left > rectB.right
-    );
-    const areAlignedHorizontally = !(
-      rectA.bottom < rectB.top ||
-      rectA.top > rectB.bottom
-    );
+    const areAlignedVertically =
+      rectA.right >= rectB.left &&
+      rectA.left <= rectB.right;
+    const areAlignedHorizontally =
+      rectA.bottom >= rectB.top &&
+      rectA.top <= rectB.bottom;
     const middleA = getMiddle(rectA);
     const middleB = getMiddle(rectB);
     const midAngle = getAngle(middleA, middleB);
