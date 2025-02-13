@@ -174,9 +174,7 @@ async function sendAction(action) {
   };
 
   const getFocusableElements = () => {
-    return Array.from(document.querySelectorAll(
-      'a[href], area[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled]), iframe, object, embed, [tabindex], [contenteditable], audio[controls], video[controls], summary'
-    )).filter(el => !el.hasAttribute('tabindex') || el.tabIndex >= 0);
+    return Array.from(document.querySelectorAll('*')).filter(el => el.tabIndex >= 0);
   };
 
   /**
@@ -187,7 +185,7 @@ async function sendAction(action) {
     const focusableElements = getFocusableElements();
     if (focusableElements.length === 0) return;
 
-    const somethingSelected = currentElement && currentElement !== document.body;
+    const somethingSelected = currentElement.tabIndex >= 0;
     const curRect = somethingSelected
       ? currentElement.getBoundingClientRect()
       : new DOMRect(0, 0, window.innerWidth, 0);
@@ -252,20 +250,21 @@ async function sendAction(action) {
         if (bAngle < aAngle) return bSmallest;
         // If all is the same, they are the same
         return 0;
-      });
+      })
+      .map((info) => info.element);
     ;
 
     // Focus the first element that is willing to be focussed
-    const focussed = elements.find((info) => {
-      info.element.focus({
+    const focussed = elements.find((el) => {
+      el.focus({
         preventScroll: true // We'll do that smoothly next
       });
       // Sometimes elements can't be focused for whatever reason, and then `focus()` just silently fails.
       // To allow this, we return wether the call succeeded, if not it'll try the next element.
-      return info.element === document.activeElement;
+      return el === document.activeElement;
     });
     if (focussed) {
-      focussed.element.scrollIntoView({
+      focussed.scrollIntoView({
         behavior: "smooth",
         block: "center",
         inline: "center",
