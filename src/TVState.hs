@@ -1,3 +1,5 @@
+{-# LANGUAGE MultiWayIf #-}
+
 module TVState where
 
 import Data.Text qualified as T
@@ -21,6 +23,12 @@ startingTVState = TVState "" []
 tvStateWebSocket :: (MonadHandler m) => TVar TVState -> WebSocketsT m ()
 tvStateWebSocket tvStateTVar =
   onChanges tvStateTVar $ \oldSate newState ->
-    if oldSate.tvPage /= newState.tvPage
-      then sendTextData newState.tvPage
-      else sendTextData $ T.pack "refresh"
+    if
+      | oldSate.tvPage /= newState.tvPage ->
+          sendTextData newState.tvPage
+      | ignoreWatchedInfo oldSate /= ignoreWatchedInfo newState ->
+          sendTextData $ T.pack "refresh"
+      | otherwise -> pure ()
+  where
+    ignoreWatchedInfo tvSate = drop3rd <$> tvSate.tvVideoData
+    drop3rd (a, b, _) = (a, b)
