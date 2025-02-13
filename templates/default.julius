@@ -72,9 +72,28 @@ async function sendAction(action) {
     const areAlignedHorizontally =
       rectA.bottom >= rectB.top &&
       rectA.top <= rectB.bottom;
+    const aCoversB =
+      rectB.bottom <= rectA.bottom
+      && rectB.top >= rectA.top
+      && rectB.left >= rectA.left
+      && rectB.right <= rectA.right
     const middleA = getMiddle(rectA);
     const middleB = getMiddle(rectB);
     const midAngle = getAngle(middleA, middleB);
+
+    // Check covering
+    if (aCoversB) {
+      return {
+        // Not strictly the distance, but I use this as a way of indicating
+        // rectA fully covers rectB
+        distance: -1,
+        areAligned: true,
+        midAngle,
+        // Not sure what the minAngle should be here, but for the rest of the
+        // code just using angle here is OK.
+        minAngle: midAngle,
+      };
+    }
 
     // Check for overlap
     if (areAlignedVertically && areAlignedHorizontally) {
@@ -190,6 +209,10 @@ async function sendAction(action) {
         const rect = element.getBoundingClientRect();
         return { element, rect, ...getRectDiff(curRect, rect) };
       })
+      // Remove elements that that fully covered
+      .filter((info) => {
+        return info.distance >= 0;
+      })
       // Remove elements that are outside the direction code
       .filter((info) => {
         const maxAngle = Math.PI / 4;
@@ -213,6 +236,7 @@ async function sendAction(action) {
       })
       // Sort them by preferred order
       .sort((a, b) => {
+        // Sort expect us to return -1, 0 or 1, these are just more sensible names
         const aSmallest = -1;
         const bSmallest = 1;
         // Prefer aligned elements
