@@ -226,7 +226,7 @@ async function sendAction(action) {
         // Prefer elements with smaller angles
         // Use mid-angle here, as the minAngle for aligned elements are often the same
         const aAngle = getAngleDiff(a.midAngle, moveAngle);
-        const bAngle = getAngleDiff(a.midAngle, moveAngle);
+        const bAngle = getAngleDiff(b.midAngle, moveAngle);
         if (aAngle < bAngle) return aSmallest;
         if (bAngle < aAngle) return bSmallest;
         // If all is the same, they are the same
