@@ -1,6 +1,11 @@
 <header>
   <a href="javascript:history.back()">
     <i class="fa-solid fa-chevron-left">
+  $if inReadOnlyMode
+    <div class="grow">
+    <div title="No TVDB Token found. Running in read-only mode.">
+      <i class="fa-solid fa-triangle-exclamation">
+      Read-only
   <div class="grow">
   $if isTv
     $maybe networkInterface <- mNetworkInterface

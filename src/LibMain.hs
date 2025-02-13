@@ -20,7 +20,7 @@ import Actions
 import Control.Monad (filterM, when)
 import Data.Aeson (Result (..))
 import Data.ByteString.Char8 qualified as BS
-import Data.Char (toLower)
+import Data.Char (isSpace, toLower)
 import Data.List (foldl')
 import Data.List.Extra (notNull, replace)
 import Data.Maybe (fromMaybe, isJust)
@@ -66,7 +66,7 @@ import Path
     (</>),
   )
 import Path.IO (doesDirExist, doesFileExist, getHomeDir, listDir)
-import System.Environment (getEnv)
+import System.Environment (lookupEnv)
 import System.FilePath (dropTrailingPathSeparator)
 import System.Process (callProcess)
 import System.Random (initStdGen, mkStdGen)
@@ -83,7 +83,12 @@ import Util
     unsnoc,
     widgetFile,
   )
-import Watched (WatchedInfoAgg (..), hasBeenWatched, readWatchedInfo, readWatchedInfoAgg)
+import Watched
+  ( WatchedInfoAgg (..),
+    hasBeenWatched,
+    readWatchedInfo,
+    readWatchedInfoAgg,
+  )
 import Yesod hiding (defaultLayout, replace)
 import Yesod qualified
 import Yesod.EmbeddedStatic
@@ -91,7 +96,7 @@ import Yesod.WebSockets (race_, webSockets)
 
 data App = App
   { appPort :: Int,
-    appTVDBToken :: TVDBToken,
+    appTVDBToken :: Maybe TVDBToken,
     appInputDevice :: Device,
     appTVState :: TVar TVState,
     appGetStatic :: EmbeddedStatic,
@@ -155,6 +160,7 @@ instance Yesod App where
             listToMaybe $
               sortWith networkInterfaceWorthiness networkInterfaces
       port <- getsYesod appPort
+      inReadOnlyMode <- isJust <$> getsYesod appTVDBToken
 
       addScript $ StaticR static_reconnecting_websocket_js
       addStylesheet $ StaticR static_fontawesome_css_all_min_css
@@ -393,7 +399,12 @@ getAllIPsR = do
 main :: IO ()
 main = do
   -- To get this token for now you can use your apiKey here https://thetvdb.github.io/v4-api/#/Login/post_login
-  tvdbToken <- TVDBToken . BS.pack <$> getEnv "TVDB_TOKEN"
+  tvdbTokenRaw <- lookupEnv "TVDB_TOKEN"
+  let tvdbToken = case tvdbTokenRaw of
+        Nothing -> Nothing
+        Just t | all isSpace t -> Nothing
+        Just t -> Just $ TVDBToken $ BS.pack t
+  putStrLn "No tvdb token found, so running in read-only mode."
 
   inputDevice <- mkInputDevice
   tvState <- newTVarIO startingTVState
@@ -410,8 +421,11 @@ main = do
   when (not isDevelopment) $ do
     callProcess "xdg-open" [url]
 
-  let dataUpdate getInfos = do
-        infosWithPath <- getInfos
+  let dataUpdate tvdbToken' = do
+        startTime <- getCurrentTime
+        infosWithPath <- case tvdbToken' of
+          Nothing -> readAllDirectoryInfos
+          Just t -> updateAllDirectoryInfos t
         let addFSInfo (path, info) = do
               infoFS <- readWatchedInfoAgg path
               pure (path, info, infoFS)
@@ -419,15 +433,16 @@ main = do
         atomically $ do
           state <- readTVar tvState
           writeTVar tvState state {tvVideoData = infos}
+        endTime <- getCurrentTime
+        putStrLn $ "Refreshed video data in " ++ show (diffUTCTime endTime startTime)
 
-  dataUpdate readAllDirectoryInfos
+  -- Do an update once at startup, but without a token so we just do a quick read-only update
+  dataUpdate Nothing
 
+  -- In a thread do the data updating async
   let dataThread =
-        asyncOnTrigger videoDataRefreshTrigger $ do
-          startTime <- getCurrentTime
-          dataUpdate $ updateAllDirectoryInfos tvdbToken
-          endTime <- getCurrentTime
-          putStrLn $ "Refreshed video data in " ++ show (diffUTCTime endTime startTime)
+        asyncOnTrigger videoDataRefreshTrigger $
+          dataUpdate tvdbToken
 
   let appThread = do
         app <-
