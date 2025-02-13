@@ -216,32 +216,28 @@ getHomeR = do
         -- keeps changing which is annoying.
         if isDevelopment then pure (mkStdGen 2) else initStdGen
   randomGenerator <- mkRandom
-  let videosSortedWith ::
-        (Ord a) =>
-        ((Path Abs Dir, DirectoryInfo, WatchedInfoAgg) -> a) ->
-        [DirData]
-      videosSortedWith f = mkDirData <$> sortWith f videoData
+  let isUnwatched (_, _, i) = i.watchedInfoPlayedVideoFileCount < i.watchedInfoVideoFileCount
+      unwatched = filter isUnwatched videoData
+      recentlyAdded (_, _, i) = -i.watchedInfoLastModified
 
   let sections =
-        [ LocalVideos "Recently Added" $
-            videosSortedWith (\(_, _, i) -> -i.watchedInfoLastModified),
-          LocalVideos "Unwatched" $
-            let isUnwatched (_, _, i) = i.watchedInfoPlayedVideoFileCount < i.watchedInfoVideoFileCount
-                unwatched = filter isUnwatched videoData
-             in if notNull unwatched
-                  then mkDirData <$> shuffle unwatched randomGenerator
-                  else [],
+        [ LocalVideos "New" $
+            mkDirData <$> sortWith recentlyAdded unwatched,
+          LocalVideos "Random" $
+            mkDirData <$> shuffle unwatched randomGenerator,
           ExternalLinks
             "External Links"
             [ ("YouTube", StaticR static_images_youtube_png, "https://www.youtube.com/feed/subscriptions"),
               ("Netflix", StaticR static_images_netflix_png, "https://www.netflix.com"),
               ("Apple TV+", StaticR static_images_apple_tv_plus_png, "https://tv.apple.com")
             ],
-          LocalVideos "Random" $
-            mkDirData
-              <$> shuffle videoData randomGenerator,
+          LocalVideos "Recently Added" $
+            mkDirData <$> sortWith recentlyAdded videoData,
+          LocalVideos "Random (All)" $
+            mkDirData <$> shuffle videoData randomGenerator,
           LocalVideos "Recently Watched" . reverse $
-            videosSortedWith (\(_, _, i) -> (i.watchedInfoLastWatched, i.watchedInfoLastAccessed))
+            let recentlyWatched (_, _, i) = (i.watchedInfoLastWatched, i.watchedInfoLastAccessed)
+             in mkDirData <$> sortWith recentlyWatched videoData
         ]
 
   defaultLayout "Home" $(widgetFile "home")
