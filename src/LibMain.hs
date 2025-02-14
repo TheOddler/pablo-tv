@@ -333,7 +333,7 @@ getDirectoryR segments = do
       watchedClass filePath =
         if hasBeenWatched watchedFiles filePath
           then "watched"
-          else ""
+          else "unwatched"
 
   let title = toHtml $ (directoryInfoTitle <$> mInfo) `orElse` "Videos"
   let showRefreshButton = null segments

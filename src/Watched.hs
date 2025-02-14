@@ -135,7 +135,7 @@ markAllAsWatched dir = do
 
   let watchedOld = Map.size $ unWatchedFiles currentState
       watchedNew = Map.size $ unWatchedFiles cleanedState
-  pure $ watchedOld - watchedNew
+  pure $ watchedNew - watchedOld
 
 data MarkAsUnwatchedResult = AlreadyUnwatched | MarkedAsUnwatched
 
@@ -153,6 +153,17 @@ markFileAsUnwatched file = do
     if hasBeenWatched currentState file
       then MarkedAsUnwatched
       else AlreadyUnwatched
+
+-- | Returns how many files were marked as unwatched.
+markAllAsUnwatched ::
+  (FSWrite m, FSRead m, Logger m) =>
+  Path Abs Dir ->
+  m Int
+markAllAsUnwatched dir = do
+  currentState <- readWatchedInfo dir
+  writeWatchedInfo dir $ WatchedFiles Map.empty
+  let countOld = Map.size $ unWatchedFiles currentState
+  pure countOld
 
 cleanWatchedInfo ::
   (MonadCatch m, FSRead m) =>

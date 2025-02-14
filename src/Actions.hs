@@ -23,7 +23,7 @@ import TVState (TVState (..))
 import Text.Blaze qualified as Blaze
 import Text.Julius (ToJavascript (..))
 import Util (boundedEnumCodec)
-import Watched (MarkAsUnwatchedResult (..), MarkAsWatchedResult (..), WatchedInfoAgg (..), markAllAsWatched, markFileAsUnwatched, markFileAsWatched)
+import Watched (MarkAsUnwatchedResult (..), MarkAsWatchedResult (..), WatchedInfoAgg (..), markAllAsUnwatched, markAllAsWatched, markFileAsUnwatched, markFileAsWatched)
 import Yesod (FromJSON, MonadHandler, liftIO)
 import Yesod.WebSockets (WebSocketsT, receiveData)
 
@@ -47,8 +47,8 @@ data Action
   | ActionMouseScroll Int32
   | ActionWrite String
   | ActionPlayPath DirOrFile
-  | ActionMarkAsWatched (Path Abs File)
-  | ActionMarkAsUnwatched (Path Abs File)
+  | ActionMarkAsWatched DirOrFile
+  | ActionMarkAsUnwatched DirOrFile
   | ActionCloseWindow
   | ActionOpenUrlOnTV Text
   | ActionRefreshTVState
@@ -88,12 +88,6 @@ instance HasObjectCodec Action where
               (Just file, _) -> Right $ File file
               (_, Just dir) -> Right $ Dir dir
 
-      strToFile :: String -> Either String (Path Abs File)
-      strToFile str =
-        case parseAbsFile str of
-          Nothing -> Left $ "Failed parsing abs file path: " ++ show str
-          Just file -> Right file
-
       enc :: Action -> (Discriminator, ObjectCodec a ())
       enc = \case
         ActionClickMouse btn -> ("ClickMouse", oneFieldEncoder "button" btn)
@@ -103,8 +97,8 @@ instance HasObjectCodec Action where
         ActionMouseScroll amount -> ("MouseScroll", oneFieldEncoder "amount" amount)
         ActionWrite t -> ("Write", oneFieldEncoder "text" t)
         ActionPlayPath path -> ("PlayPath", oneFieldEncoder "path" $ dirOrFileToStr path)
-        ActionMarkAsWatched path -> ("MarkAsWatched", oneFieldEncoder "path" $ fromAbsFile path)
-        ActionMarkAsUnwatched path -> ("MarkAsUnwatched", oneFieldEncoder "path" $ fromAbsFile path)
+        ActionMarkAsWatched path -> ("MarkAsWatched", oneFieldEncoder "path" $ dirOrFileToStr path)
+        ActionMarkAsUnwatched path -> ("MarkAsUnwatched", oneFieldEncoder "path" $ dirOrFileToStr path)
         ActionCloseWindow -> ("CloseWindow", noFieldEncoder)
         ActionOpenUrlOnTV url -> ("OpenUrlOnTV", oneFieldEncoder "url" url)
         ActionRefreshTVState -> ("RefreshTVState", noFieldEncoder)
@@ -127,14 +121,14 @@ instance HasObjectCodec Action where
             ( "MarkAsWatched",
               ( "ActionMarkAsWatched",
                 mapToDecoder ActionMarkAsWatched $
-                  bimapCodec strToFile id $
+                  bimapCodec strToDirOrFile id $
                     requiredField' "path"
               )
             ),
             ( "MarkAsUnwatched",
               ( "ActionMarkAsUnwatched",
                 mapToDecoder ActionMarkAsUnwatched $
-                  bimapCodec strToFile id $
+                  bimapCodec strToDirOrFile id $
                     requiredField' "path"
               )
             ),
@@ -278,12 +272,7 @@ performAction inputDevice tvStateTVar videoDataRefreshTrigger action = do
     ActionPlayPath dirOrFile -> do
       defaultVideoPlayer' <- readProcess "xdg-mime" ["query", "default", "video/x-msvideo"] ""
       let defaultVideoPlayer = dropWhileEnd (== '\n') defaultVideoPlayer'
-      case dirOrFile of
-        Dir path -> markAllAsWatched path >>= addToAggWatched path
-        File path ->
-          markFileAsWatched path >>= \case
-            AlreadyWatched -> pure ()
-            MarkedAsWatched -> addToAggWatched path 1
+      markDirOrFileAsWatched dirOrFile
       callProcess
         "gtk-launch"
         [ defaultVideoPlayer,
@@ -291,14 +280,10 @@ performAction inputDevice tvStateTVar videoDataRefreshTrigger action = do
             File path -> fromAbsFile path
             Dir path -> fromAbsDir path
         ]
-    ActionMarkAsWatched file ->
-      markFileAsWatched file >>= \case
-        AlreadyWatched -> pure ()
-        MarkedAsWatched -> addToAggWatched file 1
-    ActionMarkAsUnwatched file ->
-      markFileAsUnwatched file >>= \case
-        AlreadyUnwatched -> pure ()
-        MarkedAsUnwatched -> addToAggWatched file (-1)
+    ActionMarkAsWatched dirOrFile ->
+      markDirOrFileAsWatched dirOrFile
+    ActionMarkAsUnwatched dirOrFile ->
+      markDirOrFileAsUnwatched dirOrFile
     ActionCloseWindow ->
       writeBatch inputDevice $ clickKeyCombo [KeyLeftctrl, KeyQ]
     ActionOpenUrlOnTV url ->
@@ -315,6 +300,26 @@ performAction inputDevice tvStateTVar videoDataRefreshTrigger action = do
         ++ [SyncEvent SynReport]
         ++ map (`KeyEvent` Released) (reverse keys)
         ++ [SyncEvent SynReport]
+
+    markDirOrFileAsWatched dirOrFile =
+      case dirOrFile of
+        Dir path -> do
+          count <- markAllAsWatched path
+          addToAggWatched path count
+        File path ->
+          markFileAsWatched path >>= \case
+            AlreadyWatched -> pure ()
+            MarkedAsWatched -> addToAggWatched path 1
+
+    markDirOrFileAsUnwatched dirOrFile =
+      case dirOrFile of
+        Dir path -> do
+          count <- markAllAsUnwatched path
+          addToAggWatched path (-count)
+        File path ->
+          markFileAsUnwatched path >>= \case
+            AlreadyUnwatched -> pure ()
+            MarkedAsUnwatched -> addToAggWatched path (-1)
 
     addToAggWatched :: Path Abs a -> Int -> IO ()
     addToAggWatched _ 0 = pure ()

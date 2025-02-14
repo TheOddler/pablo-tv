@@ -40,18 +40,39 @@ function findElementWithPath(element) {
   return element;
 }
 
-async function playAll(event) {
-  // This prevents scrolling to the top of the page when pressing the link
-  event.preventDefault();
+function playAll(event) {
+  mkAllWatchedChangingFunction('#{ActionPlayPath $ Dir absPath}', true)(event);
+}
 
-  const response = await sendAction('#{ActionPlayPath $ Dir absPath}');
+function markAllAsWatched(event) {
+  mkAllWatchedChangingFunction('#{ActionMarkAsWatched $ Dir absPath}', true)(event);
+}
 
-  if (response.ok) {
-    const elements = document.querySelectorAll('[data-path]');
-    elements.forEach((element) => {
-      element.classList.add("watched");
-    });
-  }
+function markAllAsUnwatched(event) {
+  mkAllWatchedChangingFunction('#{ActionMarkAsUnwatched $ Dir absPath}', false)(event);
+}
+
+function setWatchAllFrontend(watchedStatus) {
+  const elements = document.querySelectorAll('[data-path]');
+  elements.forEach((element) => {
+    element.classList.toggle("watched", watchedStatus);
+  });
+}
+
+function mkAllWatchedChangingFunction(action, watchedStatus) {
+  return async function (event) {
+    // This prevents scrolling to the top of the page when pressing the link
+    event.preventDefault();
+
+    const response = await sendAction(action);
+
+    if (response.ok) {
+      const elements = document.querySelectorAll('[data-path]');
+      elements.forEach((element) => {
+        element.classList.toggle("watched", watchedStatus);
+      });
+    }
+  };
 }
 
 function refreshLibrary(event) {

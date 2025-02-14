@@ -59,7 +59,15 @@ ul {
       }
     }
 
-    &:not(.watched) {
+    &.white {
+      color: white;
+
+      a {
+        color: inherit;
+      }
+    }
+
+    &.unwatched {
       color: lightblue;
 
       a {
