@@ -21,7 +21,7 @@ import Control.Monad (filterM, when)
 import Data.Aeson (Result (..))
 import Data.ByteString.Char8 qualified as BS
 import Data.Char (isSpace, toLower)
-import Data.List (foldl')
+import Data.List (find, foldl')
 import Data.List.Extra (notNull, replace)
 import Data.Maybe (fromMaybe, isJust)
 import Data.String (fromString)
@@ -30,6 +30,7 @@ import Data.Text qualified as T
 import Data.Text qualified as Text
 import Data.Text.Encoding (decodeUtf8Lenient)
 import Data.Time (diffUTCTime, getCurrentTime)
+import Data.Tuple.Extra (fst3)
 import Directory
   ( DirectoryInfo (..),
     DirectoryKind (..),
@@ -318,15 +319,38 @@ getDirectoryR segments = do
   mPathAndInfo <- liftIO $ readDirectoryInfoRec absPath
   let mInfo = snd <$> mPathAndInfo
   dirRaw <- liftIO $ readDirectoryRaw absPath
-  let filesWithNames :: [(Text, Path Abs File)]
-      filesWithNames = map (\f -> (niceFileNameT f, absPath </> f)) dirRaw.directoryVideoFiles
-      dirsWithNames = map (\d -> (niceDirNameT d, d)) dirRaw.directoryDirectories
+  dirDatas <- tvVideoData <$> (getsYesod appTVState >>= liftIO . readTVarIO)
+
+  let files :: [(Path Abs File, Text)]
+      files = map (\f -> (absPath </> f, niceFileNameT f)) dirRaw.directoryVideoFiles
+  let getDirData p = find ((==) p . fst3) dirDatas
+      getDir dirName = do
+        let path = absPath </> dirName
+        case getDirData path of
+          Nothing -> (dirName, niceDirNameT dirName, Nothing)
+          Just (_, dirInfo, watched) ->
+            ( dirName,
+              dirInfo.directoryInfoTitle,
+              Just
+                ( watched.watchedInfoPlayedVideoFileCount,
+                  watched.watchedInfoVideoFileCount
+                )
+            )
+      dirs :: [(Path Rel Dir, Text, Maybe (Int, Int))]
+      dirs = map getDir dirRaw.directoryDirectories
 
   let mkSegments :: Path Rel x -> [Text]
       mkSegments d = segments ++ [T.pack $ dropTrailingPathSeparator $ toFilePath d]
 
       mkAbsFilePath :: Path Abs File -> String
       mkAbsFilePath filePath = replace "'" "\\'" $ fromAbsFile filePath
+
+      getWatchedClass :: Maybe (Int, Int) -> String
+      getWatchedClass Nothing = "white"
+      getWatchedClass (Just (watchedCount, totalCount)) =
+        if watchedCount < totalCount
+          then "unwatched"
+          else "watched"
 
   watchedFiles <- liftIO $ readWatchedInfo absPath
   let watchedClass :: Path Abs File -> String

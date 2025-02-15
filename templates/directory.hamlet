@@ -2,18 +2,18 @@ $if isJust mInfo
   <img src=@{ImageR segments} alt="🖼️ Missing poster ☹️" class="header" onerror="this.style.display = 'none'">
 <h1>#{title}
 
-$if (not $ null filesWithNames)
+$if (not $ null files)
   $case (directoryInfoKind <$> mInfo)
     $of Nothing
       <h2>Files
     $of Just DirectoryKindSeries
       <h2>Episodes
     $of Just DirectoryKindMovie
-      $if (length filesWithNames > 1)
+      $if (length files > 1)
         <h2>Parts
   
   <ul>
-    $if (length filesWithNames > 1)
+    $if (length files > 1)
       <li class="white">
         <a href="#" class="large name" onclick="playAll(event)">
           <i class="fa-solid fa-play">
@@ -22,7 +22,7 @@ $if (not $ null filesWithNames)
           <i class="fa-regular fa-eye">
         <a href="#" onclick="markAllAsUnwatched(event)" title="Mark all as unwatched">
           <i class="fa-regular fa-eye-slash">
-    $forall (name, path) <- filesWithNames
+    $forall (path, name) <- files
       <li class="#{watchedClass path}" data-path="#{mkAbsFilePath path}">
         <a href="#" class="name" onclick="playPath(event)">
           <i class="fa-solid fa-play">
@@ -33,19 +33,27 @@ $if (not $ null filesWithNames)
           <i class="fa-regular fa-eye-slash">
 
 
-$if (not $ null dirsWithNames)
-  $if (not $ null filesWithNames)
+$if (not $ null dirs)
+  $if (not $ null files)
     $case (directoryInfoKind <$> mInfo)
       $of Just DirectoryKindSeries
         <h2>Seasons
       $of _
         <h2>Directories
   <ul>
-    $forall (name, path) <- dirsWithNames
-      <li>
+    $forall (path, name, mWatched) <- dirs
+      <li class="#{getWatchedClass mWatched}">
         <a href=@{DirectoryR $ mkSegments path} class="name">
           <i class="fa-regular fa-folder-open">
           <span>#{name}
+          $maybe (watchedCount, totalCount) <- mWatched
+            $if watchedCount < totalCount
+              <i class="fa-regular fa-eye">
+            $else
+              <i class="fa-solid fa-check">
+            #{watchedCount}/#{totalCount} 
+          $nothing
+            <i class="fa-regular fa-circle-question" title="Unparsed folder, refresh data to parse.">
 
 
 $if showRefreshButton
