@@ -327,17 +327,36 @@ getDirectoryR segments = do
       getDir dirName = do
         let path = absPath </> dirName
         case getDirData path of
-          Nothing -> (dirName, niceDirNameT dirName, Nothing)
+          Nothing | notNull segments -> do
+            -- We're not at the top-level, so we should dynamically read the watched info
+            -- We only do this for non-top-level dirs as there's unlikely to be many
+            -- sub-folders, and the data cannot be gotten from the tv state
+            watched <- liftIO $ readWatchedInfoAgg path
+            pure
+              ( dirName,
+                niceDirNameT dirName,
+                Just
+                  ( watched.watchedInfoPlayedVideoFileCount,
+                    watched.watchedInfoVideoFileCount
+                  )
+              )
+          Nothing ->
+            pure
+              ( dirName,
+                niceDirNameT dirName,
+                Nothing
+              )
           Just (_, dirInfo, watched) ->
-            ( dirName,
-              dirInfo.directoryInfoTitle,
-              Just
-                ( watched.watchedInfoPlayedVideoFileCount,
-                  watched.watchedInfoVideoFileCount
-                )
-            )
-      dirs :: [(Path Rel Dir, Text, Maybe (Int, Int))]
-      dirs = map getDir dirRaw.directoryDirectories
+            pure
+              ( dirName,
+                dirInfo.directoryInfoTitle,
+                Just
+                  ( watched.watchedInfoPlayedVideoFileCount,
+                    watched.watchedInfoVideoFileCount
+                  )
+              )
+  -- dirs :: [(Path Rel Dir, Text, Maybe (Int, Int))]
+  dirs <- mapM getDir dirRaw.directoryDirectories
 
   let mkSegments :: Path Rel x -> [Text]
       mkSegments d = segments ++ [T.pack $ dropTrailingPathSeparator $ toFilePath d]
@@ -345,19 +364,19 @@ getDirectoryR segments = do
       mkAbsFilePath :: Path Abs File -> String
       mkAbsFilePath filePath = replace "'" "\\'" $ fromAbsFile filePath
 
-      getWatchedClass :: Maybe (Int, Int) -> String
-      getWatchedClass Nothing = "white"
-      getWatchedClass (Just (watchedCount, totalCount)) =
-        if watchedCount < totalCount
-          then "unwatched"
-          else "watched"
-
   watchedFiles <- liftIO $ readWatchedInfo absPath
-  let watchedClass :: Path Abs File -> String
-      watchedClass filePath =
+  let watchedClassFile :: Path Abs File -> String
+      watchedClassFile filePath =
         if hasBeenWatched watchedFiles filePath
           then "watched"
           else "unwatched"
+
+      watchedClassDir :: Maybe (Int, Int) -> String
+      watchedClassDir Nothing = "white"
+      watchedClassDir (Just (watchedCount, totalCount)) =
+        if watchedCount < totalCount
+          then "unwatched"
+          else "watched"
 
   let title = toHtml $ (directoryInfoTitle <$> mInfo) `orElse` "Videos"
   let showRefreshButton = null segments

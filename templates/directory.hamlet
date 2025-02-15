@@ -23,7 +23,7 @@ $if (not $ null files)
         <a href="#" onclick="markAllAsUnwatched(event)" title="Mark all as unwatched">
           <i class="fa-regular fa-eye-slash">
     $forall (path, name) <- files
-      <li class="#{watchedClass path}" data-path="#{mkAbsFilePath path}">
+      <li class="#{watchedClassFile path}" data-path="#{mkAbsFilePath path}">
         <a href="#" class="name" onclick="playPath(event)">
           <i class="fa-solid fa-play">
           <span>#{name}
@@ -42,7 +42,7 @@ $if (not $ null dirs)
         <h2>Directories
   <ul>
     $forall (path, name, mWatched) <- dirs
-      <li class="#{getWatchedClass mWatched}">
+      <li class="#{watchedClassDir mWatched}">
         <a href=@{DirectoryR $ mkSegments path} class="name">
           <i class="fa-regular fa-folder-open">
           <span>#{name}
