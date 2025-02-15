@@ -12,7 +12,9 @@ module Playerctl where
 import Autodocodec (HasCodec (..))
 import Control.Concurrent (threadDelay)
 import Control.Monad (when)
+import Data.Char (isSpace)
 import Data.List (dropWhileEnd)
+import Network.HTTP (urlDecode)
 import Path (Abs, File, Path, parseAbsFile)
 import System.Process (callProcess, readProcessWithExitCode)
 import Util (boundedEnumCodec)
@@ -62,9 +64,11 @@ onFilePlayStarted callback = loop Nothing
   where
     readPlayerctl args = do
       (_exitcode, stdout, _stderr) <- readProcessWithExitCode playerctlProcessName args ""
-      pure $ dropWhileEnd (== '\n') stdout
+      pure $ dropWhileEnd isSpace stdout
     loop prevFile = do
-      answer <- readPlayerctl ["metadata", "xesam:url"]
+      -- Note that this url encodes stuff, so if there's a space it'll encode that as %20 for example
+      encodedAnswer <- readPlayerctl ["metadata", "xesam:url"]
+      let answer = urlDecode encodedAnswer
       let mFile :: Maybe (Path Abs File)
           mFile = case answer of
             "No players found" -> Nothing

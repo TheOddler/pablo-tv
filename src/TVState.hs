@@ -4,10 +4,10 @@ module TVState where
 
 import Data.Text qualified as T
 import Directory (DirectoryInfo)
-import GHC.Conc (TVar)
-import Path (Abs, Dir, Path)
+import GHC.Conc (TVar, atomically, readTVar, writeTVar)
+import Path (Abs, Dir, Path, isProperPrefixOf)
 import Util (onChanges)
-import Watched (WatchedInfoAgg)
+import Watched (WatchedInfoAgg (..))
 import Yesod (MonadHandler)
 import Yesod.WebSockets (WebSocketsT, sendTextData)
 
@@ -32,3 +32,21 @@ tvStateWebSocket tvStateTVar =
   where
     ignoreWatchedInfo tvSate = drop3rd <$> tvSate.tvVideoData
     drop3rd (a, b, _) = (a, b)
+
+addToAggWatched :: TVar TVState -> Path Abs a -> Int -> IO ()
+addToAggWatched _ _ 0 = pure ()
+addToAggWatched tvStateTVar path amount = atomically $ do
+  tvState <- readTVar tvStateTVar
+  let updatedState = tvState {tvVideoData = doUpdate <$> tvState.tvVideoData}
+  writeTVar tvStateTVar updatedState
+  where
+    doUpdate (p, dirIfo, watchedInfo)
+      | p `isProperPrefixOf` path =
+          ( p,
+            dirIfo,
+            watchedInfo
+              { watchedInfoPlayedVideoFileCount =
+                  watchedInfo.watchedInfoPlayedVideoFileCount + amount
+              }
+          )
+    doUpdate x = x

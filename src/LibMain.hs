@@ -17,6 +17,7 @@ import Actions
     mkInputDevice,
     performAction,
   )
+import Control.Exception (SomeException, displayException, try)
 import Control.Monad (filterM, when)
 import Data.Aeson (Result (..))
 import Data.ByteString.Char8 qualified as BS
@@ -73,7 +74,7 @@ import System.FilePath (dropTrailingPathSeparator)
 import System.Process (callProcess)
 import System.Random (initStdGen, mkStdGen)
 import TVDB (TVDBToken (..))
-import TVState (TVState (..), startingTVState, tvStateWebSocket)
+import TVState (TVState (..), addToAggWatched, startingTVState, tvStateWebSocket)
 import Text.Hamlet (hamletFile)
 import Util
   ( asyncOnTrigger,
@@ -86,8 +87,10 @@ import Util
     widgetFile,
   )
 import Watched
-  ( WatchedInfoAgg (..),
+  ( MarkAsWatchedResult (..),
+    WatchedInfoAgg (..),
     hasBeenWatched,
+    markFileAsWatched,
     readWatchedInfo,
     readWatchedInfoAgg,
   )
@@ -491,8 +494,15 @@ main = do
 
   -- The thread that'll be listening for files being played, and marking them as watched
   let watchedThread =
-        onFilePlayStarted $ \mPath -> do
-          putStrLn $ "Playing: " ++ show mPath
+        onFilePlayStarted $ \case
+          Nothing -> pure ()
+          Just path -> do
+            putStrLn $ "Playing file: " ++ show path
+            result <- try $ markFileAsWatched path
+            case result of
+              Right AlreadyWatched -> pure ()
+              Right MarkedAsWatched -> addToAggWatched tvState path 1
+              Left (e :: SomeException) -> putStrLn $ "Failed marking as watched in thread: " ++ displayException e
 
   -- The thread for the app
   let appThread = do

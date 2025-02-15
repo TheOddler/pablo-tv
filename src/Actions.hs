@@ -6,6 +6,7 @@ import Autodocodec (Autodocodec (..), Discriminator, HasCodec (..), HasObjectCod
 import Autodocodec.Aeson (toJSONViaCodec)
 import Control.Concurrent (MVar, tryPutMVar)
 import Control.Monad (forever, when)
+import Data.Char (isSpace)
 import Data.HashMap.Strict qualified as HashMap
 import Data.Int (Int32)
 import Data.List (dropWhileEnd, nub)
@@ -16,15 +17,15 @@ import Data.Void (Void)
 import Evdev.Codes
 import Evdev.Uinput
 import GHC.Conc (TVar, atomically, readTVar, writeTVar)
-import Path (Abs, Dir, File, Path, fromAbsDir, fromAbsFile, isProperPrefixOf, parseAbsDir, parseAbsFile)
+import Path (Abs, Dir, File, Path, fromAbsDir, fromAbsFile, parseAbsDir, parseAbsFile)
 import Playerctl qualified
 import SafeMaths (int32ToInteger)
 import System.Process (callProcess, readProcess)
-import TVState (TVState (..))
+import TVState (TVState (..), addToAggWatched)
 import Text.Blaze qualified as Blaze
 import Text.Julius (ToJavascript (..))
 import Util (boundedEnumCodec)
-import Watched (MarkAsUnwatchedResult (..), MarkAsWatchedResult (..), WatchedInfoAgg (..), markAllAsUnwatched, markAllAsWatched, markFileAsUnwatched, markFileAsWatched)
+import Watched (MarkAsUnwatchedResult (..), MarkAsWatchedResult (..), markAllAsUnwatched, markAllAsWatched, markFileAsUnwatched, markFileAsWatched)
 import Yesod (FromJSON, MonadHandler, liftIO)
 import Yesod.WebSockets (WebSocketsT, receiveData)
 
@@ -257,8 +258,7 @@ performAction inputDevice tvStateTVar videoDataRefreshTrigger action = do
       writeBatch inputDevice events
     ActionPlayPath dirOrFile -> do
       defaultVideoPlayer' <- readProcess "xdg-mime" ["query", "default", "video/x-msvideo"] ""
-      let defaultVideoPlayer = dropWhileEnd (== '\n') defaultVideoPlayer'
-      markDirOrFileAsWatched dirOrFile
+      let defaultVideoPlayer = dropWhileEnd isSpace defaultVideoPlayer'
       callProcess
         "gtk-launch"
         [ defaultVideoPlayer,
@@ -293,39 +293,21 @@ performAction inputDevice tvStateTVar videoDataRefreshTrigger action = do
       case dirOrFile of
         Dir path -> do
           count <- markAllAsWatched path
-          addToAggWatched path count
+          addToAggWatched tvStateTVar path count
         File path ->
           markFileAsWatched path >>= \case
             AlreadyWatched -> pure ()
-            MarkedAsWatched -> addToAggWatched path 1
+            MarkedAsWatched -> addToAggWatched tvStateTVar path 1
 
     markDirOrFileAsUnwatched dirOrFile =
       case dirOrFile of
         Dir path -> do
           count <- markAllAsUnwatched path
-          addToAggWatched path (-count)
+          addToAggWatched tvStateTVar path (-count)
         File path ->
           markFileAsUnwatched path >>= \case
             AlreadyUnwatched -> pure ()
-            MarkedAsUnwatched -> addToAggWatched path (-1)
-
-    addToAggWatched :: Path Abs a -> Int -> IO ()
-    addToAggWatched _ 0 = pure ()
-    addToAggWatched path amount = atomically $ do
-      tvState <- readTVar tvStateTVar
-      let updatedState = tvState {tvVideoData = doUpdate <$> tvState.tvVideoData}
-      writeTVar tvStateTVar updatedState
-      where
-        doUpdate (p, dirIfo, watchedInfo)
-          | p `isProperPrefixOf` path =
-              ( p,
-                dirIfo,
-                watchedInfo
-                  { watchedInfoPlayedVideoFileCount =
-                      watchedInfo.watchedInfoPlayedVideoFileCount + amount
-                  }
-              )
-        doUpdate x = x
+            MarkedAsUnwatched -> addToAggWatched tvStateTVar path (-1)
 
 charToKey :: Char -> [Key]
 charToKey = \case

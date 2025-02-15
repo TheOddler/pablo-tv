@@ -41,7 +41,9 @@ function findElementWithPath(element) {
 }
 
 function playAll(event) {
-  mkAllWatchedChangingFunction('#{ActionPlayPath $ Dir absPath}', true)(event);
+  // This prevents scrolling to the top of the page when pressing the link
+  event.preventDefault();
+  sendAction('#{ActionPlayPath $ Dir absPath}');
 }
 
 function markAllAsWatched(event) {
