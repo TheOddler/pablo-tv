@@ -226,7 +226,7 @@ getHomeR = do
   randomGenerator <- mkRandom
   let isUnwatched (_, _, i) = i.watchedInfoPlayedVideoFileCount < i.watchedInfoVideoFileCount
       unwatched = filter isUnwatched videoData
-      recentlyAdded (_, _, i) = -i.watchedInfoLastModified
+      recentlyAdded (_, _, i) = (-i.watchedInfoLastModified)
 
   let sections =
         [ LocalVideos "New" $
