@@ -10,7 +10,11 @@
 module Playerctl where
 
 import Autodocodec (HasCodec (..))
-import System.Process (callProcess, readProcess)
+import Control.Concurrent (threadDelay)
+import Control.Monad (when)
+import Data.List (dropWhileEnd)
+import Path (Abs, File, Path, parseAbsFile)
+import System.Process (callProcess, readProcessWithExitCode)
 import Util (boundedEnumCodec)
 
 data Action
@@ -39,17 +43,10 @@ instance HasCodec Action where
 playerctlProcessName :: FilePath
 playerctlProcessName = "playerctl"
 
-callPlayerctl :: [String] -> IO ()
-callPlayerctl = callProcess playerctlProcessName
-
--- | Output is returned strictly, so this is not suitable for launching
--- processes that require interaction over the standard file streams.
-readPlayerctl :: [String] -> IO String
-readPlayerctl args = readProcess playerctlProcessName args ""
-
 performAction :: Action -> IO ()
 performAction = callPlayerctl . actionToParams
   where
+    callPlayerctl = callProcess playerctlProcessName
     actionToParams = \case
       ActionPlayPause -> ["play-pause"]
       ActionStop -> ["stop"]
@@ -59,3 +56,21 @@ performAction = callPlayerctl . actionToParams
       ActionBackwardStep -> ["position", "10-"]
       ActionForwardJump -> ["position", "60+"]
       ActionBackwardJump -> ["position", "60-"]
+
+onFilePlayStarted :: (Maybe (Path Abs File) -> IO ()) -> IO ()
+onFilePlayStarted callback = loop Nothing
+  where
+    readPlayerctl args = do
+      (_exitcode, stdout, _stderr) <- readProcessWithExitCode playerctlProcessName args ""
+      pure $ dropWhileEnd (== '\n') stdout
+    loop prevFile = do
+      answer <- readPlayerctl ["metadata", "xesam:url"]
+      let mFile :: Maybe (Path Abs File)
+          mFile = case answer of
+            "No players found" -> Nothing
+            'f' : 'i' : 'l' : 'e' : ':' : '/' : '/' : path ->
+              parseAbsFile path
+            _ -> Nothing
+      when (prevFile /= mFile) $ callback mFile
+      threadDelay 5_000_000 -- Not sure what a good amount of sleep would be
+      loop mFile

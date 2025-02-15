@@ -67,7 +67,7 @@ import Path
     (</>),
   )
 import Path.IO (doesDirExist, doesFileExist, getHomeDir, listDir)
-import Playerctl (Action (..))
+import Playerctl (Action (..), onFilePlayStarted)
 import System.Environment (lookupEnv)
 import System.FilePath (dropTrailingPathSeparator)
 import System.Process (callProcess)
@@ -489,6 +489,12 @@ main = do
         asyncOnTrigger videoDataRefreshTrigger $
           dataUpdate tvdbToken
 
+  -- The thread that'll be listening for files being played, and marking them as watched
+  let watchedThread =
+        onFilePlayStarted $ \mPath -> do
+          putStrLn $ "Playing: " ++ show mPath
+
+  -- The thread for the app
   let appThread = do
         app <-
           toWaiAppPlain
@@ -503,6 +509,7 @@ main = do
         run port $ defaultMiddlewaresNoLogging app
 
   putStrLn "Starting race..."
-  race_ appThread dataThread
+  race_ appThread $
+    race_ dataThread watchedThread
 
   putStrLn "Server quite."
