@@ -6,6 +6,7 @@ import Actions (Action (..), DirOrFile (..), KeyboardButton (..), MouseButton (.
 import GHC.Generics (Generic)
 import Generic.Random (genericArbitrary, uniform)
 import Path qualified
+import Playerctl qualified
 import Test.QuickCheck (Arbitrary (..), elements, listOf)
 import Test.QuickCheck.Instances ()
 import TestUtils (forcePath, genDirName, genDirRoot, genFileName)
@@ -17,6 +18,8 @@ deriving instance Generic DirOrFile
 deriving instance Generic MouseButton
 
 deriving instance Generic KeyboardButton
+
+deriving instance Generic Playerctl.Action
 
 instance Arbitrary (Path.Path Path.Abs Path.Dir) where
   arbitrary = do
@@ -48,4 +51,7 @@ instance Arbitrary MouseButton where
   arbitrary = genericArbitrary uniform
 
 instance Arbitrary KeyboardButton where
+  arbitrary = genericArbitrary uniform
+
+instance Arbitrary Playerctl.Action where
   arbitrary = genericArbitrary uniform
