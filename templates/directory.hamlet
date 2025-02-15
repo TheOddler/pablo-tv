@@ -50,9 +50,10 @@ $if isJust mInfo
             <div>
           $else
             <i class="fa-solid fa-check">
-          <span>#{watchedCount}/#{totalCount} 
+          <span>#{watchedCount}/#{totalCount}
         $nothing
           <i class="fa-regular fa-circle-question" title="Unparsed folder, refresh data to parse.">
+          <span>?/?
 
 
 $if showRefreshButton
