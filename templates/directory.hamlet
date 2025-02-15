@@ -2,19 +2,19 @@ $if isJust mInfo
   <img src=@{ImageR segments} alt="🖼️ Missing poster ☹️" class="header" onerror="this.style.display = 'none'">
 <h1>#{title}
 
-$if (not $ null files)
-  $case (directoryInfoKind <$> mInfo)
-    $of Nothing
-      <h2>Files
-    $of Just DirectoryKindSeries
-      <h2>Episodes
-    $of Just DirectoryKindMovie
-      $if (length files > 1)
-        <h2>Parts
-  
-  <ul>
+<div class="section">
+  $if (not $ null files)
+    $case (directoryInfoKind <$> mInfo)
+      $of Nothing
+        <h1>Files
+      $of Just DirectoryKindSeries
+        <h1>Episodes
+      $of Just DirectoryKindMovie
+        $if (length files > 1)
+          <h1>Parts
+    
     $if (length files > 1)
-      <li class="white">
+      <div class="row white">
         <a href="#" class="large name" onclick="playAll(event)">
           <i class="fa-solid fa-play">
           <span>Play All
@@ -23,7 +23,7 @@ $if (not $ null files)
         <a href="#" onclick="markAllAsUnwatched(event)" title="Mark all as unwatched">
           <i class="fa-regular fa-eye-slash">
     $forall (path, name) <- files
-      <li class="#{watchedClassFile path}" data-path="#{mkAbsFilePath path}">
+      <div class="row #{watchedClassFile path}" data-path="#{mkAbsFilePath path}">
         <a href="#" class="name" onclick="playPath(event)">
           <i class="fa-solid fa-play">
           <span>#{name}
@@ -32,28 +32,27 @@ $if (not $ null files)
         <a href="#" onclick="markAsUnwatched(event)" title="Mark as unwatched">
           <i class="fa-regular fa-eye-slash">
 
-
-$if (not $ null dirs)
-  $if (not $ null files)
-    $case (directoryInfoKind <$> mInfo)
-      $of Just DirectoryKindSeries
-        <h2>Seasons
-      $of _
-        <h2>Directories
-  <ul>
+<div class="section">
+  $if (not $ null dirs)
+    $if (not $ null files)
+      $case (directoryInfoKind <$> mInfo)
+        $of Just DirectoryKindSeries
+          <h1>Seasons
+        $of _
+          <h1>Directories
     $forall (path, name, mWatched) <- dirs
-      <li class="#{watchedClassDir mWatched}">
+      <div class="row #{watchedClassDir mWatched}">
         <a href=@{DirectoryR $ mkSegments path} class="name">
           <i class="fa-regular fa-folder-open">
           <span>#{name}
-          $maybe (watchedCount, totalCount) <- mWatched
-            $if watchedCount < totalCount
-              <i class="fa-regular fa-eye">
-            $else
-              <i class="fa-solid fa-check">
-            #{watchedCount}/#{totalCount} 
-          $nothing
-            <i class="fa-regular fa-circle-question" title="Unparsed folder, refresh data to parse.">
+        $maybe (watchedCount, totalCount) <- mWatched
+          $if watchedCount < totalCount
+            <div>
+          $else
+            <i class="fa-solid fa-check">
+          <span>#{watchedCount}/#{totalCount} 
+        $nothing
+          <i class="fa-regular fa-circle-question" title="Unparsed folder, refresh data to parse.">
 
 
 $if showRefreshButton
