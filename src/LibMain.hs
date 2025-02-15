@@ -23,7 +23,7 @@ import Data.ByteString.Char8 qualified as BS
 import Data.Char (isSpace, toLower)
 import Data.List (find, foldl')
 import Data.List.Extra (notNull, replace)
-import Data.Maybe (fromMaybe, isJust)
+import Data.Maybe (fromMaybe, isJust, isNothing)
 import Data.String (fromString)
 import Data.Text (Text, intercalate, unpack)
 import Data.Text qualified as T
@@ -161,7 +161,7 @@ instance Yesod App where
             listToMaybe $
               sortWith networkInterfaceWorthiness networkInterfaces
       port <- getsYesod appPort
-      inReadOnlyMode <- isJust <$> getsYesod appTVDBToken
+      inReadOnlyMode <- isNothing <$> getsYesod appTVDBToken
 
       addScript $ StaticR static_reconnecting_websocket_js
       addStylesheet $ StaticR static_fontawesome_css_all_min_css
@@ -447,7 +447,8 @@ main = do
         Nothing -> Nothing
         Just t | all isSpace t -> Nothing
         Just t -> Just $ TVDBToken $ BS.pack t
-  putStrLn "No tvdb token found, so running in read-only mode."
+  when (isNothing tvdbToken) $
+    putStrLn "No tvdb token found, so running in read-only mode."
 
   inputDevice <- mkInputDevice
   tvState <- newTVarIO startingTVState
