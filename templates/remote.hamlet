@@ -10,11 +10,11 @@
 
   <div class="row">
     <div>
-    <button onclick="sendAction('#{ActionPressKeyboard KeyboardMediaPrevious}')">
+    <button onclick="sendAction('#{ActionMedia ActionPrevious}')">
       <i class="fa-solid fa-angles-left">
     <div class="large">
       Play<wbr>list
-    <button onclick="sendAction('#{ActionPressKeyboard KeyboardMediaNext}')">
+    <button onclick="sendAction('#{ActionMedia ActionNext}')">
       <i class="fa-solid fa-angles-right">
     <div>
 
@@ -22,7 +22,7 @@
 
   <div class="row">
     <div>
-    <button class="large" onclick="sendAction('#{ActionPressKeyboard KeyboardPlayPause}')">
+    <button class="large" onclick="sendAction('#{ActionMedia ActionPlayPause}')">
       $# The extra div makes the scaling look better when button is pressed
       <div>
         <i class="fa-solid fa-play">
@@ -35,9 +35,11 @@
         <i class="fa-solid fa-minus">
 
   <div class="row">
-    <div>
-    <button onclick="sendAction('#{ActionPressKeyboard KeyboardMediaBackward}')">
+    <button onclick="sendAction('#{ActionMedia ActionBackwardJump}')">
+      <i class="fa-solid fa-backward-fast">
+    <button onclick="sendAction('#{ActionMedia ActionBackwardStep}')">
       <i class="fa-solid fa-backward-step">
-    <button onclick="sendAction('#{ActionPressKeyboard KeyboardMediaForward}')">
+    <button onclick="sendAction('#{ActionMedia ActionForwardStep}')">
       <i class="fa-solid fa-forward-step">
-    <div>
+    <button onclick="sendAction('#{ActionMedia ActionForwardJump}')">
+      <i class="fa-solid fa-forward-fast">

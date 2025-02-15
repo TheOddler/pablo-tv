@@ -17,6 +17,7 @@ import Evdev.Codes
 import Evdev.Uinput
 import GHC.Conc (TVar, atomically, readTVar, writeTVar)
 import Path (Abs, Dir, File, Path, fromAbsDir, fromAbsFile, isProperPrefixOf, parseAbsDir, parseAbsFile)
+import Playerctl qualified
 import SafeMaths (int32ToInteger)
 import System.Process (callProcess, readProcess)
 import TVState (TVState (..))
@@ -52,6 +53,7 @@ data Action
   | ActionCloseWindow
   | ActionOpenUrlOnTV Text
   | ActionRefreshTVState
+  | ActionMedia Playerctl.Action
   deriving (Show, Eq)
   deriving (FromJSON) via (Autodocodec Action)
 
@@ -102,6 +104,7 @@ instance HasObjectCodec Action where
         ActionCloseWindow -> ("CloseWindow", noFieldEncoder)
         ActionOpenUrlOnTV url -> ("OpenUrlOnTV", oneFieldEncoder "url" url)
         ActionRefreshTVState -> ("RefreshTVState", noFieldEncoder)
+        ActionMedia url -> ("Media", oneFieldEncoder "action" url)
       dec :: HashMap.HashMap Discriminator (Text, ObjectCodec Void Action)
       dec =
         HashMap.fromList
@@ -134,7 +137,8 @@ instance HasObjectCodec Action where
             ),
             ("CloseWindow", ("ActionCloseWindow", noFieldDecoder ActionCloseWindow)),
             ("OpenUrlOnTV", ("ActionOpenUrlOnTV", oneFieldDecoder ActionOpenUrlOnTV "url")),
-            ("RefreshTVState", ("ActionRefreshTVState", noFieldDecoder ActionRefreshTVState))
+            ("RefreshTVState", ("ActionRefreshTVState", noFieldDecoder ActionRefreshTVState)),
+            ("Media", ("ActionMedia", oneFieldDecoder ActionMedia "action"))
           ]
 
 instance ToJavascript Action where
@@ -168,12 +172,6 @@ data KeyboardButton
   | KeyboardDownArrow
   | KeyboardVolumeUp
   | KeyboardVolumeDown
-  | KeyboardPlayPause
-  | KeyboardMediaNext
-  | KeyboardMediaPrevious
-  | KeyboardMediaForward
-  | KeyboardMediaBackward
-  | KeyboardMediaStop
   deriving (Show, Eq, Bounded, Enum)
 
 instance HasCodec KeyboardButton where
@@ -188,12 +186,6 @@ instance HasCodec KeyboardButton where
       KeyboardDownArrow -> "down"
       KeyboardVolumeUp -> "volumeUp"
       KeyboardVolumeDown -> "volumeDown"
-      KeyboardPlayPause -> "playPause"
-      KeyboardMediaNext -> "mediaNext"
-      KeyboardMediaPrevious -> "mediaPrevious"
-      KeyboardMediaForward -> "mediaForward"
-      KeyboardMediaBackward -> "mediaBackward"
-      KeyboardMediaStop -> "mediaStop"
 
 keyboardButtonToEvdevKey :: KeyboardButton -> Key
 keyboardButtonToEvdevKey = \case
@@ -206,12 +198,6 @@ keyboardButtonToEvdevKey = \case
   KeyboardDownArrow -> KeyDown
   KeyboardVolumeUp -> KeyVolumeup
   KeyboardVolumeDown -> KeyVolumedown
-  KeyboardPlayPause -> KeyPlaypause
-  KeyboardMediaNext -> KeyNextsong
-  KeyboardMediaPrevious -> KeyPrevioussong
-  KeyboardMediaForward -> KeyFastforward
-  KeyboardMediaBackward -> KeyRewind
-  KeyboardMediaStop -> KeyStopcd
 
 actionsWebSocket :: (MonadHandler m) => Device -> TVar TVState -> MVar () -> WebSocketsT m ()
 actionsWebSocket inputDevice tvStateTVar videoDataRefreshTrigger = forever $ do
@@ -294,6 +280,8 @@ performAction inputDevice tvStateTVar videoDataRefreshTrigger action = do
       success <- tryPutMVar videoDataRefreshTrigger ()
       when (not success) $
         putStrLn "Already refreshing"
+    ActionMedia playerCtlAction ->
+      Playerctl.performAction playerCtlAction
   where
     clickKeyCombo keys =
       map (`KeyEvent` Pressed) keys

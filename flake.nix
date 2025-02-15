@@ -20,6 +20,7 @@
         ];
         runtimeInputs = with pkgs; [
           libevdev
+          playerctl
         ];
       in
       rec {

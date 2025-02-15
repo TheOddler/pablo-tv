@@ -67,6 +67,7 @@ import Path
     (</>),
   )
 import Path.IO (doesDirExist, doesFileExist, getHomeDir, listDir)
+import Playerctl (Action (..))
 import System.Environment (lookupEnv)
 import System.FilePath (dropTrailingPathSeparator)
 import System.Process (callProcess)
