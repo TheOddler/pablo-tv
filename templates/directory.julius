@@ -25,6 +25,7 @@ function mkWatchedChangingFunction(actionTag, watchedStatus) {
 
     if (response.ok) {
       pathElement.classList.toggle("watched", watchedStatus);
+      pathElement.classList.toggle("unwatched", !watchedStatus);
     }
   };
 }
@@ -72,6 +73,7 @@ function mkAllWatchedChangingFunction(action, watchedStatus) {
       const elements = document.querySelectorAll('[data-path]');
       elements.forEach((element) => {
         element.classList.toggle("watched", watchedStatus);
+        element.classList.toggle("unwatched", !watchedStatus);
       });
     }
   };
