@@ -32,13 +32,6 @@ img.header {
     /* display: contents makes it as if the element doesn't exist, and thus the children will be in the grid */
     display: contents;
 
-    // Border
-    border-bottom: 100px solid white;
-
-    &:last-child {
-      border-bottom: none;
-    }
-
     .name {
       overflow: hidden;
       text-overflow: ellipsis;
