@@ -53,7 +53,7 @@ $if isJust mInfo
           <span>#{watchedCount}/#{totalCount}
         $nothing
           <i class="fa-regular fa-circle-question" title="Unparsed folder, refresh data to parse.">
-          <span>?/?
+          <span title="Unparsed folder, refresh data to parse.">?/?
 
 
 $if showRefreshButton
