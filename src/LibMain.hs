@@ -22,7 +22,8 @@ import Control.Monad (filterM, when)
 import Data.Aeson (Result (..))
 import Data.ByteString.Char8 qualified as BS
 import Data.Char (isSpace, toLower)
-import Data.List (find, foldl')
+import Data.HashMap.Strict qualified as Map
+import Data.List (foldl')
 import Data.List.Extra (notNull, replace)
 import Data.Maybe (fromMaybe, isJust, isNothing)
 import Data.String (fromString)
@@ -31,7 +32,6 @@ import Data.Text qualified as T
 import Data.Text qualified as Text
 import Data.Text.Encoding (decodeUtf8Lenient)
 import Data.Time (diffUTCTime, getCurrentTime)
-import Data.Tuple.Extra (fst3)
 import Directory
   ( DirectoryInfo (..),
     DirectoryKind (..),
@@ -221,7 +221,8 @@ getHomeR = do
 
   -- Get proper data (we got this async from the state)
   tvState <- liftIO $ readTVarIO tvStateTVar
-  let videoData = tvVideoData tvState
+  let videoDataMap = tvVideoData tvState
+      videoData = (\(a, (b, c)) -> (a, b, c)) <$> Map.toList videoDataMap
   let mkRandom =
         -- When in dev we auto-reload the page every second or so,
         -- so we want the same random shuffle every time, otherwise the page
@@ -327,7 +328,7 @@ getDirectoryR segments = do
 
   let files :: [(Path Abs File, Text)]
       files = map (\f -> (absPath </> f, niceFileNameT f)) dirRaw.directoryVideoFiles
-  let getDirData p = find ((==) p . fst3) dirDatas
+  let getDirData p = Map.lookup p dirDatas
       getDir dirName = do
         let path = absPath </> dirName
         case getDirData path of
@@ -350,7 +351,7 @@ getDirectoryR segments = do
                 niceDirNameT dirName,
                 Nothing
               )
-          Just (_, dirInfo, watched) ->
+          Just (dirInfo, watched) ->
             pure
               ( dirName,
                 dirInfo.directoryInfoTitle,
@@ -474,10 +475,10 @@ main = do
         infosWithPath <- case tvdbToken' of
           Nothing -> readAllDirectoryInfos
           Just t -> updateAllDirectoryInfos t
-        let addFSInfo (path, info) = do
+        let addFSInfo path info = do
               infoFS <- readWatchedInfoAgg path
-              pure (path, info, infoFS)
-        infos <- mapM addFSInfo infosWithPath
+              pure (info, infoFS)
+        infos <- Map.traverseWithKey addFSInfo $ Map.fromList infosWithPath
         atomically $ do
           state <- readTVar tvState
           writeTVar tvState state {tvVideoData = infos}
