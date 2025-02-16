@@ -16,7 +16,6 @@ import Language.Haskell.TH.Syntax (Exp, Q)
 import Network.Info (IPv4 (..), NetworkInterface (..))
 import System.Random (RandomGen)
 import System.Random.Shuffle (shuffle')
-import Text.Julius qualified as Julius
 import Yesod
 import Yesod.Default.Util (widgetFileNoReload, widgetFileReload)
 
@@ -28,13 +27,6 @@ widgetFile =
     else widgetFileNoReload settings
   where
     settings = def
-
--- | Load a julius file, automatically reloading it in development.
-juliusFile :: String -> Q Exp
-juliusFile =
-  if isDevelopment
-    then Julius.juliusFile
-    else Julius.juliusFileReload
 
 -- | Run an action whenever the value of the 'TVar' changes.
 onChanges :: (Eq a, MonadIO m) => TVar a -> (a -> a -> m ()) -> m b
@@ -73,15 +65,6 @@ showIpV4OrV6WithPort port i =
   )
     ++ ":"
     ++ show port
-
--- | Convert a route to a URL for the current website
-toUrl :: (MonadHandler m, Yesod (HandlerSite m), RenderRoute a) => Route a -> m LBS.ByteString
-toUrl route = do
-  site <- getYesod
-  request <- waiRequest
-  let (segments, parameters) = renderRoute route
-  let root = getApprootText approot site request
-  pure $ toLazyByteString $ joinPath site root segments parameters
 
 -- | Convert a route to a URL for the current website
 toUrlRel :: (MonadHandler m, Yesod (HandlerSite m), RenderRoute a) => Route a -> m LBS.ByteString

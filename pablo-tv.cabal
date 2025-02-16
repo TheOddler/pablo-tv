@@ -30,6 +30,7 @@ common defaults
         -rtsopts
         -with-rtsopts=-N
         -freverse-errors
+        -fwrite-ide-info
     default-extensions:
         LambdaCase
         OverloadedRecordDot

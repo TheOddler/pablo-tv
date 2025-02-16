@@ -17,6 +17,7 @@
           hlint
           watchexec
           nil
+          haskellPackages.weeder
         ];
         runtimeInputs = with pkgs; [
           libevdev
