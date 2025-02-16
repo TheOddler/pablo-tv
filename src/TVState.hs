@@ -33,7 +33,7 @@ tvStateWebSocket tvStateTVar =
     ignoreWatchedInfo tvSate = drop3rd <$> tvSate.tvVideoData
     drop3rd (a, b, _) = (a, b)
 
-addToAggWatched :: TVar TVState -> Path Abs a -> Int -> IO ()
+addToAggWatched :: TVar TVState -> Path Abs Dir -> Int -> IO ()
 addToAggWatched _ _ 0 = pure ()
 addToAggWatched tvStateTVar path amount = atomically $ do
   tvState <- readTVar tvStateTVar
@@ -41,7 +41,8 @@ addToAggWatched tvStateTVar path amount = atomically $ do
   writeTVar tvStateTVar updatedState
   where
     doUpdate (p, dirIfo, watchedInfo)
-      | p `isProperPrefixOf` path =
+      | p == path
+          || p `isProperPrefixOf` path =
           ( p,
             dirIfo,
             watchedInfo

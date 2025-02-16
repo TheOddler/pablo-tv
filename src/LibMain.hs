@@ -501,7 +501,7 @@ main = do
             result <- try $ markFileAsWatched path
             case result of
               Right AlreadyWatched -> pure ()
-              Right MarkedAsWatched -> addToAggWatched tvState path 1
+              Right MarkedAsWatched -> addToAggWatched tvState (parent path) 1
               Left (e :: SomeException) -> putStrLn $ "Failed marking as watched in thread: " ++ displayException e
 
   -- The thread for the app

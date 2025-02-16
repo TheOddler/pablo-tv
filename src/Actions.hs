@@ -17,7 +17,7 @@ import Data.Void (Void)
 import Evdev.Codes
 import Evdev.Uinput
 import GHC.Conc (TVar, atomically, readTVar, writeTVar)
-import Path (Abs, Dir, File, Path, fromAbsDir, fromAbsFile, parseAbsDir, parseAbsFile)
+import Path (Abs, Dir, File, Path, fromAbsDir, fromAbsFile, parent, parseAbsDir, parseAbsFile)
 import Playerctl qualified
 import SafeMaths (int32ToInteger)
 import System.Process (callProcess, readProcess)
@@ -297,7 +297,7 @@ performAction inputDevice tvStateTVar videoDataRefreshTrigger action = do
         File path ->
           markFileAsWatched path >>= \case
             AlreadyWatched -> pure ()
-            MarkedAsWatched -> addToAggWatched tvStateTVar path 1
+            MarkedAsWatched -> addToAggWatched tvStateTVar (parent path) 1
 
     markDirOrFileAsUnwatched dirOrFile =
       case dirOrFile of
@@ -307,7 +307,7 @@ performAction inputDevice tvStateTVar videoDataRefreshTrigger action = do
         File path ->
           markFileAsUnwatched path >>= \case
             AlreadyUnwatched -> pure ()
-            MarkedAsUnwatched -> addToAggWatched tvStateTVar path (-1)
+            MarkedAsUnwatched -> addToAggWatched tvStateTVar (parent path) (-1)
 
 charToKey :: Char -> [Key]
 charToKey = \case
