@@ -17,6 +17,7 @@ import System.Posix qualified as Posix
 -- | Can read from the file system
 class (Monad m) => FSRead m where
   getHomeDir :: m (Path Abs Dir)
+  listDirAbs :: Path Abs Dir -> m ([Path Abs Dir], [Path Abs File])
   listDirRel :: Path Abs Dir -> m ([Path Rel Dir], [Path Rel File])
   listDirRecur :: Path Abs Dir -> m ([Path Abs Dir], [Path Abs File])
   readFileBSSafe :: Path Abs File -> m (Maybe BS8.ByteString)
@@ -25,6 +26,7 @@ class (Monad m) => FSRead m where
 
 instance FSRead IO where
   getHomeDir = Path.getHomeDir
+  listDirAbs = Path.listDir
   listDirRel = Path.listDirRel
   listDirRecur = Path.listDirRecur
   readFileBSSafe path = do

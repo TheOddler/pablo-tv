@@ -5,15 +5,19 @@
         $if notNull dirData
           <h1>#{name}
           <div class="row">
-            $forall (name, segments, watchedCount, totalCount) <- dirData
+            $forall (name, segments, mWatched) <- dirData
               <a class="el" href=@{DirectoryR segments}>
                 <img src=@{ImageR segments} alt="#{name}" loading="lazy">
                 <div class="watched">
-                  $if watchedCount < totalCount
+                  $maybe WatchedInfoAgg _ _ _ totalCount watchedCount <- mWatched
+                    $if watchedCount < totalCount
+                      <i class="fa-regular fa-eye">
+                    $else
+                      <i class="fa-solid fa-check">
+                    #{watchedCount}/#{totalCount}
+                  $nothing
                     <i class="fa-regular fa-eye">
-                  $else
-                    <i class="fa-solid fa-check">
-                  #{watchedCount}/#{totalCount} 
+                    ?/?
       $of ExternalLinks name links
         <h1>#{name}
         <div class="row">

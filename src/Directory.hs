@@ -8,9 +8,13 @@ module Directory
     readDirectoryInfoRec,
     readAllDirectoryInfos,
     updateAllDirectoryInfos,
+    updateAllDirectoryInfosGuessOnly,
     getVideoDirPath,
     niceFileNameT,
     niceDirNameT,
+    TopLevelDir,
+    getTopLevelDirs,
+    topLevelToAbsDir,
     -- For testing
     guessDirectoryInfo,
     isVideoFile,
@@ -30,9 +34,9 @@ import Autodocodec.Codec (optionalFieldWithDefaultWith)
 import Autodocodec.Yaml (eitherDecodeYamlViaCodec, encodeYamlViaCodec)
 import Control.Applicative ((<|>))
 import Control.Monad (forM)
-import Control.Monad.Extra (whenJust)
 import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BS8
+import Data.Hashable (Hashable)
 import Data.List (sortBy)
 import Data.List.NonEmpty (group)
 import Data.List.NonEmpty qualified as NE
@@ -107,11 +111,29 @@ data DirectoryRaw = DirectoryRaw
   }
   deriving (Show, Eq)
 
-getVideoDirPath :: (FSRead m) => m (Path Abs Dir)
+-- | A root directory. Currently this is just the local video folder, but the idea is I'll be able to support more at some point.
+newtype RootDir = RootDir (Path Abs Dir)
+
+-- rootToAbsDir :: RootDir -> Path Abs Dir
+-- rootToAbsDir (RootDir dir) = dir
+
+getVideoDirPath :: (FSRead m) => m RootDir
 getVideoDirPath = do
   home <- getHomeDir
   let videoDirName = $(mkRelDir "Videos")
-  pure $ home </> videoDirName
+  pure $ RootDir $ home </> videoDirName
+
+-- | A directory inside a root dir. This is the only place where we'll automatically create info files.
+newtype TopLevelDir = TopLevelDir (Path Abs Dir)
+  deriving (Eq, Hashable)
+
+topLevelToAbsDir :: TopLevelDir -> Path Abs Dir
+topLevelToAbsDir (TopLevelDir dir) = dir
+
+getTopLevelDirs :: (FSRead m) => RootDir -> m [TopLevelDir]
+getTopLevelDirs (RootDir root) = do
+  (dirs, _files) <- listDirAbs root
+  pure $ TopLevelDir <$> dirs
 
 -- | This reads a directory and returns the video files and directories in it.
 -- Also sorts these lists in a natural way (putting 2 before 10, for example).
@@ -225,9 +247,17 @@ downloadDirectoryInfo tvdbToken startingInfo = do
 
   pure (extendedInfo, mTVDBData >>= tvdbDataImage)
 
-writeDirectoryInfo :: (FSWrite m) => Path Abs Dir -> DirectoryInfo -> Maybe Image -> m ()
+writeDirectoryInfo :: (FSWrite m, Logger m) => TopLevelDir -> DirectoryInfo -> Maybe Image -> m ()
 writeDirectoryInfo dir info mImage = do
-  writeFileBS (mkDirInfoFilePath dir) (encodeYamlViaCodec info)
+  -- Make a backup if a file already exists, do this without parsing it, as it might (have) fail(ed) parsing
+  let infoFilePath = mkDirInfoFilePath $ topLevelToAbsDir dir
+  case addExtension ".backup" infoFilePath of
+    Just backupPath ->
+      renameFileSafe infoFilePath backupPath
+    Nothing -> logStr $ "Failed to make backup file name: " ++ toFilePath infoFilePath
+
+  -- Write the info to disk
+  writeFileBS infoFilePath (encodeYamlViaCodec info)
   case mImage of
     Just (contentType, imgBytes) -> writeImage dir contentType imgBytes
     Nothing -> pure ()
@@ -235,9 +265,9 @@ writeDirectoryInfo dir info mImage = do
 -- | Reads the existing directory info, if it exists and update is wanted it does,
 -- if not makes a guess and tries to get data online.
 -- Returns the updated (or existing) info.
-updateDirectoryInfo :: (FSRead m, NetworkRead m, FSWrite m, Logger m) => TVDBToken -> Path Abs Dir -> m DirectoryInfo
+updateDirectoryInfo :: (FSRead m, NetworkRead m, FSWrite m, Logger m) => TVDBToken -> TopLevelDir -> m DirectoryInfo
 updateDirectoryInfo tvdbToken dir = do
-  existingInfo <- readDirectoryInfo dir
+  existingInfo <- readDirectoryInfo $ topLevelToAbsDir dir
   case existingInfo of
     Just info
       | info.directoryInfoForceUpdate == Just True -> do
@@ -245,66 +275,64 @@ updateDirectoryInfo tvdbToken dir = do
     Just info ->
       pure info
     Nothing -> do
-      dirRaw <- readDirectoryRaw dir
-      let guessedInfo = guessDirectoryInfo dirRaw
-      updateAndWrite guessedInfo
+      dirRaw <- readDirectoryRaw $ topLevelToAbsDir dir
+      updateAndWrite $ guessDirectoryInfo dirRaw
   where
     updateAndWrite info = do
-      -- Make a backup if a file already exists,
-      -- do this without parsing it, as it might (have) fail(ed) parsing
-      let infoFilePath = mkDirInfoFilePath dir
-      case addExtension ".backup" infoFilePath of
-        Just backupPath ->
-          renameFileSafe infoFilePath backupPath
-        Nothing -> logStr $ "Failed to make backup file name: " ++ toFilePath infoFilePath
-      -- Get the new data and write it to disk
       (extendedInfo, mImage) <- downloadDirectoryInfo tvdbToken info
       writeDirectoryInfo dir extendedInfo mImage
       pure extendedInfo
 
+-- | Similar to `updateDirectoryInfo` but only guesses, without downloading info.
+-- So does not need a TVDBToken.
+updateDirectoryInfoGuessOnly :: (FSRead m, FSWrite m, Logger m) => TopLevelDir -> m DirectoryInfo
+updateDirectoryInfoGuessOnly dir = do
+  existingInfo <- readDirectoryInfo $ topLevelToAbsDir dir
+  case existingInfo of
+    Just info ->
+      pure info
+    Nothing -> do
+      dirRaw <- readDirectoryRaw $ topLevelToAbsDir dir
+      let guessedInfo = guessDirectoryInfo dirRaw
+      writeDirectoryInfo dir guessedInfo Nothing
+      pure guessedInfo
+
 -- | This reads all the directory infos in the video directory.
 -- This will not update anything. For that use `updateAllDirectoryInfos`
-readAllDirectoryInfos :: (FSRead m, Logger m) => m [(Path Abs Dir, DirectoryInfo)]
-readAllDirectoryInfos = do
-  videoDirPath <- getVideoDirPath
-  videoDirRaw <- readDirectoryRaw videoDirPath
-
-  infos <- forM videoDirRaw.directoryDirectories $ \dir -> do
-    let absPath = videoDirPath </> dir
-    info <- readDirectoryInfo absPath
-    pure $ (absPath,) <$> info
-
-  pure $ catMaybes infos
+readAllDirectoryInfos :: (FSRead m, Logger m) => m [(TopLevelDir, DirectoryInfo)]
+readAllDirectoryInfos =
+  updateAll (readDirectoryInfo . topLevelToAbsDir)
 
 -- | This updates all directory infos in the video directory.
 -- It will download more information from TVDB, and write the new info to disk.
-updateAllDirectoryInfos :: (FSRead m, NetworkRead m, FSWrite m, Logger m) => TVDBToken -> m [(Path Abs Dir, DirectoryInfo)]
-updateAllDirectoryInfos tvdbToken = do
+updateAllDirectoryInfos :: (FSRead m, NetworkRead m, FSWrite m, Logger m) => TVDBToken -> m [(TopLevelDir, DirectoryInfo)]
+updateAllDirectoryInfos tvdbToken =
+  updateAll (fmap Just . updateDirectoryInfo tvdbToken)
+
+updateAllDirectoryInfosGuessOnly :: (FSRead m, FSWrite m, Logger m) => m [(TopLevelDir, DirectoryInfo)]
+updateAllDirectoryInfosGuessOnly =
+  updateAll (fmap Just . updateDirectoryInfoGuessOnly)
+
+-- | A helper function to update and get all the information
+updateAll :: (FSRead m) => (TopLevelDir -> m (Maybe DirectoryInfo)) -> m [(TopLevelDir, DirectoryInfo)]
+updateAll gatherFunc = do
   videoDirPath <- getVideoDirPath
-  videoDirRaw <- readDirectoryRaw videoDirPath
+  dirs <- getTopLevelDirs videoDirPath
 
-  whenJust (NE.nonEmpty videoDirRaw.directoryVideoFiles) $ \files ->
-    logStr . unlines $
-      [ "Found video files in root video folder.",
-        "You'll still see these as videos on the main page, but no metadata will be downloaded for them.",
-        "Place them in a folder with the movie or series name to get metadata.",
-        "The files are:"
-      ]
-        ++ NE.toList (fromRelFile <$> files)
+  infos <- forM dirs $ \dir -> do
+    info <- gatherFunc dir
+    pure $ (dir,) <$> info
 
-  forM videoDirRaw.directoryDirectories $ \dir -> do
-    let absPath = videoDirPath </> dir
-    info <- updateDirectoryInfo tvdbToken absPath
-    pure (absPath, info)
+  pure $ catMaybes infos
 
 dirInfoFileName :: Path Rel File
 dirInfoFileName = $(mkRelFile "info.yaml")
 
 mkDirInfoFilePath :: Path Abs Dir -> Path Abs File
-mkDirInfoFilePath root = root </> dirInfoFileName
+mkDirInfoFilePath dir = dir </> dirInfoFileName
 
-writeImage :: (FSWrite m) => Path Abs Dir -> ContentType -> BS.ByteString -> m ()
-writeImage rootDir contentType imgBytes =
+writeImage :: (FSWrite m) => TopLevelDir -> ContentType -> BS.ByteString -> m ()
+writeImage (TopLevelDir dir) contentType imgBytes =
   let extension' =
         if BS.isPrefixOf "image/" contentType
           then Just $ BS.drop 6 contentType
@@ -315,7 +343,7 @@ writeImage rootDir contentType imgBytes =
         ext <- extension
         parseRelFile $ BS8.unpack $ "poster." <> ext
 
-      path = rootDir </> name
+      path = dir </> name
    in writeFileBS path imgBytes
 
 guessDirectoryKind :: DirectoryRaw -> DirectoryKind

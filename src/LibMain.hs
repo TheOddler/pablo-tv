@@ -32,18 +32,25 @@ import Data.Text qualified as T
 import Data.Text qualified as Text
 import Data.Text.Encoding (decodeUtf8Lenient)
 import Data.Time (diffUTCTime, getCurrentTime)
+import Data.Time.Clock.POSIX (posixSecondsToUTCTime)
 import Directory
   ( DirectoryInfo (..),
     DirectoryKind (..),
     DirectoryRaw (..),
+    TopLevelDir,
+    getTopLevelDirs,
+    getVideoDirPath,
     niceDirNameT,
     niceFileNameT,
     readAllDirectoryInfos,
     readDirectoryInfoRec,
     readDirectoryRaw,
+    topLevelToAbsDir,
     updateAllDirectoryInfos,
+    updateAllDirectoryInfosGuessOnly,
   )
 import Evdev.Uinput (Device)
+import Foreign.C (CTime (..))
 import GHC.Conc (TVar, atomically, newTVarIO, readTVar, readTVarIO, writeTVar)
 import GHC.Data.Maybe (firstJustsM, listToMaybe, orElse)
 import GHC.MVar (MVar, newMVar)
@@ -196,7 +203,7 @@ type WatchedCount = Int
 
 type TotalCount = Int
 
-type DirData = (DirName, DirSegments, WatchedCount, TotalCount)
+type DirData = (DirName, DirSegments, Maybe WatchedInfoAgg)
 
 type ImageRoute = Route App
 
@@ -221,23 +228,39 @@ getHomeR = do
 
   -- Get proper data (we got this async from the state)
   tvState <- liftIO $ readTVarIO tvStateTVar
-  let videoDataMap = tvVideoData tvState
-      videoData = (\(a, (b, c)) -> (a, b, c)) <$> Map.toList videoDataMap
+  videoDirPath <- liftIO getVideoDirPath
+  topLevelDirs <- liftIO $ getTopLevelDirs videoDirPath
+  let getDirData :: TopLevelDir -> DirData
+      getDirData dir =
+        let path = topLevelToAbsDir dir
+            dirName = dirname path
+            segments = fileNameToSegments dirName
+            dirInfo = Map.lookup dir tvState.tvVideoData
+         in ( maybe (niceDirNameT dirName) (directoryInfoTitle . fst) dirInfo,
+              segments,
+              snd <$> dirInfo
+            )
+  let videoData :: [DirData]
+      videoData = getDirData <$> topLevelDirs
   let mkRandom =
         -- When in dev we auto-reload the page every second or so,
         -- so we want the same random shuffle every time, otherwise the page
         -- keeps changing which is annoying.
         if isDevelopment then pure (mkStdGen 2) else initStdGen
   randomGenerator <- mkRandom
-  let isUnwatched (_, _, i) = i.watchedInfoPlayedVideoFileCount < i.watchedInfoVideoFileCount
+  let isUnwatched (_, _, Nothing) = True
+      isUnwatched (_, _, Just watched) = watched.watchedInfoPlayedVideoFileCount < watched.watchedInfoVideoFileCount
       unwatched = filter isUnwatched videoData
-      recentlyAdded (_, _, i) = (-i.watchedInfoLastModified)
+      recentlyAdded (_, _, Nothing) = CTime maxBound
+      recentlyAdded (_, _, Just i) = (-i.watchedInfoLastModified)
+      recentlyWatched (_, _, Nothing) = (posixSecondsToUTCTime 0, CTime minBound)
+      recentlyWatched (_, _, Just i) = (i.watchedInfoLastWatched, i.watchedInfoLastAccessed)
 
   let sections =
         [ LocalVideos "New" $
-            mkDirData <$> sortWith recentlyAdded unwatched,
+            sortWith recentlyAdded unwatched,
           LocalVideos "Random" $
-            mkDirData <$> shuffle unwatched randomGenerator,
+            shuffle unwatched randomGenerator,
           ExternalLinks
             "External Links"
             [ ("YouTube", StaticR static_images_youtube_png, "https://www.youtube.com/feed/subscriptions"),
@@ -245,28 +268,17 @@ getHomeR = do
               ("Apple TV+", StaticR static_images_apple_tv_plus_png, "https://tv.apple.com")
             ],
           LocalVideos "Recently Added" $
-            mkDirData <$> sortWith recentlyAdded videoData,
+            sortWith recentlyAdded videoData,
           LocalVideos "Random (All)" $
-            mkDirData <$> shuffle videoData randomGenerator,
+            shuffle videoData randomGenerator,
           LocalVideos "Recently Watched" . reverse $
-            let recentlyWatched (_, _, i) = (i.watchedInfoLastWatched, i.watchedInfoLastAccessed)
-             in mkDirData <$> sortWith recentlyWatched videoData
+            sortWith recentlyWatched videoData
         ]
 
   defaultLayout "Home" $(widgetFile "home")
   where
     fileNameToSegments :: Path Rel a -> [Text]
     fileNameToSegments f = [T.pack $ toFilePath f]
-
-    mkDirData ::
-      (Path Abs Dir, DirectoryInfo, WatchedInfoAgg) -> DirData
-    mkDirData (path, info, watchedInfo) =
-      let segments = fileNameToSegments $ dirname path
-       in ( directoryInfoTitle info,
-            segments,
-            watchedInfo.watchedInfoPlayedVideoFileCount,
-            watchedInfo.watchedInfoVideoFileCount
-          )
 
 postHomeR :: Handler ()
 postHomeR =
@@ -324,19 +336,37 @@ getDirectoryR segments = do
   mPathAndInfo <- liftIO $ readDirectoryInfoRec absPath
   let mInfo = snd <$> mPathAndInfo
   dirRaw <- liftIO $ readDirectoryRaw absPath
-  dirDatas <- tvVideoData <$> (getsYesod appTVState >>= liftIO . readTVarIO)
 
   let files :: [(Path Abs File, Text)]
       files = map (\f -> (absPath </> f, niceFileNameT f)) dirRaw.directoryVideoFiles
-  let getDirData p = Map.lookup p dirDatas
-      getDir dirName = do
-        let path = absPath </> dirName
-        case getDirData path of
-          Nothing | notNull segments -> do
-            -- We're not at the top-level, so we should dynamically read the watched info
-            -- We only do this for non-top-level dirs as there's unlikely to be many
-            -- sub-folders, and the data cannot be gotten from the tv state
-            watched <- liftIO $ readWatchedInfoAgg path
+
+  -- Get the dirs info. Depending on where we are we do different things:
+  -- \* At the root (segments is empty): We have the required data cached in the tv state. We do this because this folder is expected to have many subfolders.
+  -- \* In a sub-dir: We read the required stuff from disk. We do this so we always have to most up-to-date data, and we don't expect too much stuff in here, so should be fine to read anew.
+  dirs :: [(Path Rel Dir, Text, Maybe (Int, Int))] <- case segments of
+    [] -> do
+      tvState <- getsYesod appTVState >>= liftIO . readTVarIO
+      videoDirPath <- liftIO getVideoDirPath
+      topLevelDirs <- liftIO $ getTopLevelDirs videoDirPath
+      let getDir :: TopLevelDir -> (Path Rel Dir, Text, Maybe (Int, Int))
+          getDir dir =
+            let dirName = dirname $ topLevelToAbsDir dir
+                dirInfo = Map.lookup dir tvState.tvVideoData
+             in ( dirName,
+                  maybe (niceDirNameT dirName) (directoryInfoTitle . fst) dirInfo,
+                  case snd <$> dirInfo of
+                    Nothing -> Nothing
+                    Just w ->
+                      Just
+                        ( w.watchedInfoPlayedVideoFileCount,
+                          w.watchedInfoVideoFileCount
+                        )
+                )
+      pure $ getDir <$> topLevelDirs
+    _ -> do
+      let getDir :: Path Rel Dir -> Handler (Path Rel Dir, Text, Maybe (Int, Int))
+          getDir dirName = do
+            watched <- liftIO $ readWatchedInfoAgg $ absPath </> dirName
             pure
               ( dirName,
                 niceDirNameT dirName,
@@ -345,23 +375,7 @@ getDirectoryR segments = do
                     watched.watchedInfoVideoFileCount
                   )
               )
-          Nothing ->
-            pure
-              ( dirName,
-                niceDirNameT dirName,
-                Nothing
-              )
-          Just (dirInfo, watched) ->
-            pure
-              ( dirName,
-                dirInfo.directoryInfoTitle,
-                Just
-                  ( watched.watchedInfoPlayedVideoFileCount,
-                    watched.watchedInfoVideoFileCount
-                  )
-              )
-  -- dirs :: [(Path Rel Dir, Text, Maybe (Int, Int))]
-  dirs <- mapM getDir dirRaw.directoryDirectories
+      mapM getDir dirRaw.directoryDirectories
 
   let mkSegments :: Path Rel x -> [Text]
       mkSegments d = segments ++ [T.pack $ dropTrailingPathSeparator $ toFilePath d]
@@ -470,28 +484,31 @@ main = do
   when (not isDevelopment) $ do
     callProcess "xdg-open" [url]
 
-  let dataUpdate tvdbToken' = do
+  let dataUpdate :: IO [(TopLevelDir, DirectoryInfo)] -> IO ()
+      dataUpdate infoGetter = do
         startTime <- getCurrentTime
-        infosWithPath <- case tvdbToken' of
-          Nothing -> readAllDirectoryInfos
-          Just t -> updateAllDirectoryInfos t
-        let addFSInfo path info = do
-              infoFS <- readWatchedInfoAgg path
-              pure (info, infoFS)
-        infos <- Map.traverseWithKey addFSInfo $ Map.fromList infosWithPath
+        infosWithPath <- infoGetter
+        let addFSInfo (path, info) = do
+              infoFS <- readWatchedInfoAgg $ topLevelToAbsDir path
+              pure (path, (info, infoFS))
+        infos <- mapM addFSInfo infosWithPath
         atomically $ do
           state <- readTVar tvState
-          writeTVar tvState state {tvVideoData = infos}
+          writeTVar
+            tvState
+            state {tvVideoData = Map.fromList infos}
         endTime <- getCurrentTime
         putStrLn $ "Refreshed video data in " ++ show (diffUTCTime endTime startTime)
 
-  -- Do an update once at startup, but without a token so we just do a quick read-only update
-  dataUpdate Nothing
+  -- Do an update once at startup, but only with already available data so we don't do any writes
+  dataUpdate readAllDirectoryInfos
 
   -- In a thread do the data updating async
   let dataThread =
         asyncOnTrigger videoDataRefreshTrigger $
-          dataUpdate tvdbToken
+          dataUpdate $ case tvdbToken of
+            Nothing -> updateAllDirectoryInfosGuessOnly
+            Just t -> updateAllDirectoryInfos t
 
   -- The thread that'll be listening for files being played, and marking them as watched
   let watchedThread =

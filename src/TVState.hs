@@ -4,7 +4,7 @@ module TVState where
 
 import Data.HashMap.Strict as Map
 import Data.Text qualified as T
-import Directory (DirectoryInfo)
+import Directory (DirectoryInfo, TopLevelDir, topLevelToAbsDir)
 import GHC.Conc (TVar, atomically, readTVar, writeTVar)
 import Path (Abs, Dir, Path, isProperPrefixOf)
 import Util (onChanges)
@@ -14,7 +14,7 @@ import Yesod.WebSockets (WebSocketsT, sendTextData)
 
 data TVState = TVState
   { tvPage :: T.Text,
-    tvVideoData :: Map.HashMap (Path Abs Dir) (DirectoryInfo, WatchedInfoAgg)
+    tvVideoData :: Map.HashMap TopLevelDir (DirectoryInfo, WatchedInfoAgg)
   }
   deriving (Eq)
 
@@ -41,12 +41,15 @@ addToAggWatched tvStateTVar path amount = atomically $ do
   let updatedState = tvState {tvVideoData = Map.mapWithKey doUpdate tvState.tvVideoData}
   writeTVar tvStateTVar updatedState
   where
+    doUpdate :: TopLevelDir -> (DirectoryInfo, WatchedInfoAgg) -> (DirectoryInfo, WatchedInfoAgg)
     doUpdate p (dirIfo, watchedInfo)
-      | p == path || p `isProperPrefixOf` path =
+      | p' == path || p' `isProperPrefixOf` path =
           ( dirIfo,
             watchedInfo
               { watchedInfoPlayedVideoFileCount =
                   watchedInfo.watchedInfoPlayedVideoFileCount + amount
               }
           )
+      where
+        p' = topLevelToAbsDir p
     doUpdate _ x = x
