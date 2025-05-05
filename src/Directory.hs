@@ -1,4 +1,4 @@
-module DirectoryNew where
+module Directory where
 
 import Autodocodec (HasCodec)
 import Autodocodec.Yaml (eitherDecodeYamlViaCodec)

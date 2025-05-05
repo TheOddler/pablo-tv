@@ -1,6 +1,6 @@
-module DirectoryNewSpec (spec) where
+module DirectorySpec (spec) where
 
-import DirectoryNew
+import Directory
 import DirectoryOld (DirectoryInfo (..), DirectoryKind (..))
 import Orphanage ()
 import System.Posix (getFileStatus)
