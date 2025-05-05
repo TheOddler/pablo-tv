@@ -1,4 +1,4 @@
-module DirectorySpec (spec) where
+module DirectoryOldSpec (spec) where
 
 import Autodocodec.Yaml (eitherDecodeYamlViaCodec, encodeYamlViaCodec)
 import Data.ByteString.Char8 qualified as BS

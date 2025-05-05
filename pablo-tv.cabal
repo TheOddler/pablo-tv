@@ -43,7 +43,7 @@ library
     exposed-modules:
         Actions
         DirectoryOld
-        DirectoryNew
+        Directory
         IsDevelopment
         LibMain
         Playerctl
@@ -112,7 +112,7 @@ test-suite pablo-tv-test
     type:             exitcode-stdio-1.0
     other-modules:
         ActionsSpec
-        DirectorySpec
+        DirectoryOldSpec
         DirectoryNewSpec
         Orphanage
         TestUtils
