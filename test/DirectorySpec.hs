@@ -30,6 +30,49 @@ spec = do
           directoryOtherFiles = [],
           directorySubDirs =
             [ Directory
+                { directoryPath = mkAbsDir "test/directories/Videos/Grouped Movies",
+                  directoryInfo = FileDoesNotExist,
+                  directoryWatched = FileDoesNotExist,
+                  directoryVideoFiles = [],
+                  directoryOtherFiles = [],
+                  directorySubDirs =
+                    [ Directory
+                        { directoryPath = mkAbsDir "test/directories/Videos/Grouped Movies/first-movie-v1",
+                          directoryInfo = FileDoesNotExist,
+                          directoryWatched = FileDoesNotExist,
+                          directoryVideoFiles =
+                            [ mkVideoFile "test/directories/Videos/Grouped Movies/first-movie-v1/first-movie.mkv"
+                            ],
+                          directoryOtherFiles = [],
+                          directorySubDirs = []
+                        },
+                      Directory
+                        { directoryPath = mkAbsDir "test/directories/Videos/Grouped Movies/second-movie-v1",
+                          directoryInfo =
+                            FileRead $
+                              DirectoryInfo
+                                { directoryInfoKind = DirectoryKindMovie,
+                                  directoryInfoTitle = "Second Movie in a group",
+                                  directoryInfoYear = Just 2025,
+                                  directoryInfoDescription =
+                                    Just "Test Movie in a group",
+                                  directoryInfoImdb = Just "tt123",
+                                  directoryInfoTvdb = Just "series-123",
+                                  directoryInfoTmdb = Just "123",
+                                  directoryInfoForceUpdate = Nothing
+                                },
+                          directoryWatched = FileDoesNotExist,
+                          directoryVideoFiles =
+                            [ mkVideoFile "test/directories/Videos/Grouped Movies/second-movie-v1/second-movie.avi"
+                            ],
+                          directoryOtherFiles =
+                            [ mkOtherFile "test/directories/Videos/Grouped Movies/second-movie-v1/second-movie.srt"
+                            ],
+                          directorySubDirs = []
+                        }
+                    ]
+                },
+              Directory
                 { directoryPath = mkAbsDir "test/directories/Videos/movie-a-v1",
                   directoryInfo = FileDoesNotExist,
                   directoryWatched = FileDoesNotExist,
@@ -87,6 +130,60 @@ spec = do
           directoryOtherFiles = [],
           directorySubDirs =
             [ Directory
+                { directoryPath = mkAbsDir "test/directories/Videos/Grouped Movies",
+                  directoryInfo = FileDoesNotExist,
+                  directoryWatched = FileDoesNotExist,
+                  directoryVideoFiles = [],
+                  directoryOtherFiles = [],
+                  directorySubDirs =
+                    [ Directory
+                        { directoryPath = mkAbsDir "test/directories/Videos/Grouped Movies/first-movie-v1",
+                          directoryInfo =
+                            FileDirty
+                              DirectoryInfo
+                                { directoryInfoKind = DirectoryKindMovie,
+                                  directoryInfoTitle = "first-movie-v1",
+                                  directoryInfoYear = Nothing,
+                                  directoryInfoDescription = Nothing,
+                                  directoryInfoImdb = Nothing,
+                                  directoryInfoTvdb = Nothing,
+                                  directoryInfoTmdb = Nothing,
+                                  directoryInfoForceUpdate = Nothing
+                                },
+                          directoryWatched = FileDoesNotExist,
+                          directoryVideoFiles =
+                            [ mkVideoFile "test/directories/Videos/Grouped Movies/first-movie-v1/first-movie.mkv"
+                            ],
+                          directoryOtherFiles = [],
+                          directorySubDirs = []
+                        },
+                      Directory
+                        { directoryPath = mkAbsDir "test/directories/Videos/Grouped Movies/second-movie-v1",
+                          directoryInfo =
+                            FileRead $
+                              DirectoryInfo
+                                { directoryInfoKind = DirectoryKindMovie,
+                                  directoryInfoTitle = "Second Movie in a group",
+                                  directoryInfoYear = Just 2025,
+                                  directoryInfoDescription =
+                                    Just "Test Movie in a group",
+                                  directoryInfoImdb = Just "tt123",
+                                  directoryInfoTvdb = Just "series-123",
+                                  directoryInfoTmdb = Just "123",
+                                  directoryInfoForceUpdate = Nothing
+                                },
+                          directoryWatched = FileDoesNotExist,
+                          directoryVideoFiles =
+                            [ mkVideoFile "test/directories/Videos/Grouped Movies/second-movie-v1/second-movie.avi"
+                            ],
+                          directoryOtherFiles =
+                            [ mkOtherFile "test/directories/Videos/Grouped Movies/second-movie-v1/second-movie.srt"
+                            ],
+                          directorySubDirs = []
+                        }
+                    ]
+                },
+              Directory
                 { directoryPath = mkAbsDir "test/directories/Videos/movie-a-v1",
                   directoryInfo =
                     FileDirty
