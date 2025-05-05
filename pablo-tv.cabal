@@ -42,8 +42,10 @@ library
     hs-source-dirs:   src
     exposed-modules:
         Actions
-        DirectoryOld
         Directory
+        Directory.Info
+        Directory.Watched
+        DirectoryOld
         IsDevelopment
         LibMain
         Playerctl
@@ -52,7 +54,6 @@ library
         TVDB
         TVState
         Util
-        Watched
     if flag(development)
         cpp-options: -DDEVELOPMENT
     build-depends:
@@ -112,8 +113,8 @@ test-suite pablo-tv-test
     type:             exitcode-stdio-1.0
     other-modules:
         ActionsSpec
-        DirectoryOldSpec
         DirectorySpec
+        DirectoryOldSpec
         Orphanage
         TestUtils
         WatchedSpec

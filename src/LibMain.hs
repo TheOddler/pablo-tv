@@ -33,6 +33,14 @@ import Data.Text qualified as Text
 import Data.Text.Encoding (decodeUtf8Lenient)
 import Data.Time (diffUTCTime, getCurrentTime)
 import Data.Time.Clock.POSIX (posixSecondsToUTCTime)
+import Directory.Watched
+  ( MarkAsWatchedResult (..),
+    WatchedInfoAgg (..),
+    hasBeenWatched,
+    markFileAsWatched,
+    readWatchedInfo,
+    readWatchedInfoAgg,
+  )
 import DirectoryOld
   ( DirectoryInfo (..),
     DirectoryKind (..),
@@ -92,14 +100,6 @@ import Util
     toUrlRel,
     unsnoc,
     widgetFile,
-  )
-import Watched
-  ( MarkAsWatchedResult (..),
-    WatchedInfoAgg (..),
-    hasBeenWatched,
-    markFileAsWatched,
-    readWatchedInfo,
-    readWatchedInfoAgg,
   )
 import Yesod hiding (defaultLayout, replace)
 import Yesod qualified

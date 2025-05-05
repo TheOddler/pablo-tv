@@ -4,11 +4,11 @@ import Autodocodec.Yaml (eitherDecodeYamlViaCodec, encodeYamlViaCodec)
 import Data.ByteString.Char8 qualified as BS
 import Data.Map qualified as Map
 import Data.Time (UTCTime)
+import Directory.Watched
 import Path (File, Path, Rel)
 import System.Posix.Types qualified as Posix
 import Test.Syd (Spec, expectationFailure, it, pureGoldenByteStringFile, shouldBe)
 import TestUtils (forceRelFile)
-import Watched
 
 mkWF :: FilePath -> String -> Posix.FileID -> (Path Rel File, (UTCTime, Posix.FileID))
 mkWF fileName timeStr fileId =

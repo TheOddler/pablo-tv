@@ -7,11 +7,11 @@ import Data.ByteString.Char8 qualified as BS8
 import Data.List (sortOn)
 import Data.Maybe (listToMaybe)
 import Data.Yaml qualified as Yaml
+import Directory.Watched (WatchedFiles)
 import DirectoryOld (DirectoryInfo)
 import System.Directory
 import System.FilePath (takeExtension, takeFileName, (</>))
 import System.Posix (FileStatus, getFileStatus)
-import Watched (WatchedFiles)
 
 newtype RootDirectory = RootDirectory FilePath
 

@@ -14,6 +14,7 @@ import Data.Scientific (Scientific, scientific)
 import Data.Text (Text)
 import Data.Text.Lazy.Encoding qualified as T
 import Data.Void (Void)
+import Directory.Watched (MarkAsUnwatchedResult (..), MarkAsWatchedResult (..), markAllAsUnwatched, markAllAsWatched, markFileAsUnwatched, markFileAsWatched)
 import Evdev.Codes
 import Evdev.Uinput
 import GHC.Conc (TVar, atomically, readTVar, writeTVar)
@@ -25,7 +26,6 @@ import TVState (TVState (..), addToAggWatched)
 import Text.Blaze qualified as Blaze
 import Text.Julius (ToJavascript (..))
 import Util (boundedEnumCodec)
-import Watched (MarkAsUnwatchedResult (..), MarkAsWatchedResult (..), markAllAsUnwatched, markAllAsWatched, markFileAsUnwatched, markFileAsWatched)
 import Yesod (FromJSON, MonadHandler, liftIO)
 import Yesod.WebSockets (WebSocketsT, receiveData)
 
