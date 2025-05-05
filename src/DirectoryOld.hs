@@ -101,8 +101,8 @@ readDirectoryInfo :: (FSRead m, Logger m) => Path Abs Dir -> m (Maybe DirectoryI
 readDirectoryInfo dir = do
   mInfoFile <- readFileBSSafe $ mkDirInfoFilePath dir
   case mInfoFile of
-    Nothing -> pure Nothing
-    Just infoFile ->
+    Left _err -> pure Nothing
+    Right infoFile ->
       case eitherDecodeYamlViaCodec infoFile of
         Right info -> pure $ Just info
         Left err -> do

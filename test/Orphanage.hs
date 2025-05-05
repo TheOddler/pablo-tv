@@ -3,7 +3,8 @@
 module Orphanage where
 
 import Actions (Action (..), DirOrFile (..), KeyboardButton (..), MouseButton (..))
-import Directory (Directory (..), OtherFile (..), SpecialFile (..), VideoFile (..))
+import Directory (Directory (..))
+import Directory.Files (OtherFile (..), SpecialFile (..), VideoFile (..))
 import GHC.Generics (Generic)
 import Generic.Random (genericArbitrary, uniform)
 import Path qualified

@@ -71,8 +71,8 @@ readWatchedInfo :: (FSRead m, Logger m) => Path Abs Dir -> m WatchedFiles
 readWatchedInfo dir = do
   mInfoFile <- readFileBSSafe $ mkWatchedInfoPath dir
   case mInfoFile of
-    Nothing -> pure $ WatchedFiles mempty
-    Just infoFile -> do
+    Left _ -> pure $ WatchedFiles mempty
+    Right infoFile -> do
       case eitherDecodeYamlViaCodec infoFile of
         Right info -> pure info
         Left err -> do

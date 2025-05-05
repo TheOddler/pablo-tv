@@ -43,12 +43,14 @@ library
     exposed-modules:
         Actions
         Directory
+        Directory.Files
         Directory.Info
         Directory.Watched
         DirectoryOld
         IsDevelopment
         LibMain
         Playerctl
+        Regex
         SafeMaths
         SaferIO
         TVDB
@@ -126,6 +128,7 @@ test-suite pablo-tv-test
       , generic-random
       , pablo-tv
       , path
+      , path-io
       , QuickCheck
       , quickcheck-instances
       , sydtest

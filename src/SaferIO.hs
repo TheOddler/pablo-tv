@@ -4,10 +4,9 @@
 -- to separate concerns.
 module SaferIO where
 
-import Control.Exception (SomeException, try)
+import Control.Exception (IOException, SomeException, try)
 import Data.ByteString qualified as BS8
 import Data.Time qualified as Time
-import GHC.Data.Maybe (rightToMaybe)
 import Network.HTTP.Req qualified as HTTP
 import Path (Abs, Dir, File, Path, Rel)
 import Path qualified
@@ -20,7 +19,7 @@ class (Monad m) => FSRead m where
   listDirAbs :: Path Abs Dir -> m ([Path Abs Dir], [Path Abs File])
   listDirRel :: Path Abs Dir -> m ([Path Rel Dir], [Path Rel File])
   listDirRecur :: Path Abs Dir -> m ([Path Abs Dir], [Path Abs File])
-  readFileBSSafe :: Path Abs File -> m (Maybe BS8.ByteString)
+  readFileBSSafe :: Path Abs File -> m (Either IOException BS8.ByteString)
   getFileStatus :: Path Abs File -> m Posix.FileStatus
   getDirStatus :: Path Abs Dir -> m Posix.FileStatus
 
@@ -29,10 +28,7 @@ instance FSRead IO where
   listDirAbs = Path.listDir
   listDirRel = Path.listDirRel
   listDirRecur = Path.listDirRecur
-  readFileBSSafe path = do
-    (contentOrErr :: Either SomeException BS8.ByteString) <-
-      try (BS8.readFile $ Path.fromAbsFile path)
-    pure $ rightToMaybe contentOrErr
+  readFileBSSafe path = try . BS8.readFile $ Path.fromAbsFile path
   getFileStatus = Posix.getFileStatus . Path.fromAbsFile
   getDirStatus = Posix.getFileStatus . Path.fromAbsDir
 
