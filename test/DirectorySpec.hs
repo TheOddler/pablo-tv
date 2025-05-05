@@ -107,6 +107,59 @@ spec = do
                     [ mkOtherFile "test/directories/Videos/movie-b-v1/movie-b.srt"
                     ],
                   directorySubDirs = []
+                },
+              Directory
+                { directoryPath = mkAbsDir "test/directories/Videos/tv-multi-s-v1/",
+                  directoryInfo =
+                    FileRead
+                      DirectoryInfo
+                        { directoryInfoKind = DirectoryKindSeries,
+                          directoryInfoTitle = "Test TV Show",
+                          directoryInfoYear = Just 2025,
+                          directoryInfoDescription = Just "A test TV Show with multiple seasons",
+                          directoryInfoImdb = Just "tt123",
+                          directoryInfoTvdb = Just "series-123",
+                          directoryInfoTmdb = Just "123",
+                          directoryInfoForceUpdate = Nothing
+                        },
+                  directoryWatched = FileDoesNotExist,
+                  directoryVideoFiles = [],
+                  directoryOtherFiles = [],
+                  directorySubDirs =
+                    [ Directory
+                        { directoryPath = mkAbsDir "test/directories/Videos/tv-multi-s-v1/Season 1/",
+                          directoryInfo = FileDoesNotExist,
+                          directoryWatched = FileDoesNotExist,
+                          directoryVideoFiles =
+                            [ mkVideoFile "test/directories/Videos/tv-multi-s-v1/Season 1/tv-multi-s01e01.avi",
+                              mkVideoFile "test/directories/Videos/tv-multi-s-v1/Season 1/tv-multi-s01e02.avi"
+                            ],
+                          directoryOtherFiles = [],
+                          directorySubDirs = []
+                        },
+                      Directory
+                        { directoryPath = mkAbsDir "test/directories/Videos/tv-multi-s-v1/Season 2/",
+                          directoryInfo = FileDoesNotExist,
+                          directoryWatched = FileDoesNotExist,
+                          directoryVideoFiles =
+                            [ mkVideoFile "test/directories/Videos/tv-multi-s-v1/Season 2/tv-multi-s02e01.avi",
+                              mkVideoFile "test/directories/Videos/tv-multi-s-v1/Season 2/tv-multi-s02e02.avi"
+                            ],
+                          directoryOtherFiles = [],
+                          directorySubDirs = []
+                        }
+                    ]
+                },
+              Directory
+                { directoryPath = mkAbsDir "test/directories/Videos/tv-single-s-v1/",
+                  directoryInfo = FileDoesNotExist,
+                  directoryWatched = FileDoesNotExist,
+                  directoryVideoFiles =
+                    [ mkVideoFile "test/directories/Videos/tv-single-s-v1/tv-s01e01.mkv",
+                      mkVideoFile "test/directories/Videos/tv-single-s-v1/tv-s01e02.mkv"
+                    ],
+                  directoryOtherFiles = [],
+                  directorySubDirs = []
                 }
             ]
         }
@@ -228,6 +281,70 @@ spec = do
                   directoryOtherFiles =
                     [ mkOtherFile "test/directories/Videos/movie-b-v1/movie-b.srt"
                     ],
+                  directorySubDirs = []
+                },
+              Directory
+                { directoryPath = mkAbsDir "test/directories/Videos/tv-multi-s-v1/",
+                  directoryInfo =
+                    FileRead
+                      DirectoryInfo
+                        { directoryInfoKind = DirectoryKindSeries,
+                          directoryInfoTitle = "Test TV Show",
+                          directoryInfoYear = Just 2025,
+                          directoryInfoDescription = Just "A test TV Show with multiple seasons",
+                          directoryInfoImdb = Just "tt123",
+                          directoryInfoTvdb = Just "series-123",
+                          directoryInfoTmdb = Just "123",
+                          directoryInfoForceUpdate = Nothing
+                        },
+                  directoryWatched = FileDoesNotExist,
+                  directoryVideoFiles = [],
+                  directoryOtherFiles = [],
+                  directorySubDirs =
+                    [ Directory
+                        { directoryPath = mkAbsDir "test/directories/Videos/tv-multi-s-v1/Season 1/",
+                          directoryInfo = FileDoesNotExist,
+                          directoryWatched = FileDoesNotExist,
+                          directoryVideoFiles =
+                            [ mkVideoFile "test/directories/Videos/tv-multi-s-v1/Season 1/tv-multi-s01e01.avi",
+                              mkVideoFile "test/directories/Videos/tv-multi-s-v1/Season 1/tv-multi-s01e02.avi"
+                            ],
+                          directoryOtherFiles = [],
+                          directorySubDirs = []
+                        },
+                      Directory
+                        { directoryPath = mkAbsDir "test/directories/Videos/tv-multi-s-v1/Season 2/",
+                          directoryInfo = FileDoesNotExist,
+                          directoryWatched = FileDoesNotExist,
+                          directoryVideoFiles =
+                            [ mkVideoFile "test/directories/Videos/tv-multi-s-v1/Season 2/tv-multi-s02e01.avi",
+                              mkVideoFile "test/directories/Videos/tv-multi-s-v1/Season 2/tv-multi-s02e02.avi"
+                            ],
+                          directoryOtherFiles = [],
+                          directorySubDirs = []
+                        }
+                    ]
+                },
+              Directory
+                { directoryPath = mkAbsDir "test/directories/Videos/tv-single-s-v1/",
+                  directoryInfo =
+                    FileDirty
+                      DirectoryInfo
+                        { directoryInfoKind = DirectoryKindSeries,
+                          directoryInfoTitle = "tv-single-s-v1",
+                          directoryInfoYear = Nothing,
+                          directoryInfoDescription = Nothing,
+                          directoryInfoImdb = Nothing,
+                          directoryInfoTvdb = Nothing,
+                          directoryInfoTmdb = Nothing,
+                          directoryInfoForceUpdate = Nothing
+                        },
+                  directoryWatched = FileDoesNotExist,
+                  directoryVideoFiles =
+                    [ mkVideoFile "test/directories/Videos/tv-single-s-v1/tv-s01e01.mkv",
+                      mkVideoFile "test/directories/Videos/tv-single-s-v1/tv-s01e02.mkv"
+                    ],
+                  directoryOtherFiles = [],
                   directorySubDirs = []
                 }
             ]

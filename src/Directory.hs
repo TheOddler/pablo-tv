@@ -91,10 +91,15 @@ guessMissingInfoRecursive dir =
           -- Otherwise, guess
           FileDoesNotExist -> guessedInfoFile
           FileReadFail _ _ -> guessedInfoFile
-          FileReadError _ -> guessedInfoFile
+          FileReadError err -> FileReadError err
+      -- Only do guesses for subDirs if we think this is just a passthrough dir.
+      -- I'm not sure if we should guess if there are read-errors, but I don't think so. Only do guesses when we know for use this is a passthrough dir.
+      newSubDirs = case newInfo of
+        FileDoesNotExist -> guessMissingInfoRecursive <$> dir.directorySubDirs
+        _ -> dir.directorySubDirs
    in dir
         { directoryInfo = newInfo,
-          directorySubDirs = guessMissingInfoRecursive <$> dir.directorySubDirs
+          directorySubDirs = newSubDirs
         }
 
 -- Helpers
