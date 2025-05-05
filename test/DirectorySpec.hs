@@ -25,6 +25,7 @@ spec = do
       `shouldBe` Directory
         { directoryPath = mkAbsDir "test/directories/Videos",
           directoryInfo = FileDoesNotExist,
+          directoryImage = Nothing,
           directoryWatched = FileDoesNotExist,
           directoryVideoFiles = [],
           directoryOtherFiles = [],
@@ -32,6 +33,7 @@ spec = do
             [ Directory
                 { directoryPath = mkAbsDir "test/directories/Videos/Grouped Movies",
                   directoryInfo = FileDoesNotExist,
+                  directoryImage = Nothing,
                   directoryWatched = FileDoesNotExist,
                   directoryVideoFiles = [],
                   directoryOtherFiles = [],
@@ -39,6 +41,7 @@ spec = do
                     [ Directory
                         { directoryPath = mkAbsDir "test/directories/Videos/Grouped Movies/first-movie-v1",
                           directoryInfo = FileDoesNotExist,
+                          directoryImage = Just . ImageOnDisk $ mkAbsFile "test/directories/Videos/Grouped Movies/first-movie-v1/image.jpg",
                           directoryWatched = FileDoesNotExist,
                           directoryVideoFiles =
                             [ mkVideoFile "test/directories/Videos/Grouped Movies/first-movie-v1/first-movie.mkv"
@@ -61,6 +64,7 @@ spec = do
                                   directoryInfoTmdb = Just "123",
                                   directoryInfoForceUpdate = Nothing
                                 },
+                          directoryImage = Nothing,
                           directoryWatched = FileDoesNotExist,
                           directoryVideoFiles =
                             [ mkVideoFile "test/directories/Videos/Grouped Movies/second-movie-v1/second-movie.avi"
@@ -75,6 +79,7 @@ spec = do
               Directory
                 { directoryPath = mkAbsDir "test/directories/Videos/movie-a-v1",
                   directoryInfo = FileDoesNotExist,
+                  directoryImage = Nothing,
                   directoryWatched = FileDoesNotExist,
                   directoryVideoFiles =
                     [ mkVideoFile "test/directories/Videos/movie-a-v1/movie-a.mp4"
@@ -99,6 +104,7 @@ spec = do
                           directoryInfoTmdb = Just "123",
                           directoryInfoForceUpdate = Nothing
                         },
+                  directoryImage = Just . ImageOnDisk $ mkAbsFile "test/directories/Videos/movie-b-v1/poster.gif",
                   directoryWatched = FileDoesNotExist,
                   directoryVideoFiles =
                     [ mkVideoFile "test/directories/Videos/movie-b-v1/movie-b.avi"
@@ -122,6 +128,7 @@ spec = do
                           directoryInfoTmdb = Just "123",
                           directoryInfoForceUpdate = Nothing
                         },
+                  directoryImage = Nothing,
                   directoryWatched = FileDoesNotExist,
                   directoryVideoFiles = [],
                   directoryOtherFiles = [],
@@ -129,6 +136,7 @@ spec = do
                     [ Directory
                         { directoryPath = mkAbsDir "test/directories/Videos/tv-multi-s-v1/Season 1/",
                           directoryInfo = FileDoesNotExist,
+                          directoryImage = Just . ImageOnDisk $ mkAbsFile "test/directories/Videos/tv-multi-s-v1/Season 1/season1.png",
                           directoryWatched = FileDoesNotExist,
                           directoryVideoFiles =
                             [ mkVideoFile "test/directories/Videos/tv-multi-s-v1/Season 1/tv-multi-s01e01.avi",
@@ -140,6 +148,7 @@ spec = do
                       Directory
                         { directoryPath = mkAbsDir "test/directories/Videos/tv-multi-s-v1/Season 2/",
                           directoryInfo = FileDoesNotExist,
+                          directoryImage = Just . ImageOnDisk $ mkAbsFile "test/directories/Videos/tv-multi-s-v1/Season 2/season2.png",
                           directoryWatched = FileDoesNotExist,
                           directoryVideoFiles =
                             [ mkVideoFile "test/directories/Videos/tv-multi-s-v1/Season 2/tv-multi-s02e01.avi",
@@ -153,6 +162,7 @@ spec = do
               Directory
                 { directoryPath = mkAbsDir "test/directories/Videos/tv-single-s-v1/",
                   directoryInfo = FileDoesNotExist,
+                  directoryImage = Nothing,
                   directoryWatched = FileDoesNotExist,
                   directoryVideoFiles =
                     [ mkVideoFile "test/directories/Videos/tv-single-s-v1/tv-s01e01.mkv",
@@ -178,6 +188,7 @@ spec = do
       `shouldBe` Directory
         { directoryPath = mkAbsDir "test/directories/Videos",
           directoryInfo = FileDoesNotExist,
+          directoryImage = Nothing,
           directoryWatched = FileDoesNotExist,
           directoryVideoFiles = [],
           directoryOtherFiles = [],
@@ -185,6 +196,7 @@ spec = do
             [ Directory
                 { directoryPath = mkAbsDir "test/directories/Videos/Grouped Movies",
                   directoryInfo = FileDoesNotExist,
+                  directoryImage = Nothing,
                   directoryWatched = FileDoesNotExist,
                   directoryVideoFiles = [],
                   directoryOtherFiles = [],
@@ -203,6 +215,7 @@ spec = do
                                   directoryInfoTmdb = Nothing,
                                   directoryInfoForceUpdate = Nothing
                                 },
+                          directoryImage = Just . ImageOnDisk $ mkAbsFile "test/directories/Videos/Grouped Movies/first-movie-v1/image.jpg",
                           directoryWatched = FileDoesNotExist,
                           directoryVideoFiles =
                             [ mkVideoFile "test/directories/Videos/Grouped Movies/first-movie-v1/first-movie.mkv"
@@ -225,6 +238,7 @@ spec = do
                                   directoryInfoTmdb = Just "123",
                                   directoryInfoForceUpdate = Nothing
                                 },
+                          directoryImage = Nothing,
                           directoryWatched = FileDoesNotExist,
                           directoryVideoFiles =
                             [ mkVideoFile "test/directories/Videos/Grouped Movies/second-movie-v1/second-movie.avi"
@@ -250,6 +264,7 @@ spec = do
                           directoryInfoTmdb = Nothing,
                           directoryInfoForceUpdate = Nothing
                         },
+                  directoryImage = Nothing,
                   directoryWatched = FileDoesNotExist,
                   directoryVideoFiles =
                     [ mkVideoFile "test/directories/Videos/movie-a-v1/movie-a.mp4"
@@ -274,6 +289,7 @@ spec = do
                           directoryInfoTmdb = Just "123",
                           directoryInfoForceUpdate = Nothing
                         },
+                  directoryImage = Just . ImageOnDisk $ mkAbsFile "test/directories/Videos/movie-b-v1/poster.gif",
                   directoryWatched = FileDoesNotExist,
                   directoryVideoFiles =
                     [ mkVideoFile "test/directories/Videos/movie-b-v1/movie-b.avi"
@@ -297,6 +313,7 @@ spec = do
                           directoryInfoTmdb = Just "123",
                           directoryInfoForceUpdate = Nothing
                         },
+                  directoryImage = Nothing,
                   directoryWatched = FileDoesNotExist,
                   directoryVideoFiles = [],
                   directoryOtherFiles = [],
@@ -304,6 +321,7 @@ spec = do
                     [ Directory
                         { directoryPath = mkAbsDir "test/directories/Videos/tv-multi-s-v1/Season 1/",
                           directoryInfo = FileDoesNotExist,
+                          directoryImage = Just . ImageOnDisk $ mkAbsFile "test/directories/Videos/tv-multi-s-v1/Season 1/season1.png",
                           directoryWatched = FileDoesNotExist,
                           directoryVideoFiles =
                             [ mkVideoFile "test/directories/Videos/tv-multi-s-v1/Season 1/tv-multi-s01e01.avi",
@@ -315,6 +333,7 @@ spec = do
                       Directory
                         { directoryPath = mkAbsDir "test/directories/Videos/tv-multi-s-v1/Season 2/",
                           directoryInfo = FileDoesNotExist,
+                          directoryImage = Just . ImageOnDisk $ mkAbsFile "test/directories/Videos/tv-multi-s-v1/Season 2/season2.png",
                           directoryWatched = FileDoesNotExist,
                           directoryVideoFiles =
                             [ mkVideoFile "test/directories/Videos/tv-multi-s-v1/Season 2/tv-multi-s02e01.avi",
@@ -339,6 +358,7 @@ spec = do
                           directoryInfoTmdb = Nothing,
                           directoryInfoForceUpdate = Nothing
                         },
+                  directoryImage = Nothing,
                   directoryWatched = FileDoesNotExist,
                   directoryVideoFiles =
                     [ mkVideoFile "test/directories/Videos/tv-single-s-v1/tv-s01e01.mkv",

@@ -5,11 +5,14 @@ module Directory.Files where
 import Autodocodec (HasCodec)
 import Autodocodec.Yaml (eitherDecodeYamlViaCodec)
 import Control.Exception (IOException)
+import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BS8
 import Data.Yaml qualified as Yaml
 import Path (Abs, File, Path, Rel, fileExtension, filename, mkRelFile)
 import SaferIO (FSRead (..))
 import System.Posix (FileStatus)
+import TVDB (TVDBImageUrl)
+import Yesod (ContentType)
 
 infoFileName :: Path Rel File
 infoFileName = $(mkRelFile "info.yaml")
@@ -21,6 +24,9 @@ watchedFileName = $(mkRelFile "watched.yaml")
 -- Must include the `.` as that's what `takeExtension` gives us so easier to use that way.
 videoExtensions :: [String]
 videoExtensions = [".mp4", ".mkv", ".avi", ".webm"]
+
+imageExtensions :: [String]
+imageExtensions = [".jpg", ".jpeg", ".png", ".gif"]
 
 data VideoFile = VideoFile
   { videoFilePath :: Path Abs File,
@@ -53,10 +59,20 @@ readSpecialFile path = do
         Right info -> FileRead info
         Left err -> FileReadFail content err
 
+type InMemoryImage = (ContentType, BS.ByteString)
+
+data Image
+  = ImageOnDisk (Path Abs File)
+  | ImageOnWeb TVDBImageUrl
+  | ImageDownloaded InMemoryImage
+
 -- Helpers
 
 fileNameIs :: Path Rel File -> Path a File -> Bool
 fileNameIs n = (== n) . filename
+
+fileNameIsOneOf :: [Path Rel File] -> Path a File -> Bool
+fileNameIsOneOf ns p = filename p `elem` ns
 
 extensionIsOneOf :: [String] -> Path a File -> Bool
 extensionIsOneOf exts path =

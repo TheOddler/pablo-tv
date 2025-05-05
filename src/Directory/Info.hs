@@ -4,14 +4,16 @@ import Autodocodec (HasCodec (..), object, optionalFieldOrNull, optionalFieldWit
 import Control.Applicative ((<|>))
 import Data.List (sortOn)
 import Data.List.NonEmpty qualified as NE
-import Data.Maybe (isJust, listToMaybe, mapMaybe)
+import Data.Maybe (catMaybes, isJust, isNothing, listToMaybe, mapMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Directory.Files (VideoFile (..))
-import GHC.Data.Maybe (firstJusts, orElse)
+import GHC.Data.Maybe (firstJusts, firstJustsM, orElse)
 import Path (Abs, Dir, File, Path, Rel, dirname, filename, fromRelDir, fromRelFile, splitExtension)
 import Regex (expect1Int, expect2Ints, expect3Ints, tryRegex)
+import SaferIO (Logger, NetworkRead)
 import System.FilePath (dropTrailingPathSeparator)
+import TVDB (TVDBData (..), TVDBImageUrl, TVDBToken, TVDBType (..), getInfoFromTVDB)
 
 data DirectoryInfo = DirectoryInfo
   { directoryInfoKind :: DirectoryKind,
@@ -164,3 +166,76 @@ episodeInfoFromFile file =
           Nothing -> case epOnly of
             Just a -> (Nothing, Just $ Left a)
             Nothing -> (Nothing, Nothing)
+
+-- Downloading new info from the internet
+
+-- | Download info from the internet.
+-- We start from the DirectoryInfo we already have, possibly just a guess based on local information, but might be info we had before or manual edits by the user.
+-- No guarantee is given that the info is updated at all, might just return the same information if everything was good already.
+-- This will update the info even if the `forceUpdate` is set to false.
+downloadInfo :: forall m. (NetworkRead m, Logger m) => TVDBToken -> DirectoryInfo -> m (DirectoryInfo, Maybe TVDBImageUrl)
+downloadInfo tvdbToken startingInfo = do
+  let tvdbType = case directoryInfoKind startingInfo of
+        DirectoryKindMovie -> TVDBTypeMovie
+        DirectoryKindSeries -> TVDBTypeSeries
+  (usedInfo, mTVDBData) <- do
+    -- This
+    let getInfo :: DirectoryInfo -> m (Maybe TVDBData)
+        getInfo info =
+          getInfoFromTVDB
+            tvdbToken
+            startingInfo.directoryInfoTitle
+            tvdbType
+            info.directoryInfoImdb
+            info.directoryInfoYear
+    -- A list of infos to try, starting with just what we got, and then removing
+    -- year or imdb id, or both.
+    let infos =
+          catMaybes
+            [ Just startingInfo,
+              if isJust startingInfo.directoryInfoYear
+                then Just startingInfo {directoryInfoYear = Nothing}
+                else Nothing,
+              if isJust startingInfo.directoryInfoImdb
+                then Just startingInfo {directoryInfoImdb = Nothing}
+                else Nothing,
+              if isJust startingInfo.directoryInfoYear && isJust startingInfo.directoryInfoImdb
+                then Just startingInfo {directoryInfoYear = Nothing, directoryInfoImdb = Nothing}
+                else Nothing
+            ]
+        attempt :: DirectoryInfo -> m (Maybe (DirectoryInfo, TVDBData))
+        attempt info = do
+          tvdbInfo <- getInfo info
+          pure $ (info,) <$> tvdbInfo
+        attempts :: [m (Maybe (DirectoryInfo, TVDBData))]
+        attempts = attempt <$> infos
+    result <- firstJustsM attempts
+    case result of
+      Just (usedInfo, tvdbData) -> pure (usedInfo, Just tvdbData)
+      Nothing -> pure (startingInfo, Nothing)
+
+  -- If we're doing a force update, that means someone corrected it manually, so we do not want to overwrite
+  let select infoField tvdbValue =
+        if isNothing $ infoField usedInfo
+          then tvdbValue
+          else infoField usedInfo
+
+  let extendedInfo = case mTVDBData of
+        Nothing ->
+          usedInfo
+            { -- Even when we don't find anything, remove this flag so we don't keep trying
+              directoryInfoForceUpdate = Nothing
+            }
+        Just tvdbData ->
+          DirectoryInfo
+            { directoryInfoKind = usedInfo.directoryInfoKind,
+              directoryInfoTitle = usedInfo.directoryInfoTitle,
+              directoryInfoYear = select directoryInfoYear (tvdbData.tvdbDataYear <|> usedInfo.directoryInfoYear),
+              directoryInfoDescription = select directoryInfoDescription tvdbData.tvdbDataDescription,
+              directoryInfoImdb = select directoryInfoImdb tvdbData.tvdbDataImdb,
+              directoryInfoTvdb = select directoryInfoTvdb (Just tvdbData.tvdbDataId),
+              directoryInfoTmdb = select directoryInfoTmdb tvdbData.tvdbDataTmdb,
+              directoryInfoForceUpdate = Nothing
+            }
+
+  pure (extendedInfo, tvdbDataImageUrl <$> mTVDBData)

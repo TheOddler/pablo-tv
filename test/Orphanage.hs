@@ -4,7 +4,7 @@ module Orphanage where
 
 import Actions (Action (..), DirOrFile (..), KeyboardButton (..), MouseButton (..))
 import Directory (Directory (..))
-import Directory.Files (OtherFile (..), SpecialFile (..), VideoFile (..))
+import Directory.Files (Image (..), OtherFile (..), SpecialFile (..), VideoFile (..))
 import GHC.Generics (Generic)
 import Generic.Random (genericArbitrary, uniform)
 import Path qualified
@@ -62,6 +62,10 @@ instance Arbitrary Playerctl.Action where
 deriving instance Eq Directory
 
 deriving instance Show Directory
+
+deriving instance Eq Image
+
+deriving instance Show Image
 
 instance Eq VideoFile where
   VideoFile a _ == VideoFile b _ = a == b

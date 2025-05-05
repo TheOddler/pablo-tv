@@ -3,14 +3,15 @@
 module Directory where
 
 import Algorithms.NaturalSort qualified as Natural
-import Data.List (sortBy)
-import Data.Maybe (listToMaybe)
+import Data.List (find, sortBy)
 import Data.Text qualified as T
-import Directory.Files (OtherFile (..), SpecialFile (..), VideoFile (..), extensionIsOneOf, fileNameIs, infoFileName, readSpecialFile, videoExtensions, watchedFileName)
-import Directory.Info (DirectoryInfo (..), guessInfo, niceDirNameT, niceFileNameT)
+import Directory.Files (Image (..), OtherFile (..), SpecialFile (..), VideoFile (..), extensionIsOneOf, fileNameIs, fileNameIsOneOf, imageExtensions, infoFileName, readSpecialFile, videoExtensions, watchedFileName)
+import Directory.Info (DirectoryInfo (..), downloadInfo, guessInfo, niceDirNameT, niceFileNameT)
 import Directory.Watched (WatchedFiles)
+import GHC.Utils.Misc (mapFst)
 import Path (Abs, Dir, File, Path, mkRelDir, (</>))
-import SaferIO (FSRead (..))
+import SaferIO (FSRead (..), Logger, NetworkRead)
+import TVDB (TVDBToken)
 
 newtype RootDirectory = RootDirectory (Path Abs Dir)
 
@@ -23,9 +24,10 @@ getVideosDir = do
 data Directory = Directory
   { directoryPath :: Path Abs Dir,
     directoryInfo :: SpecialFile DirectoryInfo,
+    directoryImage :: Maybe Image,
     directoryWatched :: SpecialFile WatchedFiles,
     directoryVideoFiles :: [VideoFile],
-    directoryOtherFiles :: [OtherFile],
+    directoryOtherFiles :: [OtherFile], -- Should I just bin these other files? Do I need them?
     directorySubDirs :: [Directory]
   }
 
@@ -36,38 +38,47 @@ readDirectory :: (FSRead m) => Path Abs Dir -> m Directory
 readDirectory path = do
   (subDirPaths, filePaths) <- listDirAbs path
   -- Pre-process all the paths we founds
-  let (videoPaths, dirInfoPaths, watchedPaths, otherPaths) =
-        partition4
+  let (videoPaths, imagePaths, otherPaths) =
+        partition3
           -- This assumes `.yaml` is not considered a video extension, otherwise we'll never find the info or watched files
           (extensionIsOneOf videoExtensions)
-          (fileNameIs infoFileName)
-          (fileNameIs watchedFileName)
+          (extensionIsOneOf imageExtensions)
           filePaths
 
   -- Parse special files
-  let mDirInfoPath = listToMaybe dirInfoPaths
+  let mDirInfoPath = find (fileNameIs infoFileName) otherPaths
   dirInfo <- maybe (pure FileDoesNotExist) readSpecialFile mDirInfoPath
-  let mWatchedPath = listToMaybe watchedPaths
+  let mWatchedPath = find (fileNameIs watchedFileName) otherPaths
   watched <- maybe (pure FileDoesNotExist) readSpecialFile mWatchedPath
+
+  -- Find image
+  let image = case imagePaths of
+        [] -> Nothing
+        (i : _is) -> Just $ ImageOnDisk i
 
   -- Parse the video files
   let readVideoFile p = VideoFile p <$> getFileStatus p
   videoFilesUnsorted <- mapM readVideoFile videoPaths
-  let videoFiles = smartFileSort (.videoFilePath) videoFilesUnsorted
+  let videoFiles = smartFileSortBy videoFilePath videoFilesUnsorted
 
   -- Find all the subDirs and parse those too.
   subDirsUnsorted <- mapM readDirectory subDirPaths
   let subDirs = smartDirSort subDirsUnsorted
 
   -- Other files
-  let othersUnsorted = OtherFile <$> otherPaths
-  let others = smartFileSort otherFilePath othersUnsorted
+  let othersUnsorted =
+        OtherFile
+          <$> filter
+            (not . fileNameIsOneOf [infoFileName, watchedFileName])
+            otherPaths
+  let others = smartFileSortBy otherFilePath othersUnsorted
 
   -- Finished
   pure
     Directory
       { directoryPath = path,
         directoryInfo = dirInfo,
+        directoryImage = image,
         directoryWatched = watched,
         directoryVideoFiles = videoFiles,
         directorySubDirs = subDirs,
@@ -75,6 +86,7 @@ readDirectory path = do
       }
 
 -- Guessing info
+
 guessMissingInfoRecursive :: Directory -> Directory
 guessMissingInfoRecursive dir =
   let guessedInfo =
@@ -104,18 +116,49 @@ guessMissingInfoRecursive dir =
           directorySubDirs = newSubDirs
         }
 
+-- Downloading new info from the internet
+
+-- | Downloads info from the internet for all already existing info files.
+-- This will also download a new image if none exist yet and we find one online.
+-- Will not do guessing so that needs to be done as a separate step before this if we want to populate new directories too.
+downloadInfoRecursive :: (NetworkRead m, Logger m) => TVDBToken -> Directory -> m Directory
+downloadInfoRecursive tvdbToken dir = do
+  -- Download new info if we have to
+  let downloadInfo' = mapFst FileDirty . downloadInfo tvdbToken
+  (newInfo, mImageUrl) <-
+    case dir.directoryInfo of
+      -- If there's existing info, see if it needs updating, if so, update
+      FileRead i | i.directoryInfoForceUpdate == Just True -> downloadInfo' i
+      FileDirty i | i.directoryInfoForceUpdate == Just True -> downloadInfo' i
+      -- Otherwise do nothing
+      _ -> pure (dir.directoryInfo, Nothing)
+
+  -- Update image if we don't have any yet
+  let newImage = case dir.directoryImage of
+        Nothing -> ImageOnWeb <$> mImageUrl
+        Just img -> Just img
+
+  -- Recursively do all subDirs
+  newSubDirs <- mapM (downloadInfoRecursive tvdbToken) dir.directorySubDirs
+
+  pure
+    dir
+      { directoryInfo = newInfo,
+        directoryImage = newImage,
+        directorySubDirs = newSubDirs
+      }
+
 -- Helpers
 
--- | Partition an array in 4. It'll try the first function first, then second, then third, if all fail it'll be put in the 4th list for `other`.
-partition4 :: (a -> Bool) -> (a -> Bool) -> (a -> Bool) -> [a] -> ([a], [a], [a], [a])
-partition4 p1 p2 p3 arr = partition4' arr ([], [], [], [])
+-- | Partition an array in 3. It'll try the first function first, then second, if both fail it'll be put in the 3th list for `other`.
+partition3 :: (a -> Bool) -> (a -> Bool) -> [a] -> ([a], [a], [a])
+partition3 p1 p2 arr = partition3' arr ([], [], [])
   where
-    partition4' [] acc = acc
-    partition4' (x : xs) (a1, a2, a3, a4)
-      | p1 x = partition4' xs (x : a1, a2, a3, a4)
-      | p2 x = partition4' xs (a1, x : a2, a3, a4)
-      | p3 x = partition4' xs (a1, a2, x : a3, a4)
-      | otherwise = partition4' xs (a1, a2, a3, x : a4)
+    partition3' [] acc = acc
+    partition3' (x : xs) (a1, a2, a3)
+      | p1 x = partition3' xs (x : a1, a2, a3)
+      | p2 x = partition3' xs (a1, x : a2, a3)
+      | otherwise = partition3' xs (a1, a2, x : a3)
 
 -- | Sorts the dirs by name, taking into account numbers properly
 smartDirSort :: [Directory] -> [Directory]
@@ -127,8 +170,8 @@ smartDirSort = sortBy sorting
         (T.toLower $ niceDirNameT b.directoryPath)
 
 -- | Sorts the dirs, taking into account numbers properly
-smartFileSort :: (a -> Path x File) -> [a] -> [a]
-smartFileSort getPath = sortBy sorting
+smartFileSortBy :: (a -> Path x File) -> [a] -> [a]
+smartFileSortBy getPath = sortBy sorting
   where
     sorting a b =
       Natural.compare

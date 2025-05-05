@@ -195,7 +195,7 @@ downloadDirectoryInfo tvdbToken startingInfo = do
               directoryInfoForceUpdate = Nothing
             }
 
-  pure (extendedInfo, mTVDBData >>= tvdbDataImage)
+  pure (extendedInfo, Nothing) -- Temp just always return Nothing as this will be removed soon. Was: mTVDBData >>= tvdbDataImage)
 
 writeDirectoryInfo :: (FSWrite m, Logger m) => TopLevelDir -> DirectoryInfo -> Maybe Image -> m ()
 writeDirectoryInfo dir info mImage = do

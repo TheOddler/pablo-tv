@@ -4,7 +4,9 @@ module TVDB
   ( TVDBData (..),
     TVDBType (..),
     TVDBToken (..),
+    TVDBImageUrl,
     getInfoFromTVDB,
+    downloadImage,
   )
 where
 
@@ -28,10 +30,13 @@ import Yesod (ContentType)
 data TVDBType = TVDBTypeSeries | TVDBTypeMovie
   deriving (Show, Eq)
 
+newtype TVDBImageUrl = TVDBImageUrl Text
+  deriving (Show, Eq)
+
 data TVDBData = TVDBData
   { tvdbDataDescription :: Maybe Text,
     tvdbDataYear :: Maybe Int,
-    tvdbDataImage :: Maybe (ContentType, BS.ByteString),
+    tvdbDataImageUrl :: TVDBImageUrl,
     tvdbDataId :: Text,
     tvdbDataImdb :: Maybe Text,
     tvdbDataTmdb :: Maybe Text
@@ -119,32 +124,26 @@ getInfoFromTVDB (TVDBToken tvdbToken) title type' mRemoteId mYear = do
       logStr $ "TVDB request return nothing. " <> show debugInfo
       pure Nothing
     (Right (Just firstData)) -> do
-      let imgUrl = rawResponseDataImageUrl firstData
+      let imgUrl = TVDBImageUrl $ rawResponseDataImageUrl firstData
       let lookupRemoteId name =
             lookup
               name
               [ (rawId.rawResponseRemoteSourceName, rawId.rawResponseRemoteId)
                 | rawId <- rawResponseDataRemoteIds firstData
               ]
-      imgOrError <- downloadImage imgUrl
-      case imgOrError of
-        Right _ -> pure ()
-        Left err -> logStr err
       pure $
         Just $
           TVDBData
             { tvdbDataDescription = KeyMap.lookup "eng" firstData.rawResponseDataOverviews <|> rawResponseDataOverview firstData,
               tvdbDataYear = readMaybe $ rawResponseDataYear firstData,
-              tvdbDataImage = case imgOrError of
-                Left _ -> Nothing
-                Right img -> Just img,
+              tvdbDataImageUrl = imgUrl,
               tvdbDataId = rawResponseDataId firstData,
               tvdbDataImdb = lookupRemoteId "IMDB",
               tvdbDataTmdb = lookupRemoteId "TheMovieDB.com"
             }
 
-downloadImage :: (NetworkRead m) => Text -> m (Either String (ContentType, BS.ByteString))
-downloadImage urlT = do
+downloadImage :: (NetworkRead m) => TVDBImageUrl -> m (Either String (ContentType, BS.ByteString))
+downloadImage (TVDBImageUrl urlT) = do
   case useURI =<< mkURI urlT of
     Nothing -> pure $ Left $ "Invalid URL: " <> T.unpack urlT
     Just (Left httpUrl) -> downloadFrom httpUrl
