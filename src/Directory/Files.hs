@@ -11,7 +11,6 @@ import Data.Yaml qualified as Yaml
 import Path (Abs, File, Path, Rel, fileExtension, filename, mkRelFile)
 import SaferIO (FSRead (..))
 import System.Posix (FileStatus)
-import TVDB (TVDBImageUrl)
 import Yesod (ContentType)
 
 infoFileName :: Path Rel File
@@ -63,8 +62,7 @@ type InMemoryImage = (ContentType, BS.ByteString)
 
 data Image
   = ImageOnDisk (Path Abs File)
-  | ImageOnWeb TVDBImageUrl
-  | ImageDownloaded InMemoryImage
+  | ImageInMemory InMemoryImage
 
 -- Helpers
 

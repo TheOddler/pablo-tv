@@ -10,8 +10,8 @@ import Directory.Info (DirectoryInfo (..), downloadInfo, guessInfo, niceDirNameT
 import Directory.Watched (WatchedFiles)
 import GHC.Utils.Misc (mapFst)
 import Path (Abs, Dir, File, Path, mkRelDir, (</>))
-import SaferIO (FSRead (..), Logger, NetworkRead)
-import TVDB (TVDBToken)
+import SaferIO (FSRead (..), Logger (..), NetworkRead)
+import TVDB (TVDBToken, downloadImage)
 
 newtype RootDirectory = RootDirectory (Path Abs Dir)
 
@@ -134,9 +134,17 @@ downloadInfoRecursive tvdbToken dir = do
       _ -> pure (dir.directoryInfo, Nothing)
 
   -- Update image if we don't have any yet
-  let newImage = case dir.directoryImage of
-        Nothing -> ImageOnWeb <$> mImageUrl
-        Just img -> Just img
+  newImage <- case (dir.directoryImage, mImageUrl) of
+    (Nothing, Just imgUrl) -> do
+      imgOrErr <- downloadImage imgUrl
+      case imgOrErr of
+        Left err -> do
+          logStr err
+          pure dir.directoryImage
+        Right newImg ->
+          -- We can't write the image in this function, so keep it in memory, and we can write it in the write function for `Directory` data
+          pure . Just $ ImageInMemory newImg
+    _ -> pure dir.directoryImage
 
   -- Recursively do all subDirs
   newSubDirs <- mapM (downloadInfoRecursive tvdbToken) dir.directorySubDirs
