@@ -42,7 +42,7 @@ library
     hs-source-dirs:   src
     exposed-modules:
         Actions
-        Directory
+        DirectoryOld
         DirectoryNew
         IsDevelopment
         LibMain

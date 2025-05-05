@@ -13,7 +13,7 @@ import Data.List.NonEmpty.Extra qualified as NE
 import Data.Map qualified as Map
 import Data.Time (UTCTime (..))
 import Data.Time.Clock.POSIX (posixSecondsToUTCTime)
-import Directory (DirectoryRaw (..), isVideoFile, readDirectoryRaw)
+import DirectoryOld (DirectoryRaw (..), isVideoFile, readDirectoryRaw)
 import Foreign.C (CTime (..))
 import GHC.Data.Maybe (catMaybes, firstJusts, fromMaybe)
 import Path (Abs, Dir, File, Path, Rel, filename, mkRelFile, parent, (</>))

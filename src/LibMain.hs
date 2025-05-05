@@ -33,7 +33,7 @@ import Data.Text qualified as Text
 import Data.Text.Encoding (decodeUtf8Lenient)
 import Data.Time (diffUTCTime, getCurrentTime)
 import Data.Time.Clock.POSIX (posixSecondsToUTCTime)
-import Directory
+import DirectoryOld
   ( DirectoryInfo (..),
     DirectoryKind (..),
     DirectoryRaw (..),

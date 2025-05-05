@@ -4,7 +4,7 @@ module TVState where
 
 import Data.HashMap.Strict as Map
 import Data.Text qualified as T
-import Directory (DirectoryInfo, TopLevelDir, topLevelToAbsDir)
+import DirectoryOld (DirectoryInfo, TopLevelDir, topLevelToAbsDir)
 import GHC.Conc (TVar, atomically, readTVar, writeTVar)
 import Path (Abs, Dir, Path, isProperPrefixOf)
 import Util (onChanges)

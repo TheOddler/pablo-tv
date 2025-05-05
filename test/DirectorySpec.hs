@@ -4,7 +4,7 @@ import Autodocodec.Yaml (eitherDecodeYamlViaCodec, encodeYamlViaCodec)
 import Data.ByteString.Char8 qualified as BS
 import Data.Text (Text)
 import Data.Text qualified as T
-import Directory
+import DirectoryOld
 import Path (fromRelFile, parseAbsDir, parseRelDir, parseRelFile)
 import Test.Syd (Spec, describe, expectationFailure, it, pureGoldenByteStringFile, pureGoldenTextFile, shouldBe)
 import TestUtils (forceAbsDir, forceRelFile)

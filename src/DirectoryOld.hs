@@ -1,6 +1,6 @@
 {-# LANGUAGE TemplateHaskell #-}
 
-module Directory
+module DirectoryOld
   ( DirectoryRaw (..),
     readDirectoryRaw,
     DirectoryInfo (..),

@@ -1,7 +1,7 @@
 module DirectoryNewSpec (spec) where
 
-import Directory (DirectoryInfo (..), DirectoryKind (..))
 import DirectoryNew
+import DirectoryOld (DirectoryInfo (..), DirectoryKind (..))
 import Orphanage ()
 import System.Posix (getFileStatus)
 import Test.Syd (Spec, it, shouldBe)
