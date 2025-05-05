@@ -3,6 +3,7 @@
 module Orphanage where
 
 import Actions (Action (..), DirOrFile (..), KeyboardButton (..), MouseButton (..))
+import DirectoryNew (Directory (..), OtherFile (..), SpecialFile (..), VideoFile (..))
 import GHC.Generics (Generic)
 import Generic.Random (genericArbitrary, uniform)
 import Path qualified
@@ -55,3 +56,30 @@ instance Arbitrary KeyboardButton where
 
 instance Arbitrary Playerctl.Action where
   arbitrary = genericArbitrary uniform
+
+-- Instances for the Directory tests
+deriving instance Eq Directory
+
+deriving instance Show Directory
+
+instance Eq VideoFile where
+  VideoFile a _ == VideoFile b _ = a == b
+
+instance Show VideoFile where
+  -- This is just for testing, so not a great instance. We can't easily show
+  -- the FileStatus but that doesn't matter for the tests really.
+  show (VideoFile a _) = show a
+
+deriving instance Eq OtherFile
+
+deriving instance Show OtherFile
+
+instance (Eq a) => Eq (SpecialFile a) where
+  FileDoesNotExist == FileDoesNotExist = True
+  FileRead a == FileRead b = a == b
+  FileDirty a == FileDirty b = a == b
+  FileReadFail bsA eA == FileReadFail bsB eB = bsA == bsB && show eA == show eB
+  FileReadError a == FileReadError b = show a == show b
+  _ == _ = False
+
+deriving instance (Show a) => Show (SpecialFile a)

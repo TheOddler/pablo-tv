@@ -1,0 +1,7 @@
+kind: movie
+title: Movie B
+year: 2025
+description: Test Movie with info file (format V1)
+imdb: tt123
+tvdb: series-123
+tmdb: '123'

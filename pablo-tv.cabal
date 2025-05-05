@@ -43,6 +43,7 @@ library
     exposed-modules:
         Actions
         Directory
+        DirectoryNew
         IsDevelopment
         LibMain
         Playerctl
@@ -63,6 +64,7 @@ library
       , bytestring
       , containers
       , data-default
+      , directory
       , evdev
       , exceptions
       , extra
@@ -90,6 +92,7 @@ library
       , unix
       , unordered-containers
       , warp
+      , yaml
       , yesod
       , yesod-static
       , yesod-websockets
@@ -110,6 +113,7 @@ test-suite pablo-tv-test
     other-modules:
         ActionsSpec
         DirectorySpec
+        DirectoryNewSpec
         Orphanage
         TestUtils
         WatchedSpec
@@ -127,3 +131,4 @@ test-suite pablo-tv-test
       , sydtest-discover
       , text
       , time
+      , unix
