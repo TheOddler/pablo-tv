@@ -2,12 +2,14 @@
 
 module Directory where
 
-import Data.List (sortOn)
+import Algorithms.NaturalSort qualified as Natural
+import Data.List (sortBy)
 import Data.Maybe (listToMaybe)
+import Data.Text qualified as T
 import Directory.Files (OtherFile (..), SpecialFile (..), VideoFile (..), extensionIsOneOf, fileNameIs, infoFileName, readSpecialFile, videoExtensions, watchedFileName)
-import Directory.Info (DirectoryInfo (..), guessInfo)
+import Directory.Info (DirectoryInfo (..), guessInfo, niceDirNameT, niceFileNameT)
 import Directory.Watched (WatchedFiles)
-import Path (Abs, Dir, Path, mkRelDir, (</>))
+import Path (Abs, Dir, File, Path, mkRelDir, (</>))
 import SaferIO (FSRead (..))
 
 newtype RootDirectory = RootDirectory (Path Abs Dir)
@@ -51,15 +53,15 @@ readDirectory path = do
   -- Parse the video files
   let readVideoFile p = VideoFile p <$> getFileStatus p
   videoFilesUnsorted <- mapM readVideoFile videoPaths
-  let videoFiles = sortOn (\(VideoFile p _) -> p) videoFilesUnsorted
+  let videoFiles = smartFileSort (.videoFilePath) videoFilesUnsorted
 
   -- Find all the subDirs and parse those too.
   subDirsUnsorted <- mapM readDirectory subDirPaths
-  let subDirs = sortOn (.directoryPath) subDirsUnsorted
+  let subDirs = smartDirSort subDirsUnsorted
 
   -- Other files
   let othersUnsorted = OtherFile <$> otherPaths
-  let others = sortOn (\(OtherFile p) -> p) othersUnsorted
+  let others = smartFileSort otherFilePath othersUnsorted
 
   -- Finished
   pure
@@ -114,3 +116,21 @@ partition4 p1 p2 p3 arr = partition4' arr ([], [], [], [])
       | p2 x = partition4' xs (a1, x : a2, a3, a4)
       | p3 x = partition4' xs (a1, a2, x : a3, a4)
       | otherwise = partition4' xs (a1, a2, a3, x : a4)
+
+-- | Sorts the dirs by name, taking into account numbers properly
+smartDirSort :: [Directory] -> [Directory]
+smartDirSort = sortBy sorting
+  where
+    sorting a b =
+      Natural.compare
+        (T.toLower $ niceDirNameT a.directoryPath)
+        (T.toLower $ niceDirNameT b.directoryPath)
+
+-- | Sorts the dirs, taking into account numbers properly
+smartFileSort :: (a -> Path x File) -> [a] -> [a]
+smartFileSort getPath = sortBy sorting
+  where
+    sorting a b =
+      Natural.compare
+        (T.toLower . niceFileNameT $ getPath a)
+        (T.toLower . niceFileNameT $ getPath b)

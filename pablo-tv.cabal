@@ -67,7 +67,6 @@ library
       , bytestring
       , containers
       , data-default
-      , directory
       , evdev
       , exceptions
       , extra

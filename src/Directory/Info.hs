@@ -8,8 +8,8 @@ import Data.Maybe (isJust, listToMaybe, mapMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Directory.Files (VideoFile (..))
-import GHC.Data.Maybe (firstJusts)
-import Path (Abs, Dir, File, Path, Rel, dirname, filename, fromRelDir)
+import GHC.Data.Maybe (firstJusts, orElse)
+import Path (Abs, Dir, File, Path, Rel, dirname, filename, fromRelDir, fromRelFile, splitExtension)
 import Regex (expect1Int, expect2Ints, expect3Ints, tryRegex)
 import System.FilePath (dropTrailingPathSeparator)
 
@@ -123,6 +123,12 @@ titleFromDir folder = T.strip . fst $ T.breakOn "(" (niceDirNameT folder)
 
 niceDirNameT :: Path a Dir -> Text
 niceDirNameT = T.pack . dropTrailingPathSeparator . fromRelDir . dirname
+
+niceFileNameT :: Path a File -> Text
+niceFileNameT file =
+  let withoutExt = (fst <$> splitExtension file) `orElse` file
+      name = fromRelFile $ filename withoutExt
+   in T.replace "." " " $ T.pack name
 
 yearFromPath :: Path Rel x -> Maybe Int
 yearFromPath path =
