@@ -3,14 +3,18 @@
 module Directory where
 
 import Algorithms.NaturalSort qualified as Natural
+import Autodocodec.Yaml (encodeYamlViaCodec)
+import Data.ByteString qualified as BS
+import Data.ByteString.Char8 qualified as BS8
 import Data.List (find, sortBy)
+import Data.Maybe (fromMaybe)
 import Data.Text qualified as T
-import Directory.Files (Image (..), OtherFile (..), SpecialFile (..), VideoFile (..), extensionIsOneOf, fileNameIs, fileNameIsOneOf, imageExtensions, infoFileName, readSpecialFile, videoExtensions, watchedFileName)
+import Directory.Files (Image (..), OtherFile (..), SpecialFile (..), VideoFile (..), extensionIsOneOf, fileNameIs, fileNameIsOneOf, imageExtensions, infoFileName, posterFileNameDefault, readSpecialFile, videoExtensions, watchedFileName)
 import Directory.Info (DirectoryInfo (..), downloadInfo, guessInfo, niceDirNameT, niceFileNameT)
 import Directory.Watched (WatchedFiles)
 import GHC.Utils.Misc (mapFst)
-import Path (Abs, Dir, File, Path, mkRelDir, (</>))
-import SaferIO (FSRead (..), Logger (..), NetworkRead)
+import Path (Abs, Dir, File, Path, Rel, addExtension, mkRelDir, parseRelFile, toFilePath, (</>))
+import SaferIO (FSRead (..), FSWrite (..), Logger (..), NetworkRead)
 import TVDB (TVDBToken, downloadImage)
 
 newtype RootDirectory = RootDirectory (Path Abs Dir)
@@ -141,9 +145,9 @@ downloadInfoRecursive tvdbToken dir = do
         Left err -> do
           logStr err
           pure dir.directoryImage
-        Right newImg ->
+        Right (contentType, imgBytes) ->
           -- We can't write the image in this function, so keep it in memory, and we can write it in the write function for `Directory` data
-          pure . Just $ ImageInMemory newImg
+          pure . Just $ ImageInMemory contentType imgBytes
     _ -> pure dir.directoryImage
 
   -- Recursively do all subDirs
@@ -155,6 +159,50 @@ downloadInfoRecursive tvdbToken dir = do
         directoryImage = newImage,
         directorySubDirs = newSubDirs
       }
+
+-- Writing the data back to disk
+
+-- | Write only the data that is marked as dirty to limit how much we write
+writeDirtyInfoRecursive :: (FSWrite m, Logger m) => Directory -> m ()
+writeDirtyInfoRecursive dir = do
+  -- Write dirty directory info
+  case dir.directoryInfo of
+    FileDirty i -> write infoFileName $ encodeYamlViaCodec i
+    _ -> pure ()
+
+  -- Write in-memory image to disk
+  case dir.directoryImage of
+    Nothing -> pure ()
+    Just (ImageOnDisk _) -> pure ()
+    Just (ImageInMemory contentType imgBytes) ->
+      let extension' =
+            if BS.isPrefixOf "image/" contentType
+              then Just $ BS.drop 6 contentType
+              else Nothing
+          extension = if extension' == Just "jpeg" then Just "jpg" else extension'
+          name = fromMaybe posterFileNameDefault $ do
+            ext <- extension
+            parseRelFile $ BS8.unpack $ "poster." <> ext
+       in write name imgBytes
+
+  -- Write dirty watched info
+  case dir.directoryWatched of
+    FileDirty i -> write watchedFileName $ encodeYamlViaCodec i
+    _ -> pure ()
+
+  -- Recursively do it for the subDirs too
+  mapM_ writeDirtyInfoRecursive dir.directorySubDirs
+  where
+    write :: (FSWrite m, Logger m) => Path Rel File -> BS.ByteString -> m ()
+    write name file = do
+      -- Make a backup if a file already exists, do this without parsing it, as it might (have) fail(ed) parsing
+      let path = dir.directoryPath </> name
+      case addExtension ".backup" path of
+        Just backupPath -> renameFileSafe path backupPath
+        Nothing -> logStr $ "Failed to make backup file name: " ++ toFilePath path
+
+      -- Write the file to disk
+      writeFileBS path file
 
 -- Helpers
 

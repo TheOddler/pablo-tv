@@ -19,6 +19,10 @@ infoFileName = $(mkRelFile "info.yaml")
 watchedFileName :: Path Rel File
 watchedFileName = $(mkRelFile "watched.yaml")
 
+-- | We support images with any name, but when we download them from the internet without a proper name this is the name we'll give it
+posterFileNameDefault :: Path Rel File
+posterFileNameDefault = $(mkRelFile "watched.yaml")
+
 -- | The extensions we consider video files.
 -- Must include the `.` as that's what `takeExtension` gives us so easier to use that way.
 videoExtensions :: [String]
@@ -58,11 +62,9 @@ readSpecialFile path = do
         Right info -> FileRead info
         Left err -> FileReadFail content err
 
-type InMemoryImage = (ContentType, BS.ByteString)
-
 data Image
   = ImageOnDisk (Path Abs File)
-  | ImageInMemory InMemoryImage
+  | ImageInMemory ContentType BS.ByteString
 
 -- Helpers
 
