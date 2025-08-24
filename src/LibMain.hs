@@ -18,7 +18,7 @@ import Actions
     performAction,
   )
 import Control.Exception (SomeException, displayException, try)
-import Control.Monad (filterM, forM, when)
+import Control.Monad (filterM, forM, forM_, when)
 import Data.Aeson (Result (..))
 import Data.ByteString.Char8 qualified as BS
 import Data.Char (isSpace, toLower)
@@ -480,8 +480,8 @@ data DirInf = DirInf
 -- So instead of reading it for every path, we first do a guess what the path is, and read it for dirs only.
 -- There's also some paths we ignore, regardless of wether they are files or dirs.
 data LikelyPathType
-  = LikelyFile (Path Abs File)
-  | LikelyDir (Path Abs Dir)
+  = LikelyDir (Path Abs Dir)
+  | LikelyFile (Path Abs File)
   | LikelyIgnored FilePath
 
 -- | If this guess is wrong, we won't explore the directory.
@@ -497,31 +497,33 @@ guessPathType p = case p of
     Just absPath -> LikelyDir absPath
     Nothing -> LikelyIgnored p
 
+partitionPathTypes :: [LikelyPathType] -> ([Path Abs Dir], [Path Abs File], [FilePath])
+partitionPathTypes =
+  foldr
+    ( \guess (ds, fs, is) -> case guess of
+        LikelyDir d -> (d : ds, fs, is)
+        LikelyFile f -> (ds, f : fs, is)
+        LikelyIgnored i -> (ds, fs, i : is)
+    )
+    ([], [], [])
+
 -- | Here we don't use the typed listDir as it's slow.
 -- My hunch is that it actually does IO to check if something is a file or not, which is slow.
 -- Instead, I use the untyped FilePath API here, and then make guesses on what is a file or dir.
-walkDir ::
+walkDirDepthFirst ::
   (Path Abs Dir -> NominalDiffTime -> IO ()) ->
   Path Abs Dir ->
   IO ([Path Abs Dir], [Path Abs File], [FilePath])
-walkDir onStep root = do
+walkDirDepthFirst onStep root = do
   let rootPath = fromAbsDir root
   (relPaths, duration) <- withDuration $ listDirectory rootPath
   onStep root duration
   let absPaths = map (rootPath ++) relPaths
   let pathGuesses = map guessPathType absPaths
 
-  let (files, dirs, ignored) =
-        foldr
-          ( \guess (fs, ds, is) -> case guess of
-              LikelyFile f -> (f : fs, ds, is)
-              LikelyDir d -> (fs, d : ds, is)
-              LikelyIgnored i -> (fs, ds, i : is)
-          )
-          ([], [], [])
-          pathGuesses
+  let (dirs, files, ignored) = partitionPathTypes pathGuesses
 
-  (subDirs, subFiles, subIgnored) <- unzip3 <$> forM dirs (walkDir onStep)
+  (subDirs, subFiles, subIgnored) <- unzip3 <$> forM dirs (walkDirDepthFirst onStep)
 
   let allDirs = concat $ dirs : subDirs
   let allFiles = concat $ files : subFiles
@@ -529,17 +531,46 @@ walkDir onStep root = do
 
   pure (allDirs, allFiles, allIgnored)
 
+walkDirBreadthFirst ::
+  (Path Abs Dir -> NominalDiffTime -> IO ()) ->
+  Path Abs Dir ->
+  IO ([Path Abs Dir], [Path Abs File], [FilePath])
+walkDirBreadthFirst onStep rootDir = do
+  fst <$> step [rootDir] ([], [], [])
+  where
+    listDir' :: Path Abs Dir -> IO ([Path Abs Dir], [Path Abs File], [FilePath])
+    listDir' dir = do
+      let absDirPath = fromAbsDir dir
+      (relPaths, duration) <- withDuration $ listDirectory absDirPath
+      onStep dir duration
+      let absPaths = map (absDirPath ++) relPaths
+      let pathGuesses = map guessPathType absPaths
+      pure $ partitionPathTypes pathGuesses
+
+    step ::
+      [Path Abs Dir] ->
+      ([Path Abs Dir], [Path Abs File], [FilePath]) ->
+      IO (([Path Abs Dir], [Path Abs File], [FilePath]), [Path Abs Dir])
+    step [] agg = pure (agg, [])
+    step (dirTodo : nextDirs) (aggDirs, aggFiles, aggIgnored) = do
+      (subDirs, subFiles, subIgnored) <- listDir' dirTodo
+      let newAgg = (aggDirs <> subDirs, aggFiles <> subFiles, aggIgnored <> subIgnored)
+      let newDirsToCheck = nextDirs <> subDirs
+      step newDirsToCheck newAgg
+
 main :: IO ()
 main = do
   videoDirPath <- getVideoDirPath
-  ((_dirs, _files, _ignored), totalTime) <-
+  ((dirs, _files, _ignored), totalTime) <-
     withDuration $
-      walkDir
+      walkDirBreadthFirst
         ( \path time -> do
             putStrLn $ "Walked " ++ show path ++ " in " ++ show time
         )
         (unRootDir videoDirPath)
   putStrLn $ "Reading recur took " ++ show totalTime
+  putStrLn "Found these directories:"
+  forM_ dirs print
 
   -- To get this token for now you can use your apiKey here https://thetvdb.github.io/v4-api/#/Login/post_login
   tvdbTokenRaw <- lookupEnv "TVDB_TOKEN"
