@@ -20,11 +20,11 @@ import Actions
 import Control.Exception (SomeException, displayException, try)
 import Control.Monad (filterM, forM, when)
 import Data.Aeson (Result (..))
-import Data.Bifunctor (bimap)
 import Data.ByteString.Char8 qualified as BS
 import Data.Char (isSpace, toLower)
+import Data.Either (partitionEithers)
 import Data.HashMap.Strict qualified as Map
-import Data.List (foldl', partition)
+import Data.List (foldl')
 import Data.List.Extra (notNull, replace)
 import Data.Maybe (fromMaybe, isJust, isNothing)
 import Data.String (fromString)
@@ -83,7 +83,7 @@ import Path.IO (doesDirExist, doesFileExist, getHomeDir, listDir)
 import Playerctl (Action (..), onFilePlayStarted)
 import System.Directory (listDirectory)
 import System.Environment (lookupEnv)
-import System.FilePath (dropTrailingPathSeparator, hasExtension)
+import System.FilePath (dropTrailingPathSeparator)
 import System.Posix (FileStatus, getFileStatus, isRegularFile)
 import System.Process (callProcess)
 import System.Random (initStdGen, mkStdGen)
@@ -486,53 +486,46 @@ data FileInf = FileInf
 -- My hunch is that it actually does IO to check if something is a file or not, which is slow.
 -- Instead, I use the untyped FilePath API here, and then just assume stuff with an extension is a file.
 walkDir ::
-  (Path Abs Dir -> [DirInf] -> [FileInf] -> NominalDiffTime -> IO ()) ->
+  (DirInf -> NominalDiffTime -> IO ()) ->
+  (FileInf -> NominalDiffTime -> IO ()) ->
   Path Abs Dir ->
   IO ([DirInf], [FileInf])
-walkDir onStep root = do
+walkDir onDirFound onFileFound root = do
   let rootPath = fromAbsDir root
-  ((dirs, files), duration) <- withDuration $ do
-    relPaths <- listDirectory rootPath
-    let absPaths = map (rootPath ++) relPaths
-    statuses <- forM absPaths getFileStatus -- Maybe should use getSymbolicLinkStatus? Not sure.
-    let pathsWithStatuses = zip absPaths statuses
+  relPaths <- listDirectory rootPath
+  let absPaths = map (rootPath ++) relPaths
 
-    let (files, dirs) = partition (\(_, s) -> isRegularFile s) pathsWithStatuses
-    let mkFileInfo (filePath, status) = do
-          absPath <- parseAbsFile filePath
-          pure
-            FileInf
-              { filePath = absPath,
-                fileStatus = status
-              }
-    let mkDirInfo (dirPath, status) = do
-          absPath <- parseAbsDir dirPath
-          pure
-            DirInf
-              { dirPath = absPath,
-                dirStatus = status
-              }
+  dirsAndFiles <- forM absPaths $ \absPath -> do
+    (status, duration) <- withDuration $ getFileStatus absPath
+    if isRegularFile status
+      then do
+        info <- FileInf <$> parseAbsFile absPath <*> pure status
+        onFileFound info duration
+        pure $ Right info
+      else do
+        info <- DirInf <$> parseAbsDir absPath <*> pure status
+        onDirFound info duration
+        pure $ Left info
 
-    dirInfos <- mapM mkDirInfo dirs
-    fileInfos <- mapM mkFileInfo files
+  let (dirs, files) = partitionEithers dirsAndFiles
+  subInfos <- forM (map dirPath dirs) $ walkDir onDirFound onFileFound
+  let (subDirs, subFiles) = unzip subInfos
+  let allDirs = concat $ dirs : subDirs
+  let allFiles = concat $ files : subFiles
 
-    pure (dirInfos, fileInfos)
-
-  onStep root dirs files duration
-
-  subs <- forM (map dirPath dirs) $ walkDir onStep
-  let (allDirs, allFiles) = unzip $ (dirs, files) : subs
-  pure (concat allDirs, concat allFiles)
+  pure (allDirs, allFiles)
 
 main :: IO ()
 main = do
   videoDirPath <- getVideoDirPath
-  ((dirs, files), totalTime) <-
+  ((_dirs, _files), totalTime) <-
     withDuration $
       walkDir
-        ( \dirWalked stepDirs stepFiles time -> do
-            putStrLn $ "Walking " ++ show dirWalked ++ " took " ++ show time
-            putStrLn $ "Found " ++ show (length stepDirs) ++ " dirs, and " ++ show (length stepFiles) ++ " files"
+        ( \dirInfo time -> do
+            putStrLn $ "Walked " ++ show dirInfo.dirPath ++ " took " ++ show time
+        )
+        ( \fileInfo time -> do
+            putStrLn $ "Found " ++ show fileInfo.filePath ++ " took " ++ show time
         )
         (unRootDir videoDirPath)
   putStrLn $ "Reading recur took " ++ show totalTime
