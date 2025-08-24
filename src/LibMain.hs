@@ -471,26 +471,14 @@ withDuration f = do
   endTime <- getCurrentTime
   pure (a, diffUTCTime endTime startTime)
 
-walkSlow ::
-  (Path Abs Dir -> [Path Abs Dir] -> [Path Abs File] -> NominalDiffTime -> IO ()) ->
-  Path Abs Dir ->
-  IO ([Path Abs Dir], [Path Abs File])
-walkSlow onStep p = do
-  ((dirs, files), duration) <- withDuration $ listDir p
-  onStep p dirs files duration
-
-  subs <- forM dirs $ walkSlow onStep
-  let (allDirs, allFiles) = unzip $ (dirs, files) : subs
-  pure (concat allDirs, concat allFiles)
-
 -- | Here we don't use the typed listDir as it's slow.
 -- My hunch is that it actually does IO to check if something is a file or not, which is slow.
 -- Instead, I use the untyped FilePath API here, and then just assume stuff with an extension is a file.
-walkFast ::
+walkDir ::
   (Path Abs Dir -> [Path Abs Dir] -> [Path Abs File] -> NominalDiffTime -> IO ()) ->
   Path Abs Dir ->
   IO ([Path Abs Dir], [Path Abs File])
-walkFast onStep p = do
+walkDir onStep p = do
   let dirPath = fromAbsDir p
   (contents, duration) <- withDuration $ listDirectory dirPath
 
@@ -503,7 +491,7 @@ walkFast onStep p = do
 
   onStep p dirs files duration
 
-  subs <- forM dirs $ walkFast onStep
+  subs <- forM dirs $ walkDir onStep
   let (allDirs, allFiles) = unzip $ (dirs, files) : subs
   pure (concat allDirs, concat allFiles)
 
@@ -512,7 +500,7 @@ main = do
   videoDirPath <- getVideoDirPath
   ((dirs, files), totalTime) <-
     withDuration $
-      walkFast
+      walkDir
         ( \dirWalked stepDirs stepFiles time -> do
             putStrLn $ "Walking " ++ show dirWalked ++ " took " ++ show time
         )
