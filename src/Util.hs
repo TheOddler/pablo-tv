@@ -9,6 +9,7 @@ import Data.Default (def)
 import Data.List (isPrefixOf)
 import Data.List.NonEmpty qualified as NE
 import Data.Text qualified as T
+import Data.Time (NominalDiffTime, diffUTCTime, getCurrentTime)
 import GHC.Conc (TVar, atomically, readTVar, readTVarIO, retry)
 import GHC.List (uncons)
 import IsDevelopment (isDevelopment)
@@ -113,3 +114,10 @@ asyncOnTrigger trigger action = loop
 shuffle :: (RandomGen gen) => [a] -> gen -> [a]
 shuffle [] _ = []
 shuffle list gen = shuffle' list (length list) gen
+
+withDuration :: IO a -> IO (a, NominalDiffTime)
+withDuration f = do
+  startTime <- getCurrentTime
+  a <- f
+  endTime <- getCurrentTime
+  pure (a, diffUTCTime endTime startTime)

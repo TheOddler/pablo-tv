@@ -18,7 +18,7 @@ import Actions
     performAction,
   )
 import Control.Exception (SomeException, displayException, try)
-import Control.Monad (filterM, forM, forM_, when)
+import Control.Monad (filterM, forM_, when)
 import Data.Aeson (Result (..))
 import Data.ByteString.Char8 qualified as BS
 import Data.Char (isSpace, toLower)
@@ -31,7 +31,7 @@ import Data.Text (Text, intercalate, unpack)
 import Data.Text qualified as T
 import Data.Text qualified as Text
 import Data.Text.Encoding (decodeUtf8Lenient)
-import Data.Time (NominalDiffTime, diffUTCTime, getCurrentTime)
+import Data.Time (diffUTCTime, getCurrentTime)
 import Data.Time.Clock.POSIX (posixSecondsToUTCTime)
 import Directory
   ( DirectoryInfo (..),
@@ -50,6 +50,7 @@ import Directory
     updateAllDirectoryInfos,
     updateAllDirectoryInfosGuessOnly,
   )
+import DirectoryNew (walkDirBreadthFirst)
 import Evdev.Uinput (Device)
 import Foreign.C (CTime (..))
 import GHC.Conc (TVar, atomically, newTVarIO, readTVar, readTVarIO, writeTVar)
@@ -67,12 +68,9 @@ import Path
     Rel,
     dirname,
     fileExtension,
-    fromAbsDir,
     fromAbsFile,
     mkRelDir,
     parent,
-    parseAbsDir,
-    parseAbsFile,
     parseRelDir,
     parseRelFile,
     toFilePath,
@@ -80,10 +78,8 @@ import Path
   )
 import Path.IO (doesDirExist, doesFileExist, getHomeDir, listDir)
 import Playerctl (Action (..), onFilePlayStarted)
-import System.Directory (listDirectory)
 import System.Environment (lookupEnv)
-import System.FilePath (dropTrailingPathSeparator, hasExtension)
-import System.Posix (FileStatus, getFileStatus, isRegularFile)
+import System.FilePath (dropTrailingPathSeparator)
 import System.Process (callProcess)
 import System.Random (initStdGen, mkStdGen)
 import TVDB (TVDBToken (..))
@@ -98,6 +94,7 @@ import Util
     toUrlRel,
     unsnoc,
     widgetFile,
+    withDuration,
   )
 import Watched
   ( MarkAsWatchedResult (..),
@@ -463,100 +460,6 @@ getAllIPsR = do
       if a == minBound
         then ""
         else show a
-
-withDuration :: IO a -> IO (a, NominalDiffTime)
-withDuration f = do
-  startTime <- getCurrentTime
-  a <- f
-  endTime <- getCurrentTime
-  pure (a, diffUTCTime endTime startTime)
-
-data DirInf = DirInf
-  { dirPath :: Path Abs Dir,
-    dirStatus :: FileStatus
-  }
-
--- | Reading the file info of a path is rather slow, so we want to minimise the ones we read it for.
--- So instead of reading it for every path, we first do a guess what the path is, and read it for dirs only.
--- There's also some paths we ignore, regardless of wether they are files or dirs.
-data LikelyPathType
-  = LikelyDir (Path Abs Dir)
-  | LikelyFile (Path Abs File)
-  | LikelyIgnored FilePath
-
--- | If this guess is wrong, we won't explore the directory.
--- This expects an absolute path
-guessPathType :: FilePath -> LikelyPathType
-guessPathType p = case p of
-  "" -> LikelyIgnored p
-  '.' : _ -> LikelyIgnored p
-  _ | hasExtension p -> case parseAbsFile p of
-    Just absPath -> LikelyFile absPath
-    Nothing -> LikelyIgnored p
-  _ -> case parseAbsDir p of
-    Just absPath -> LikelyDir absPath
-    Nothing -> LikelyIgnored p
-
-partitionPathTypes :: [LikelyPathType] -> ([Path Abs Dir], [Path Abs File], [FilePath])
-partitionPathTypes =
-  foldr
-    ( \guess (ds, fs, is) -> case guess of
-        LikelyDir d -> (d : ds, fs, is)
-        LikelyFile f -> (ds, f : fs, is)
-        LikelyIgnored i -> (ds, fs, i : is)
-    )
-    ([], [], [])
-
--- | Here we don't use the typed listDir as it's slow.
--- My hunch is that it actually does IO to check if something is a file or not, which is slow.
--- Instead, I use the untyped FilePath API here, and then make guesses on what is a file or dir.
-walkDirDepthFirst ::
-  (Path Abs Dir -> NominalDiffTime -> IO ()) ->
-  Path Abs Dir ->
-  IO ([Path Abs Dir], [Path Abs File], [FilePath])
-walkDirDepthFirst onStep root = do
-  let rootPath = fromAbsDir root
-  (relPaths, duration) <- withDuration $ listDirectory rootPath
-  onStep root duration
-  let absPaths = map (rootPath ++) relPaths
-  let pathGuesses = map guessPathType absPaths
-
-  let (dirs, files, ignored) = partitionPathTypes pathGuesses
-
-  (subDirs, subFiles, subIgnored) <- unzip3 <$> forM dirs (walkDirDepthFirst onStep)
-
-  let allDirs = concat $ dirs : subDirs
-  let allFiles = concat $ files : subFiles
-  let allIgnored = concat $ ignored : subIgnored
-
-  pure (allDirs, allFiles, allIgnored)
-
-walkDirBreadthFirst ::
-  (Path Abs Dir -> NominalDiffTime -> IO ()) ->
-  Path Abs Dir ->
-  IO ([Path Abs Dir], [Path Abs File], [FilePath])
-walkDirBreadthFirst onStep rootDir = do
-  fst <$> step [rootDir] ([], [], [])
-  where
-    listDir' :: Path Abs Dir -> IO ([Path Abs Dir], [Path Abs File], [FilePath])
-    listDir' dir = do
-      let absDirPath = fromAbsDir dir
-      (relPaths, duration) <- withDuration $ listDirectory absDirPath
-      onStep dir duration
-      let absPaths = map (absDirPath ++) relPaths
-      let pathGuesses = map guessPathType absPaths
-      pure $ partitionPathTypes pathGuesses
-
-    step ::
-      [Path Abs Dir] ->
-      ([Path Abs Dir], [Path Abs File], [FilePath]) ->
-      IO (([Path Abs Dir], [Path Abs File], [FilePath]), [Path Abs Dir])
-    step [] agg = pure (agg, [])
-    step (dirTodo : nextDirs) (aggDirs, aggFiles, aggIgnored) = do
-      (subDirs, subFiles, subIgnored) <- listDir' dirTodo
-      let newAgg = (aggDirs <> subDirs, aggFiles <> subFiles, aggIgnored <> subIgnored)
-      let newDirsToCheck = nextDirs <> subDirs
-      step newDirsToCheck newAgg
 
 main :: IO ()
 main = do

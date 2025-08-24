@@ -43,6 +43,7 @@ library
     exposed-modules:
         Actions
         Directory
+        DirectoryNew
         IsDevelopment
         LibMain
         Playerctl
@@ -77,6 +78,9 @@ library
       , network-info
       , path
       , path-io
+      , persistent
+      , persistent-sqlite
+      , persistent-template
       , process
       , random
       -- Later versions of random have a shuffle function, but for now we need this package
