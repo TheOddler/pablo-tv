@@ -84,6 +84,7 @@ import Playerctl (Action (..), onFilePlayStarted)
 import System.Directory (listDirectory)
 import System.Environment (lookupEnv)
 import System.FilePath (dropTrailingPathSeparator, hasExtension)
+import System.Posix (FileStatus, getFileStatus, isRegularFile)
 import System.Process (callProcess)
 import System.Random (initStdGen, mkStdGen)
 import TVDB (TVDBToken (..))
@@ -471,27 +472,55 @@ withDuration f = do
   endTime <- getCurrentTime
   pure (a, diffUTCTime endTime startTime)
 
+data DirInf = DirInf
+  { dirPath :: Path Abs Dir,
+    dirStatus :: FileStatus
+  }
+
+data FileInf = FileInf
+  { filePath :: Path Abs File,
+    fileStatus :: FileStatus
+  }
+
 -- | Here we don't use the typed listDir as it's slow.
 -- My hunch is that it actually does IO to check if something is a file or not, which is slow.
 -- Instead, I use the untyped FilePath API here, and then just assume stuff with an extension is a file.
 walkDir ::
-  (Path Abs Dir -> [Path Abs Dir] -> [Path Abs File] -> NominalDiffTime -> IO ()) ->
+  (Path Abs Dir -> [DirInf] -> [FileInf] -> NominalDiffTime -> IO ()) ->
   Path Abs Dir ->
-  IO ([Path Abs Dir], [Path Abs File])
-walkDir onStep p = do
-  let dirPath = fromAbsDir p
-  (contents, duration) <- withDuration $ listDirectory dirPath
+  IO ([DirInf], [FileInf])
+walkDir onStep root = do
+  let rootPath = fromAbsDir root
+  ((dirs, files), duration) <- withDuration $ do
+    relPaths <- listDirectory rootPath
+    let absPaths = map (rootPath ++) relPaths
+    statuses <- forM absPaths getFileStatus -- Maybe should use getSymbolicLinkStatus? Not sure.
+    let pathsWithStatuses = zip absPaths statuses
 
-  let (fileNames, dirNames) = partition hasExtension contents
-  let fromFileName fn = parseAbsFile $ dirPath ++ fn
-  let fromDirName dn = parseAbsDir $ dirPath ++ dn
+    let (files, dirs) = partition (\(_, s) -> isRegularFile s) pathsWithStatuses
+    let mkFileInfo (filePath, status) = do
+          absPath <- parseAbsFile filePath
+          pure
+            FileInf
+              { filePath = absPath,
+                fileStatus = status
+              }
+    let mkDirInfo (dirPath, status) = do
+          absPath <- parseAbsDir dirPath
+          pure
+            DirInf
+              { dirPath = absPath,
+                dirStatus = status
+              }
 
-  dirs <- mapM fromDirName dirNames
-  files <- mapM fromFileName fileNames
+    dirInfos <- mapM mkDirInfo dirs
+    fileInfos <- mapM mkFileInfo files
 
-  onStep p dirs files duration
+    pure (dirInfos, fileInfos)
 
-  subs <- forM dirs $ walkDir onStep
+  onStep root dirs files duration
+
+  subs <- forM (map dirPath dirs) $ walkDir onStep
   let (allDirs, allFiles) = unzip $ (dirs, files) : subs
   pure (concat allDirs, concat allFiles)
 
@@ -503,6 +532,7 @@ main = do
       walkDir
         ( \dirWalked stepDirs stepFiles time -> do
             putStrLn $ "Walking " ++ show dirWalked ++ " took " ++ show time
+            putStrLn $ "Found " ++ show (length stepDirs) ++ " dirs, and " ++ show (length stepFiles) ++ " files"
         )
         (unRootDir videoDirPath)
   putStrLn $ "Reading recur took " ++ show totalTime
