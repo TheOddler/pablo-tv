@@ -15,6 +15,7 @@ module Directory
     TopLevelDir,
     getTopLevelDirs,
     topLevelToAbsDir,
+    unRootDir,
     -- For testing
     guessDirectoryInfo,
     isVideoFile,
@@ -54,7 +55,7 @@ import GHC.Data.Maybe
     orElse,
   )
 import GHC.Exts (sortWith)
-import Path (Abs, Dir, File, Path, Rel, addExtension, dirname, fileExtension, filename, fromRelDir, fromRelFile, mkRelDir, mkRelFile, parent, parseRelFile, splitExtension, toFilePath, (</>))
+import Path (Abs, Dir, File, Path, Rel, addExtension, dirname, fileExtension, filename, fromRelDir, fromRelFile, mkAbsDir, mkRelFile, parent, parseRelFile, splitExtension, toFilePath, (</>))
 import SaferIO (FSRead (..), FSWrite (..), Logger (..), NetworkRead)
 import System.FilePath (dropTrailingPathSeparator)
 import TVDB (TVDBData (..), TVDBToken, TVDBType (..), getInfoFromTVDB)
@@ -112,16 +113,16 @@ data DirectoryRaw = DirectoryRaw
   deriving (Show, Eq)
 
 -- | A root directory. Currently this is just the local video folder, but the idea is I'll be able to support more at some point.
-newtype RootDir = RootDir (Path Abs Dir)
+newtype RootDir = RootDir {unRootDir :: Path Abs Dir}
 
 -- rootToAbsDir :: RootDir -> Path Abs Dir
 -- rootToAbsDir (RootDir dir) = dir
 
 getVideoDirPath :: (FSRead m) => m RootDir
 getVideoDirPath = do
-  home <- getHomeDir
-  let videoDirName = $(mkRelDir "Videos")
-  pure $ RootDir $ home </> videoDirName
+  -- home <- getHomeDir
+  -- let videoDirName = $(mkRelDir "Videos")
+  pure $ RootDir $ $(mkAbsDir "/run/user/1000/gvfs/smb-share:server=192.168.0.99,share=videos")
 
 -- | A directory inside a root dir. This is the only place where we'll automatically create info files.
 newtype TopLevelDir = TopLevelDir (Path Abs Dir)

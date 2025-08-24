@@ -18,12 +18,13 @@ import Actions
     performAction,
   )
 import Control.Exception (SomeException, displayException, try)
-import Control.Monad (filterM, when)
+import Control.Monad (filterM, forM, when)
 import Data.Aeson (Result (..))
+import Data.Bifunctor (bimap)
 import Data.ByteString.Char8 qualified as BS
 import Data.Char (isSpace, toLower)
 import Data.HashMap.Strict qualified as Map
-import Data.List (foldl')
+import Data.List (foldl', partition)
 import Data.List.Extra (notNull, replace)
 import Data.Maybe (fromMaybe, isJust, isNothing)
 import Data.String (fromString)
@@ -31,7 +32,7 @@ import Data.Text (Text, intercalate, unpack)
 import Data.Text qualified as T
 import Data.Text qualified as Text
 import Data.Text.Encoding (decodeUtf8Lenient)
-import Data.Time (diffUTCTime, getCurrentTime)
+import Data.Time (NominalDiffTime, diffUTCTime, getCurrentTime)
 import Data.Time.Clock.POSIX (posixSecondsToUTCTime)
 import Directory
   ( DirectoryInfo (..),
@@ -46,6 +47,7 @@ import Directory
     readDirectoryInfoRec,
     readDirectoryRaw,
     topLevelToAbsDir,
+    unRootDir,
     updateAllDirectoryInfos,
     updateAllDirectoryInfosGuessOnly,
   )
@@ -66,9 +68,12 @@ import Path
     Rel,
     dirname,
     fileExtension,
+    fromAbsDir,
     fromAbsFile,
     mkRelDir,
     parent,
+    parseAbsDir,
+    parseAbsFile,
     parseRelDir,
     parseRelFile,
     toFilePath,
@@ -76,8 +81,9 @@ import Path
   )
 import Path.IO (doesDirExist, doesFileExist, getHomeDir, listDir)
 import Playerctl (Action (..), onFilePlayStarted)
+import System.Directory (listDirectory)
 import System.Environment (lookupEnv)
-import System.FilePath (dropTrailingPathSeparator)
+import System.FilePath (dropTrailingPathSeparator, hasExtension)
 import System.Process (callProcess)
 import System.Random (initStdGen, mkStdGen)
 import TVDB (TVDBToken (..))
@@ -458,8 +464,61 @@ getAllIPsR = do
         then ""
         else show a
 
+withDuration :: IO a -> IO (a, NominalDiffTime)
+withDuration f = do
+  startTime <- getCurrentTime
+  a <- f
+  endTime <- getCurrentTime
+  pure (a, diffUTCTime endTime startTime)
+
+walkSlow ::
+  (Path Abs Dir -> [Path Abs Dir] -> [Path Abs File] -> NominalDiffTime -> IO ()) ->
+  Path Abs Dir ->
+  IO ([Path Abs Dir], [Path Abs File])
+walkSlow onStep p = do
+  ((dirs, files), duration) <- withDuration $ listDir p
+  onStep p dirs files duration
+
+  subs <- forM dirs $ walkSlow onStep
+  let (allDirs, allFiles) = unzip $ (dirs, files) : subs
+  pure (concat allDirs, concat allFiles)
+
+-- | Here we don't use the typed listDir as it's slow.
+-- My hunch is that it actually does IO to check if something is a file or not, which is slow.
+-- Instead, I use the untyped FilePath API here, and then just assume stuff with an extension is a file.
+walkFast ::
+  (Path Abs Dir -> [Path Abs Dir] -> [Path Abs File] -> NominalDiffTime -> IO ()) ->
+  Path Abs Dir ->
+  IO ([Path Abs Dir], [Path Abs File])
+walkFast onStep p = do
+  let dirPath = fromAbsDir p
+  (contents, duration) <- withDuration $ listDirectory dirPath
+
+  let (fileNames, dirNames) = partition hasExtension contents
+  let fromFileName fn = parseAbsFile $ dirPath ++ fn
+  let fromDirName dn = parseAbsDir $ dirPath ++ dn
+
+  dirs <- mapM fromDirName dirNames
+  files <- mapM fromFileName fileNames
+
+  onStep p dirs files duration
+
+  subs <- forM dirs $ walkFast onStep
+  let (allDirs, allFiles) = unzip $ (dirs, files) : subs
+  pure (concat allDirs, concat allFiles)
+
 main :: IO ()
 main = do
+  videoDirPath <- getVideoDirPath
+  ((dirs, files), totalTime) <-
+    withDuration $
+      walkFast
+        ( \dirWalked stepDirs stepFiles time -> do
+            putStrLn $ "Walking " ++ show dirWalked ++ " took " ++ show time
+        )
+        (unRootDir videoDirPath)
+  putStrLn $ "Reading recur took " ++ show totalTime
+
   -- To get this token for now you can use your apiKey here https://thetvdb.github.io/v4-api/#/Login/post_login
   tvdbTokenRaw <- lookupEnv "TVDB_TOKEN"
   let tvdbToken = case tvdbTokenRaw of
