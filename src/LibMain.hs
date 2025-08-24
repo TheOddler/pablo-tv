@@ -22,7 +22,6 @@ import Control.Monad (filterM, forM, when)
 import Data.Aeson (Result (..))
 import Data.ByteString.Char8 qualified as BS
 import Data.Char (isSpace, toLower)
-import Data.Either (partitionEithers)
 import Data.HashMap.Strict qualified as Map
 import Data.List (foldl')
 import Data.List.Extra (notNull, replace)
@@ -83,7 +82,7 @@ import Path.IO (doesDirExist, doesFileExist, getHomeDir, listDir)
 import Playerctl (Action (..), onFilePlayStarted)
 import System.Directory (listDirectory)
 import System.Environment (lookupEnv)
-import System.FilePath (dropTrailingPathSeparator)
+import System.FilePath (dropTrailingPathSeparator, hasExtension)
 import System.Posix (FileStatus, getFileStatus, isRegularFile)
 import System.Process (callProcess)
 import System.Random (initStdGen, mkStdGen)
@@ -477,55 +476,67 @@ data DirInf = DirInf
     dirStatus :: FileStatus
   }
 
-data FileInf = FileInf
-  { filePath :: Path Abs File,
-    fileStatus :: FileStatus
-  }
+-- | Reading the file info of a path is rather slow, so we want to minimise the ones we read it for.
+-- So instead of reading it for every path, we first do a guess what the path is, and read it for dirs only.
+-- There's also some paths we ignore, regardless of wether they are files or dirs.
+data LikelyPathType
+  = LikelyFile (Path Abs File)
+  | LikelyDir (Path Abs Dir)
+  | LikelyIgnored FilePath
+
+-- | If this guess is wrong, we won't explore the directory.
+-- This expects an absolute path
+guessPathType :: FilePath -> LikelyPathType
+guessPathType p = case p of
+  "" -> LikelyIgnored p
+  '.' : _ -> LikelyIgnored p
+  _ | hasExtension p -> case parseAbsFile p of
+    Just absPath -> LikelyFile absPath
+    Nothing -> LikelyIgnored p
+  _ -> case parseAbsDir p of
+    Just absPath -> LikelyDir absPath
+    Nothing -> LikelyIgnored p
 
 -- | Here we don't use the typed listDir as it's slow.
 -- My hunch is that it actually does IO to check if something is a file or not, which is slow.
--- Instead, I use the untyped FilePath API here, and then just assume stuff with an extension is a file.
+-- Instead, I use the untyped FilePath API here, and then make guesses on what is a file or dir.
 walkDir ::
-  (DirInf -> NominalDiffTime -> IO ()) ->
-  (FileInf -> NominalDiffTime -> IO ()) ->
+  (Path Abs Dir -> NominalDiffTime -> IO ()) ->
   Path Abs Dir ->
-  IO ([DirInf], [FileInf])
-walkDir onDirFound onFileFound root = do
+  IO ([Path Abs Dir], [Path Abs File], [FilePath])
+walkDir onStep root = do
   let rootPath = fromAbsDir root
-  relPaths <- listDirectory rootPath
+  (relPaths, duration) <- withDuration $ listDirectory rootPath
+  onStep root duration
   let absPaths = map (rootPath ++) relPaths
+  let pathGuesses = map guessPathType absPaths
 
-  dirsAndFiles <- forM absPaths $ \absPath -> do
-    (status, duration) <- withDuration $ getFileStatus absPath
-    if isRegularFile status
-      then do
-        info <- FileInf <$> parseAbsFile absPath <*> pure status
-        onFileFound info duration
-        pure $ Right info
-      else do
-        info <- DirInf <$> parseAbsDir absPath <*> pure status
-        onDirFound info duration
-        pure $ Left info
+  let (files, dirs, ignored) =
+        foldr
+          ( \guess (fs, ds, is) -> case guess of
+              LikelyFile f -> (f : fs, ds, is)
+              LikelyDir d -> (fs, d : ds, is)
+              LikelyIgnored i -> (fs, ds, i : is)
+          )
+          ([], [], [])
+          pathGuesses
 
-  let (dirs, files) = partitionEithers dirsAndFiles
-  subInfos <- forM (map dirPath dirs) $ walkDir onDirFound onFileFound
-  let (subDirs, subFiles) = unzip subInfos
+  (subDirs, subFiles, subIgnored) <- unzip3 <$> forM dirs (walkDir onStep)
+
   let allDirs = concat $ dirs : subDirs
   let allFiles = concat $ files : subFiles
+  let allIgnored = concat $ ignored : subIgnored
 
-  pure (allDirs, allFiles)
+  pure (allDirs, allFiles, allIgnored)
 
 main :: IO ()
 main = do
   videoDirPath <- getVideoDirPath
-  ((_dirs, _files), totalTime) <-
+  ((_dirs, _files, _ignored), totalTime) <-
     withDuration $
       walkDir
-        ( \dirInfo time -> do
-            putStrLn $ "Walked " ++ show dirInfo.dirPath ++ " took " ++ show time
-        )
-        ( \fileInfo time -> do
-            putStrLn $ "Found " ++ show fileInfo.filePath ++ " took " ++ show time
+        ( \path time -> do
+            putStrLn $ "Walked " ++ show path ++ " in " ++ show time
         )
         (unRootDir videoDirPath)
   putStrLn $ "Reading recur took " ++ show totalTime
