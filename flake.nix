@@ -31,6 +31,7 @@
             packages.pablo-tv-base
           ];
           buildInputs = buildInputs ++ runtimeInputs;
+          withHoogle = true;
           inherit (checks.pre-commit-check) shellHook;
         };
 
