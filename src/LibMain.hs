@@ -5,6 +5,7 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE ViewPatterns #-}
+{-# OPTIONS_GHC -Wno-orphans #-}
 
 module LibMain where
 
@@ -15,10 +16,10 @@ import Actions
     MouseButton (..),
     actionsWebSocket,
     mkInputDevice,
-    performAction,
   )
 import Control.Exception (SomeException, displayException, try)
 import Control.Monad (filterM, forM_, when)
+import Control.Monad.Logger (runStderrLoggingT)
 import Data.Aeson (Result (..))
 import Data.ByteString.Char8 qualified as BS
 import Data.Char (isSpace, toLower)
@@ -30,9 +31,9 @@ import Data.String (fromString)
 import Data.Text (Text, intercalate, unpack)
 import Data.Text qualified as T
 import Data.Text qualified as Text
-import Data.Text.Encoding (decodeUtf8Lenient)
 import Data.Time (diffUTCTime, getCurrentTime)
 import Data.Time.Clock.POSIX (posixSecondsToUTCTime)
+import Database.Persist.Sqlite (withSqlitePool)
 import Directory
   ( DirectoryInfo (..),
     DirectoryKind (..),
@@ -51,11 +52,11 @@ import Directory
     updateAllDirectoryInfosGuessOnly,
   )
 import DirectoryNew (walkDirBreadthFirst)
-import Evdev.Uinput (Device)
 import Foreign.C (CTime (..))
-import GHC.Conc (TVar, atomically, newTVarIO, readTVar, readTVarIO, writeTVar)
+import Foundation (App (..), Handler, Route (..), defaultLayout, embeddedStatic, resourcesApp, static_images_apple_tv_plus_png, static_images_netflix_png, static_images_youtube_png)
+import GHC.Conc (atomically, newTVarIO, readTVar, readTVarIO, writeTVar)
 import GHC.Data.Maybe (firstJustsM, listToMaybe, orElse)
-import GHC.MVar (MVar, newMVar)
+import GHC.MVar (newMVar)
 import GHC.Utils.Misc (sortWith)
 import IsDevelopment (isDevelopment)
 import Network.Info (NetworkInterface (..), getNetworkInterfaces)
@@ -84,14 +85,11 @@ import System.Process (callProcess)
 import System.Random (initStdGen, mkStdGen)
 import TVDB (TVDBToken (..))
 import TVState (TVState (..), addToAggWatched, startingTVState, tvStateWebSocket)
-import Text.Hamlet (hamletFile)
 import Util
   ( asyncOnTrigger,
     networkInterfaceWorthiness,
     removeLast,
-    showIpV4OrV6WithPort,
     shuffle,
-    toUrlRel,
     unsnoc,
     widgetFile,
     withDuration,
@@ -105,98 +103,9 @@ import Watched
     readWatchedInfoAgg,
   )
 import Yesod hiding (defaultLayout, replace)
-import Yesod qualified
-import Yesod.EmbeddedStatic
 import Yesod.WebSockets (race_, webSockets)
 
-data App = App
-  { appPort :: Int,
-    appTVDBToken :: Maybe TVDBToken,
-    appInputDevice :: Device,
-    appTVState :: TVar TVState,
-    appGetStatic :: EmbeddedStatic,
-    appVideoDataRefreshTrigger :: MVar ()
-  }
-
-mkEmbeddedStatic
-  False
-  "embeddedStatic"
-  [ embedFile "static/reconnecting-websocket.js",
-    embedFile "static/fontawesome/css/all.min.css",
-    embedFile "static/fontawesome/webfonts/fa-brands-400.ttf",
-    embedFile "static/fontawesome/webfonts/fa-brands-400.woff2",
-    embedFile "static/fontawesome/webfonts/fa-regular-400.ttf",
-    embedFile "static/fontawesome/webfonts/fa-regular-400.woff2",
-    embedFile "static/fontawesome/webfonts/fa-solid-900.ttf",
-    embedFile "static/fontawesome/webfonts/fa-solid-900.woff2",
-    embedFile "static/images/apple-tv-plus.png",
-    embedFile "static/images/netflix.png",
-    embedFile "static/images/youtube.png"
-  ]
-
-mkYesod
-  "App"
-  [parseRoutes|
-/ HomeR GET POST
-/ips AllIPsR GET
-/input InputR GET
-/remote RemoteR GET
-/dir/+Texts DirectoryR GET
-
--- Other
-/image/+Texts ImageR GET
-/static StaticR EmbeddedStatic appGetStatic
-|]
-
-instance Yesod App where
-  addStaticContent = embedStaticContent appGetStatic StaticR Right
-  defaultLayout :: Widget -> Handler Html
-  defaultLayout widget = do
-    isTv <- isTvRequest
-    -- We break up the default layout into two components:
-    -- default-layout is the contents of the body tag, and
-    -- default-layout-wrapper is the entire page. Since the final
-    -- value passed to hamletToRepHtml cannot be a widget, this allows
-    -- you to use normal widget features in default-layout.
-    pc <- widgetToPageContent $ do
-      when isDevelopment $ addScriptRemote "https://pabloproductions.be/LiveJS/live.js"
-
-      when (isDevelopment && not isTv) $ do
-        addScriptRemote "//cdn.jsdelivr.net/npm/eruda" -- Console for mobile
-        toWidgetBody
-          [julius|
-            window.onload = function() {
-              eruda.init();
-            };
-          |]
-
-      networkInterfaces <- liftIO getNetworkInterfaces
-      let mNetworkInterface =
-            listToMaybe $
-              sortWith networkInterfaceWorthiness networkInterfaces
-      port <- getsYesod appPort
-      inReadOnlyMode <- isNothing <$> getsYesod appTVDBToken
-
-      addScript $ StaticR static_reconnecting_websocket_js
-      addStylesheet $ StaticR static_fontawesome_css_all_min_css
-      currentRoute <- fromMaybe HomeR <$> getCurrentRoute
-      currentUrlBS <- toUrlRel currentRoute
-      let currentUrl :: Text
-          currentUrl = decodeUtf8Lenient $ BS.toStrict currentUrlBS
-      $(widgetFile "default")
-    withUrlRenderer $
-      $(hamletFile "templates/page-wrapper.hamlet")
-
-isTvRequest :: Handler Bool
-isTvRequest = do
-  mHostHeader <- lookupHeader "Host"
-  let isHost h = maybe False (h `BS.isInfixOf`) mHostHeader
-  pure $ any isHost ["localhost", "127.0.0.1", "0:0:0:0:0:0:0:1"]
-
-defaultLayout :: Html -> Widget -> Handler Html
-defaultLayout title widget = Yesod.defaultLayout $ do
-  setTitle $ title <> " - Pablo TV"
-  widget
+mkYesodDispatch "App" resourcesApp
 
 type DirName = Text
 
@@ -221,7 +130,8 @@ data HomeSection
 getHomeR :: Handler Html
 getHomeR = do
   -- This can be a websocket request, so do that
-  tvStateTVar <- getsYesod appTVState
+  -- tvStateTVar <- getsYesod appTVState
+  tvStateTVar <- liftIO $ newTVarIO startingTVState
   inputDevice <- getsYesod appInputDevice
   videoDataRefreshTrigger <- getsYesod appVideoDataRefreshTrigger
   webSockets $
@@ -289,11 +199,12 @@ postHomeR =
     Error s -> do
       liftIO $ putStrLn $ "Failed parsing action: " ++ s
       invalidArgs [Text.pack s]
-    Success action -> do
-      inputDevice <- getsYesod appInputDevice
-      tvStateTVar <- getsYesod appTVState
-      videoDataRefreshTrigger <- getsYesod appVideoDataRefreshTrigger
-      liftIO $ performAction inputDevice tvStateTVar videoDataRefreshTrigger action
+    Success (_action :: Actions.Action) -> do
+      -- inputDevice <- getsYesod appInputDevice
+      -- tvStateTVar <- getsYesod appTVState
+      -- videoDataRefreshTrigger <- getsYesod appVideoDataRefreshTrigger
+      -- liftIO $ performAction inputDevice tvStateTVar videoDataRefreshTrigger action
+      pure ()
 
 -- | Turn the segments into a directory path and optionally a filename
 -- Also checks if the file/directory actually exists, if not, return Nothing
@@ -348,21 +259,22 @@ getDirectoryR segments = do
   -- \* In a sub-dir: We read the required stuff from disk. We do this so we always have to most up-to-date data, and we don't expect too much stuff in here, so should be fine to read anew.
   dirs :: [(Path Rel Dir, Text, Maybe (Int, Int))] <- case segments of
     [] -> do
-      tvState <- getsYesod appTVState >>= liftIO . readTVarIO
+      -- tvState <- getsYesod appTVState >>= liftIO . readTVarIO
+      let tempVideoData = mempty
       videoDirPath <- liftIO getVideoDirPath
       topLevelDirs <- liftIO $ getTopLevelDirs videoDirPath
       let getDir :: TopLevelDir -> (Path Rel Dir, Text, Maybe (Int, Int))
           getDir dir =
             let dirName = dirname $ topLevelToAbsDir dir
-                dirInfo = Map.lookup dir tvState.tvVideoData
+                dirInfo = Map.lookup dir tempVideoData
              in ( dirName,
                   maybe (niceDirNameT dirName) (directoryInfoTitle . fst) dirInfo,
                   case snd <$> dirInfo of
                     Nothing -> Nothing
                     Just w ->
                       Just
-                        ( w.watchedInfoPlayedVideoFileCount,
-                          w.watchedInfoVideoFileCount
+                        ( watchedInfoPlayedVideoFileCount w,
+                          watchedInfoVideoFileCount w
                         )
                 )
       pure $ getDir <$> topLevelDirs
@@ -538,18 +450,23 @@ main = do
               Left (e :: SomeException) -> putStrLn $ "Failed marking as watched in thread: " ++ displayException e
 
   -- The thread for the app
-  let appThread = do
+  let appThread' pool = do
         app <-
           toWaiAppPlain
             App
               { appPort = port,
                 appTVDBToken = tvdbToken,
                 appInputDevice = inputDevice,
-                appTVState = tvState,
+                appSqlPool = pool,
                 appGetStatic = embeddedStatic,
                 appVideoDataRefreshTrigger = videoDataRefreshTrigger
               }
         run port $ defaultMiddlewaresNoLogging app
+      openConnectionCount = 10
+      appThread =
+        runStderrLoggingT $
+          withSqlitePool "pablo-tv-data.db3" openConnectionCount $
+            liftIO . appThread'
 
   putStrLn "Starting race..."
   race_ appThread $

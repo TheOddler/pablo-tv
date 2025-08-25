@@ -44,6 +44,7 @@ library
         Actions
         Directory
         DirectoryNew
+        Foundation
         IsDevelopment
         LibMain
         Playerctl
@@ -74,13 +75,12 @@ library
       , HTTP
       , http-client
       , modern-uri
+      , monad-logger
       , natural-sort
       , network-info
       , path
       , path-io
-      , persistent
       , persistent-sqlite
-      , persistent-template
       , process
       , random
       -- Later versions of random have a shuffle function, but for now we need this package
