@@ -11,11 +11,12 @@ module Foundation where
 import Actions (Action (..))
 import Control.Concurrent (MVar)
 import Control.Monad (when)
+import DB (runDBWithConn)
 import Data.ByteString.Char8 qualified as BS
 import Data.Maybe (fromMaybe, isNothing, listToMaybe)
 import Data.Text (Text)
 import Data.Text.Encoding (decodeUtf8Lenient)
-import Database.Persist.Sqlite (ConnectionPool, SqlBackend, runSqlPool)
+import Database.Persist.Sqlite (ConnectionPool, SqlBackend)
 import Evdev.Uinput (Device)
 import GHC.Utils.Misc (sortWith)
 import IsDevelopment (isDevelopment)
@@ -123,4 +124,4 @@ instance YesodPersist App where
 
   runDB action = do
     state <- getYesod
-    runSqlPool action $ appSqlPool state
+    runDBWithConn (appSqlPool state) action

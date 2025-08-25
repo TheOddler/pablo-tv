@@ -42,11 +42,13 @@ library
     hs-source-dirs:   src
     exposed-modules:
         Actions
+        DB
         Directory
         DirectoryNew
         Foundation
         IsDevelopment
         LibMain
+        Orphanage
         Playerctl
         SafeMaths
         SaferIO
@@ -73,6 +75,7 @@ library
       , ghc
       , hashable
       , HTTP
+      , http-api-data
       , http-client
       , modern-uri
       , monad-logger
@@ -92,6 +95,7 @@ library
       , template-haskell
       , text
       , time
+      , transformers
       , unix
       , unordered-containers
       , warp

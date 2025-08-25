@@ -18,8 +18,9 @@ import Actions
     mkInputDevice,
   )
 import Control.Exception (SomeException, displayException, try)
-import Control.Monad (filterM, forM_, when)
+import Control.Monad (filterM, when)
 import Control.Monad.Logger (runStderrLoggingT)
+import DB (migrateAll, runDBWithConn)
 import Data.Aeson (Result (..))
 import Data.ByteString.Char8 qualified as BS
 import Data.Char (isSpace, toLower)
@@ -33,7 +34,7 @@ import Data.Text qualified as T
 import Data.Text qualified as Text
 import Data.Time (diffUTCTime, getCurrentTime)
 import Data.Time.Clock.POSIX (posixSecondsToUTCTime)
-import Database.Persist.Sqlite (withSqlitePool)
+import Database.Persist.Sqlite (runMigration, withSqlitePool)
 import Directory
   ( DirectoryInfo (..),
     DirectoryKind (..),
@@ -43,7 +44,6 @@ import Directory
     getVideoDirPath,
     niceDirNameT,
     niceFileNameT,
-    readAllDirectoryInfos,
     readDirectoryInfoRec,
     readDirectoryRaw,
     topLevelToAbsDir,
@@ -51,7 +51,7 @@ import Directory
     updateAllDirectoryInfos,
     updateAllDirectoryInfosGuessOnly,
   )
-import DirectoryNew (walkDirBreadthFirst)
+import DirectoryNew (updateData)
 import Foreign.C (CTime (..))
 import Foundation (App (..), Handler, Route (..), defaultLayout, embeddedStatic, resourcesApp, static_images_apple_tv_plus_png, static_images_netflix_png, static_images_youtube_png)
 import GHC.Conc (atomically, newTVarIO, readTVar, readTVarIO, writeTVar)
@@ -92,7 +92,6 @@ import Util
     shuffle,
     unsnoc,
     widgetFile,
-    withDuration,
   )
 import Watched
   ( MarkAsWatchedResult (..),
@@ -375,18 +374,6 @@ getAllIPsR = do
 
 main :: IO ()
 main = do
-  videoDirPath <- getVideoDirPath
-  ((dirs, _files, _ignored), totalTime) <-
-    withDuration $
-      walkDirBreadthFirst
-        ( \path time -> do
-            putStrLn $ "Walked " ++ show path ++ " in " ++ show time
-        )
-        (unRootDir videoDirPath)
-  putStrLn $ "Reading recur took " ++ show totalTime
-  putStrLn "Found these directories:"
-  forM_ dirs print
-
   -- To get this token for now you can use your apiKey here https://thetvdb.github.io/v4-api/#/Login/post_login
   tvdbTokenRaw <- lookupEnv "TVDB_TOKEN"
   let tvdbToken = case tvdbTokenRaw of
@@ -427,9 +414,6 @@ main = do
         endTime <- getCurrentTime
         putStrLn $ "Refreshed video data in " ++ show (diffUTCTime endTime startTime)
 
-  -- Do an update once at startup, but only with already available data so we don't do any writes
-  dataUpdate readAllDirectoryInfos
-
   -- In a thread do the data updating async
   let dataThread =
         asyncOnTrigger videoDataRefreshTrigger $
@@ -450,7 +434,7 @@ main = do
               Left (e :: SomeException) -> putStrLn $ "Failed marking as watched in thread: " ++ displayException e
 
   -- The thread for the app
-  let appThread' pool = do
+  let appThread pool = do
         app <-
           toWaiAppPlain
             App
@@ -462,14 +446,16 @@ main = do
                 appVideoDataRefreshTrigger = videoDataRefreshTrigger
               }
         run port $ defaultMiddlewaresNoLogging app
-      openConnectionCount = 10
-      appThread =
-        runStderrLoggingT $
-          withSqlitePool "pablo-tv-data.db3" openConnectionCount $
-            liftIO . appThread'
 
-  putStrLn "Starting race..."
-  race_ appThread $
-    race_ dataThread watchedThread
+  let openConnectionCount = 10
+  runStderrLoggingT $
+    withSqlitePool "pablo-tv-data.db3" openConnectionCount $ \connPool -> do
+      liftIO $ runDBWithConn connPool $ runMigration migrateAll
+      videoDirPath <- liftIO getVideoDirPath
+      liftIO $ updateData connPool (unRootDir videoDirPath)
+      liftIO $ do
+        putStrLn "Starting race..."
+        race_ (appThread connPool) $
+          race_ dataThread watchedThread
 
   putStrLn "Server quite."

@@ -115,9 +115,25 @@ shuffle :: (RandomGen gen) => [a] -> gen -> [a]
 shuffle [] _ = []
 shuffle list gen = shuffle' list (length list) gen
 
-withDuration :: IO a -> IO (a, NominalDiffTime)
+withDuration :: (MonadIO m) => m a -> m (a, NominalDiffTime)
 withDuration f = do
-  startTime <- getCurrentTime
+  startTime <- liftIO getCurrentTime
   a <- f
-  endTime <- getCurrentTime
+  endTime <- liftIO getCurrentTime
   pure (a, diffUTCTime endTime startTime)
+
+logDuration :: (MonadIO m) => String -> m a -> m a
+logDuration label action = do
+  (result, duration) <- withDuration action
+  liftIO $ putStrLn $ label ++ " (" ++ show duration ++ ")"
+  pure result
+
+withKey :: (v -> k) -> v -> (k, v)
+withKey keyGetter value = (keyGetter value, value)
+
+withKeyFromValue :: (v -> k) -> Entity v -> (k, v)
+withKeyFromValue keyGetter (Entity _ value) =
+  (keyGetter value, value)
+
+entityToKeyValue :: Entity a -> (Key a, a)
+entityToKeyValue (Entity key val) = (key, val)

@@ -81,7 +81,9 @@
 
   # Does unexpected things, see
   # https://github.com/NorfairKing/haskell-WAT#real-double
-  - {name: realToFrac, within: []}
+  - name: realToFrac
+    within:
+      SafeMaths
 
   # Constructs rationals, which is either wrong or a bad idea.
   - {name: 'Data.Ratio.%', within: []}
