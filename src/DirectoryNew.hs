@@ -109,6 +109,7 @@ updateData dbConnPool root = logDuration "Updated data" $ do
       _ <-
         repsert (DirectoryKey stepDir) (Directory stepDir)
 
+      -- Update files
       let fileUpdates :: [(Key VideoFile, VideoFile)]
           fileUpdates = flip map stepSubFiles $ \filePath ->
             ( VideoFileKey filePath,
@@ -119,6 +120,14 @@ updateData dbConnPool root = logDuration "Updated data" $ do
                 }
             )
       repsertMany fileUpdates
+
+    -- TODO Idea:
+    -- Read all known data (commented out above), and do a `getFileStatus` for any new directories to get when they were last modified.
+    -- Then we'd have the modified timestamp on the directory, rather than an added timestamp on files.
+    -- We could then update the modified timestamp with a good guess (good enough for what we need), by checking if there were any new files added (again, we can read all files we already know about).
+    -- That way we do a bit more work for completely new directories (usually there will only be a few, only when creating the DB for the first time will there be many),
+    -- and we'll have better timestamps for when new files are added (and we only really care about that on a per-directory level).
+    -- Though, one problem with adding this timestamp to directories is that we'd either have to update all parent directories as well, or when reading check if there are any child directories to get a fully accurate timestamp.
     putStrLn $
       concat
         [ "Walked ",
