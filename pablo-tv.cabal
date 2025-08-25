@@ -83,6 +83,7 @@ library
       , network-info
       , path
       , path-io
+      , persistent
       , persistent-sqlite
       , process
       , random
