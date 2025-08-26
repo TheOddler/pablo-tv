@@ -14,10 +14,11 @@ import Data.Int (Int32)
 import Data.List (dropWhileEnd, nub)
 import Data.Scientific (Scientific, scientific)
 import Data.Text (Text)
+import Data.Text qualified as T
 import Data.Text.Lazy.Encoding qualified as T
 import Data.Time (getCurrentTime)
 import Data.Void (Void)
-import Database.Persist.Sqlite (PersistStoreWrite (..))
+import Database.Persist.Sqlite (PersistStoreWrite (..), PersistValue (..), rawExecute)
 import Evdev.Codes
 import Evdev.Uinput
 import Foundation (App (..), Handler)
@@ -311,16 +312,24 @@ performActionIO app action = do
     markDirOrFileAsWatched dirOrFile = do
       now <- liftIO getCurrentTime
       runDBWithConn app.appSqlPool $ case dirOrFile of
-        Dir path -> do
-          pure ()
+        Dir path ->
+          rawExecute
+            "UPDATE video_file SET watched = ? WHERE path GLOB ? AND watched IS NULL"
+            [ PersistUTCTime now,
+              PersistText $ T.pack $ fromAbsDir path ++ "*"
+            ]
         File path ->
           update (DB.VideoFileKey path) [DB.VideoFileWatched =. Just now]
 
     markDirOrFileAsUnwatched :: DirOrFile -> IO ()
     markDirOrFileAsUnwatched dirOrFile =
       runDBWithConn app.appSqlPool $ case dirOrFile of
-        Dir path -> do
-          pure ()
+        Dir path ->
+          rawExecute
+            "UPDATE video_file SET watched = ? WHERE path GLOB ?"
+            [ PersistNull,
+              PersistText $ T.pack $ fromAbsDir path ++ "*"
+            ]
         File path ->
           update (DB.VideoFileKey path) [DB.VideoFileWatched =. Nothing]
 
