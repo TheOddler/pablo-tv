@@ -1,23 +1,20 @@
 <div class="container">
   $forall section <- sections
     $case section
-      $of LocalVideos name dirData
-        $if notNull dirData
+      $of LocalVideos name dirs
+        $if notNull dirs
           <h1>#{name}
           <div class="row">
-            $forall (name, segments, mWatched) <- dirData
-              <a class="el" href=@{DirectoryR segments}>
-                <img src=@{ImageR segments} alt="#{name}" loading="lazy">
+            $forall dir <- dirs
+              <a class="el" href=@{DirectoryR $ dirDataSegments dir}>
+                <img src=@{ImageR $ dirDataSegments dir} alt="#{dirDataName dir}" loading="lazy">
                 <div class="watched">
-                  $maybe WatchedInfoAgg _ _ totalCount watchedCount <- mWatched
-                    $if watchedCount < totalCount
-                      <i class="fa-regular fa-eye">
-                    $else
-                      <i class="fa-solid fa-check">
-                    #{watchedCount}/#{totalCount}
-                  $nothing
+                  $if dirDataPlayedVideoFileCount dir < dirDataVideoFileCount dir
                     <i class="fa-regular fa-eye">
-                    ?/?
+                  $else
+                    <i class="fa-solid fa-check">
+                  #{dirDataPlayedVideoFileCount dir}/#{dirDataVideoFileCount dir}
+
       $of ExternalLinks name links
         <h1>#{name}
         <div class="row">

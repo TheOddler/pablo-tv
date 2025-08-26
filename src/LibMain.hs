@@ -71,6 +71,7 @@ import TVDB (TVDBToken (..))
 import TVState (startingTVState, tvStateWebSocket)
 import Util
   ( networkInterfaceWorthiness,
+    removeLast,
     safeMaxUTCTime,
     shuffle,
     unsnoc,
@@ -81,28 +82,53 @@ import Yesod.WebSockets (race_, webSockets)
 
 mkYesodDispatch "App" resourcesApp
 
-type DirName = Text
-
-type DirSegments = [Text]
-
-type WatchedCount = Int
-
-type TotalCount = Int
-
-data WatchedInfoAgg = WatchedInfoAgg
-  { watchedInfoLastModified :: UTCTime,
-    watchedInfoLastWatched :: UTCTime,
-    watchedInfoVideoFileCount :: Int,
-    watchedInfoPlayedVideoFileCount :: Int
+data DirData = DirData
+  { dirDataName :: Text,
+    dirDataSegments :: [Text],
+    dirDataLastModified :: UTCTime,
+    dirDataLastWatched :: UTCTime,
+    dirDataVideoFileCount :: Int,
+    dirDataPlayedVideoFileCount :: Int,
+    dirDataFiles :: [VideoFile]
   }
-
-type DirData = (DirName, DirSegments, Maybe WatchedInfoAgg)
 
 type ImageRoute = Route App
 
 type Link = Text
 
 type NamedLink = (Text, ImageRoute, Link)
+
+getDirData :: Path Abs Dir -> Handler [DirData]
+getDirData dir = do
+  (allDirs' :: [Entity Directory], allFiles' :: [Entity VideoFile]) <- runDB $ do
+    (,) <$> selectList [] [] <*> selectList [] []
+  let allDirs = map entityVal allDirs'
+  let allFiles = map entityVal allFiles'
+  let topLevelDirs = filter ((dir ==) . parent . directoryPath) allDirs
+
+  let dirToData :: Directory -> DirData
+      dirToData childDir =
+        let path = directoryPath childDir
+            dirName = dirname path
+            segments = fileNameToSegments dirName
+            files = filter (\f -> path `isProperPrefixOf` f.videoFilePath) allFiles
+         in DirData
+              { dirDataName = niceDirNameT dirName,
+                dirDataSegments = segments,
+                dirDataLastModified =
+                  safeMaxUTCTime $ map videoFileAdded files,
+                dirDataLastWatched =
+                  safeMaxUTCTime $ mapMaybe videoFileWatched files,
+                dirDataVideoFileCount =
+                  length files,
+                dirDataPlayedVideoFileCount =
+                  length $ filter (isJust . videoFileWatched) files,
+                dirDataFiles = files
+              }
+  pure $ dirToData <$> topLevelDirs
+  where
+    fileNameToSegments :: Path Rel a -> [Text]
+    fileNameToSegments f = [T.pack $ toFilePath f]
 
 data HomeSection
   = LocalVideos Text [DirData]
@@ -115,48 +141,17 @@ getHomeR = do
   webSockets $ race_ actionsWebSocket (tvStateWebSocket tvStateTVar)
 
   homeDir <- liftIO getVideoDirPath -- For now we just use the hardcoded path as home, but the plan is to support multiple root folders
-  (allDirs' :: [Entity Directory], allFiles' :: [Entity VideoFile]) <- runDB $ do
-    (,) <$> selectList [] [] <*> selectList [] []
-  let allDirs = map entityVal allDirs'
-  let allFiles = map entityVal allFiles'
-  let topLevelDirs = filter ((homeDir ==) . parent . directoryPath) allDirs
-
-  let getDirData :: Directory -> DirData
-      getDirData dir =
-        let path = directoryPath dir
-            dirName = dirname path
-            segments = fileNameToSegments dirName
-            files = filter (\f -> path `isProperPrefixOf` f.videoFilePath) allFiles
-         in ( niceDirNameT dirName,
-              segments,
-              Just
-                WatchedInfoAgg
-                  { watchedInfoLastModified =
-                      safeMaxUTCTime $ map videoFileAdded files,
-                    watchedInfoLastWatched =
-                      safeMaxUTCTime $ mapMaybe videoFileWatched files,
-                    watchedInfoVideoFileCount =
-                      length files,
-                    watchedInfoPlayedVideoFileCount =
-                      length $
-                        filter (isJust . videoFileWatched) files
-                  }
-            )
-  let videoData :: [DirData]
-      videoData = getDirData <$> topLevelDirs
+  videoData <- getDirData homeDir
   let mkRandom =
         -- When in dev we auto-reload the page every second or so,
         -- so we want the same random shuffle every time, otherwise the page
         -- keeps changing which is annoying.
         if isDevelopment then pure (mkStdGen 2) else initStdGen
   randomGenerator <- mkRandom
-  let isUnwatched (_, _, Nothing) = True
-      isUnwatched (_, _, Just watched) = watched.watchedInfoPlayedVideoFileCount < watched.watchedInfoVideoFileCount
+  let isUnwatched d = d.dirDataPlayedVideoFileCount < d.dirDataVideoFileCount
       unwatched = filter isUnwatched videoData
-      recentlyAdded (_, _, Nothing) = Down $ posixSecondsToUTCTime 0
-      recentlyAdded (_, _, Just i) = Down i.watchedInfoLastModified
-      recentlyWatched (_, _, Nothing) = posixSecondsToUTCTime 0
-      recentlyWatched (_, _, Just i) = i.watchedInfoLastWatched
+      recentlyAdded d = Down d.dirDataLastModified
+      recentlyWatched d = d.dirDataLastWatched
 
   let sections =
         [ LocalVideos "New" $
@@ -178,9 +173,6 @@ getHomeR = do
         ]
 
   defaultLayout "Home" $(widgetFile "home")
-  where
-    fileNameToSegments :: Path Rel a -> [Text]
-    fileNameToSegments f = [T.pack $ toFilePath f]
 
 postHomeR :: Handler ()
 postHomeR =
@@ -227,12 +219,14 @@ parseSegments segmentsT = do
 
 getDirectoryR :: [Text] -> Handler Html
 getDirectoryR segments = do
-  undefined
+  absPath <-
+    parseSegments segments >>= \case
+      Just (p, Nothing) -> pure p
+      _ -> redirect $ maybe HomeR DirectoryR $ removeLast segments
 
--- absPath <-
---   parseSegments segments >>= \case
---     Just (p, Nothing) -> pure p
---     _ -> redirect $ maybe HomeR DirectoryR $ removeLast segments
+  videoData <- getDirData absPath
+
+  undefined videoData
 
 -- mPathAndInfo <- liftIO $ readDirectoryInfoRec absPath
 -- let mInfo = snd <$> mPathAndInfo
