@@ -4,8 +4,9 @@ module Actions where
 
 import Autodocodec (Autodocodec (..), Discriminator, HasCodec (..), HasObjectCodec (..), ObjectCodec, bimapCodec, discriminatedUnionCodec, eitherDecodeJSONViaCodec, encodeJSONViaCodec, mapToDecoder, mapToEncoder, object, pureCodec, requiredField', (.=))
 import Autodocodec.Aeson (toJSONViaCodec)
-import Control.Concurrent (MVar, tryPutMVar)
+import Control.Concurrent (tryPutMVar)
 import Control.Monad (forever, when)
+import DB (runDBWithConn)
 import DB qualified
 import Data.Char (isSpace)
 import Data.HashMap.Strict qualified as HashMap
@@ -19,8 +20,8 @@ import Data.Void (Void)
 import Database.Persist.Sqlite (PersistStoreWrite (..))
 import Evdev.Codes
 import Evdev.Uinput
-import Foundation (Handler)
-import GHC.Conc (TVar, atomically, readTVar, writeTVar)
+import Foundation (App (..), Handler)
+import GHC.Conc (atomically, readTVar, writeTVar)
 import Path (Abs, Dir, File, Path, fromAbsDir, fromAbsFile, parseAbsDir, parseAbsFile)
 import Playerctl qualified
 import SafeMaths (int32ToInteger)
@@ -29,7 +30,7 @@ import TVState (TVState (..))
 import Text.Blaze qualified as Blaze
 import Text.Julius (ToJavascript (..))
 import Util (boundedEnumCodec)
-import Yesod (FromJSON, lift, liftIO, runDB, (=.))
+import Yesod (FromJSON, getYesod, lift, liftIO, (=.))
 import Yesod.WebSockets (WebSocketsT, receiveData)
 
 data DirOrFile
@@ -203,15 +204,20 @@ keyboardButtonToEvdevKey = \case
   KeyboardVolumeUp -> KeyVolumeup
   KeyboardVolumeDown -> KeyVolumedown
 
-actionsWebSocket :: Device -> TVar TVState -> MVar () -> WebSocketsT Handler ()
-actionsWebSocket inputDevice tvStateTVar videoDataRefreshTrigger = forever $ do
+actionsWebSocket :: WebSocketsT Handler ()
+actionsWebSocket = forever $ do
   d <- receiveData
   case eitherDecodeJSONViaCodec d of
     Left err -> liftIO $ putStrLn $ "Error decoding action: " <> err
-    Right action -> lift $ performAction inputDevice tvStateTVar videoDataRefreshTrigger action
+    Right action -> lift $ performAction action
 
-performAction :: Device -> TVar TVState -> MVar () -> Action -> Handler ()
-performAction inputDevice tvStateTVar videoDataRefreshTrigger action = do
+performAction :: Action -> Handler ()
+performAction action = do
+  app <- getYesod
+  liftIO $ performActionIO app action
+
+performActionIO :: App -> Action -> IO ()
+performActionIO app action = do
   liftIO $ putStrLn $ "Performing action: " <> show action
   case action of
     ActionClickMouse btn' ->
@@ -291,24 +297,28 @@ performAction inputDevice tvStateTVar videoDataRefreshTrigger action = do
     ActionMedia playerCtlAction ->
       liftIO $ Playerctl.performAction playerCtlAction
   where
+    inputDevice = app.appInputDevice
+    tvStateTVar = app.appTVState
+    videoDataRefreshTrigger = app.appVideoDataRefreshTrigger
+
     clickKeyCombo keys =
       map (`KeyEvent` Pressed) keys
         ++ [SyncEvent SynReport]
         ++ map (`KeyEvent` Released) (reverse keys)
         ++ [SyncEvent SynReport]
 
-    markDirOrFileAsWatched :: DirOrFile -> Handler ()
+    markDirOrFileAsWatched :: DirOrFile -> IO ()
     markDirOrFileAsWatched dirOrFile = do
       now <- liftIO getCurrentTime
-      runDB $ case dirOrFile of
+      runDBWithConn app.appSqlPool $ case dirOrFile of
         Dir path -> do
           pure ()
         File path ->
           update (DB.VideoFileKey path) [DB.VideoFileWatched =. Just now]
 
-    markDirOrFileAsUnwatched :: DirOrFile -> Handler ()
+    markDirOrFileAsUnwatched :: DirOrFile -> IO ()
     markDirOrFileAsUnwatched dirOrFile =
-      runDB $ case dirOrFile of
+      runDBWithConn app.appSqlPool $ case dirOrFile of
         Dir path -> do
           pure ()
         File path ->

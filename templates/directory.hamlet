@@ -4,14 +4,7 @@ $if isJust mInfo
 
 <div class="section">
   $if (not $ null files)
-    $case (directoryInfoKind <$> mInfo)
-      $of Nothing
-        <h1>Files
-      $of Just DirectoryKindSeries
-        <h1>Episodes
-      $of Just DirectoryKindMovie
-        $if (length files > 1)
-          <h1>Parts
+      <h1>Files
     
     $if (length files > 1)
       <div class="row white">
@@ -35,11 +28,7 @@ $if isJust mInfo
 <div class="section">
   $if (not $ null dirs)
     $if (not $ null files)
-      $case (directoryInfoKind <$> mInfo)
-        $of Just DirectoryKindSeries
-          <h1>Seasons
-        $of _
-          <h1>Directories
+      <h1>Directories
     $forall (path, name, mWatched) <- dirs
       <div class="row #{watchedClassDir mWatched}">
         <a href=@{DirectoryR $ mkSegments path} class="name">

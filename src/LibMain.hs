@@ -16,30 +16,29 @@ import Actions
     MouseButton (..),
     actionsWebSocket,
     mkInputDevice,
+    performActionIO,
   )
-import Control.Exception (SomeException, displayException, try)
 import Control.Monad (filterM, when)
 import Control.Monad.Logger (runStderrLoggingT)
-import DB (migrateAll, runDBWithConn)
+import DB (Directory (..), VideoFile (..), migrateAll, runDBWithConn)
 import Data.Aeson (Result (..))
 import Data.ByteString.Char8 qualified as BS
 import Data.Char (isSpace, toLower)
-import Data.HashMap.Strict qualified as Map
 import Data.List (foldl')
-import Data.List.Extra (notNull, replace)
-import Data.Maybe (fromMaybe, isJust, isNothing)
+import Data.List.Extra (notNull)
+import Data.Maybe (fromMaybe, isJust, isNothing, mapMaybe)
+import Data.Ord (Down (..))
 import Data.String (fromString)
 import Data.Text (Text, intercalate, unpack)
 import Data.Text qualified as T
 import Data.Text qualified as Text
-import Data.Time (diffUTCTime, getCurrentTime)
+import Data.Time (UTCTime)
 import Data.Time.Clock.POSIX (posixSecondsToUTCTime)
 import Database.Persist.Sqlite (runMigration, withSqlitePool)
-import DirectoryNew (updateData)
-import Foreign.C (CTime (..))
+import DirectoryNew (getVideoDirPath, niceDirNameT, updateData)
 import Foundation (App (..), Handler, Route (..), defaultLayout, embeddedStatic, resourcesApp, static_images_apple_tv_plus_png, static_images_netflix_png, static_images_youtube_png)
-import GHC.Conc (atomically, newTVarIO, readTVar, readTVarIO, writeTVar)
-import GHC.Data.Maybe (firstJustsM, listToMaybe, orElse)
+import GHC.Conc (newTVarIO)
+import GHC.Data.Maybe (firstJustsM, listToMaybe)
 import GHC.MVar (newMVar)
 import GHC.Utils.Misc (sortWith)
 import IsDevelopment (isDevelopment)
@@ -54,6 +53,7 @@ import Path
     dirname,
     fileExtension,
     fromAbsFile,
+    isProperPrefixOf,
     mkRelDir,
     parent,
     parseRelDir,
@@ -64,14 +64,13 @@ import Path
 import Path.IO (doesDirExist, doesFileExist, getHomeDir, listDir)
 import Playerctl (Action (..), onFilePlayStarted)
 import System.Environment (lookupEnv)
-import System.FilePath (dropTrailingPathSeparator)
 import System.Process (callProcess)
 import System.Random (initStdGen, mkStdGen)
 import TVDB (TVDBToken (..))
+import TVState (startingTVState, tvStateWebSocket)
 import Util
-  ( asyncOnTrigger,
-    networkInterfaceWorthiness,
-    removeLast,
+  ( networkInterfaceWorthiness,
+    safeMaxUTCTime,
     shuffle,
     unsnoc,
     widgetFile,
@@ -89,6 +88,13 @@ type WatchedCount = Int
 
 type TotalCount = Int
 
+data WatchedInfoAgg = WatchedInfoAgg
+  { watchedInfoLastModified :: UTCTime,
+    watchedInfoLastWatched :: UTCTime,
+    watchedInfoVideoFileCount :: Int,
+    watchedInfoPlayedVideoFileCount :: Int
+  }
+
 type DirData = (DirName, DirSegments, Maybe WatchedInfoAgg)
 
 type ImageRoute = Route App
@@ -104,28 +110,36 @@ data HomeSection
 getHomeR :: Handler Html
 getHomeR = do
   -- This can be a websocket request, so do that
-  -- tvStateTVar <- getsYesod appTVState
-  tvStateTVar <- liftIO $ newTVarIO startingTVState
-  inputDevice <- getsYesod appInputDevice
-  videoDataRefreshTrigger <- getsYesod appVideoDataRefreshTrigger
-  webSockets $
-    race_
-      (actionsWebSocket inputDevice tvStateTVar videoDataRefreshTrigger)
-      (tvStateWebSocket tvStateTVar)
+  tvStateTVar <- getsYesod appTVState
+  webSockets $ race_ actionsWebSocket (tvStateWebSocket tvStateTVar)
 
-  -- Get proper data (we got this async from the state)
-  tvState <- liftIO $ readTVarIO tvStateTVar
-  videoDirPath <- liftIO getVideoDirPath
-  topLevelDirs <- liftIO $ getTopLevelDirs videoDirPath
-  let getDirData :: TopLevelDir -> DirData
+  homeDir <- liftIO getVideoDirPath -- For now we just use the hardcoded path as home, but the plan is to support multiple root folders
+  (allDirs' :: [Entity Directory], allFiles' :: [Entity VideoFile]) <- runDB $ do
+    (,) <$> selectList [] [] <*> selectList [] []
+  let allDirs = map entityVal allDirs'
+  let allFiles = map entityVal allFiles'
+  let topLevelDirs = filter ((homeDir ==) . parent . directoryPath) allDirs
+
+  let getDirData :: Directory -> DirData
       getDirData dir =
-        let path = topLevelToAbsDir dir
+        let path = directoryPath dir
             dirName = dirname path
             segments = fileNameToSegments dirName
-            dirInfo = Map.lookup dir tvState.tvVideoData
-         in ( maybe (niceDirNameT dirName) (directoryInfoTitle . fst) dirInfo,
+            files = filter (\f -> path `isProperPrefixOf` f.videoFilePath) allFiles
+         in ( niceDirNameT dirName,
               segments,
-              snd <$> dirInfo
+              Just
+                WatchedInfoAgg
+                  { watchedInfoLastModified =
+                      safeMaxUTCTime $ map videoFileAdded files,
+                    watchedInfoLastWatched =
+                      safeMaxUTCTime $ mapMaybe videoFileWatched files,
+                    watchedInfoVideoFileCount =
+                      length files,
+                    watchedInfoPlayedVideoFileCount =
+                      length $
+                        filter (isJust . videoFileWatched) files
+                  }
             )
   let videoData :: [DirData]
       videoData = getDirData <$> topLevelDirs
@@ -138,10 +152,10 @@ getHomeR = do
   let isUnwatched (_, _, Nothing) = True
       isUnwatched (_, _, Just watched) = watched.watchedInfoPlayedVideoFileCount < watched.watchedInfoVideoFileCount
       unwatched = filter isUnwatched videoData
-      recentlyAdded (_, _, Nothing) = CTime maxBound
-      recentlyAdded (_, _, Just i) = (-i.watchedInfoLastModified)
-      recentlyWatched (_, _, Nothing) = (posixSecondsToUTCTime 0, CTime minBound)
-      recentlyWatched (_, _, Just i) = (i.watchedInfoLastWatched, i.watchedInfoLastAccessed)
+      recentlyAdded (_, _, Nothing) = Down $ posixSecondsToUTCTime 0
+      recentlyAdded (_, _, Just i) = Down i.watchedInfoLastModified
+      recentlyWatched (_, _, Nothing) = posixSecondsToUTCTime 0
+      recentlyWatched (_, _, Just i) = i.watchedInfoLastWatched
 
   let sections =
         [ LocalVideos "New" $
@@ -216,79 +230,81 @@ parseSegments segmentsT = do
 
 getDirectoryR :: [Text] -> Handler Html
 getDirectoryR segments = do
-  absPath <-
-    parseSegments segments >>= \case
-      Just (p, Nothing) -> pure p
-      _ -> redirect $ maybe HomeR DirectoryR $ removeLast segments
+  undefined
 
-  mPathAndInfo <- liftIO $ readDirectoryInfoRec absPath
-  let mInfo = snd <$> mPathAndInfo
-  dirRaw <- liftIO $ readDirectoryRaw absPath
+-- absPath <-
+--   parseSegments segments >>= \case
+--     Just (p, Nothing) -> pure p
+--     _ -> redirect $ maybe HomeR DirectoryR $ removeLast segments
 
-  let files :: [(Path Abs File, Text)]
-      files = map (\f -> (absPath </> f, niceFileNameT f)) dirRaw.directoryVideoFiles
+-- mPathAndInfo <- liftIO $ readDirectoryInfoRec absPath
+-- let mInfo = snd <$> mPathAndInfo
+-- dirRaw <- liftIO $ readDirectoryRaw absPath
 
-  -- Get the dirs info. Depending on where we are we do different things:
-  -- \* At the root (segments is empty): We have the required data cached in the tv state. We do this because this folder is expected to have many subfolders.
-  -- \* In a sub-dir: We read the required stuff from disk. We do this so we always have to most up-to-date data, and we don't expect too much stuff in here, so should be fine to read anew.
-  dirs :: [(Path Rel Dir, Text, Maybe (Int, Int))] <- case segments of
-    [] -> do
-      -- tvState <- getsYesod appTVState >>= liftIO . readTVarIO
-      let tempVideoData = mempty
-      videoDirPath <- liftIO getVideoDirPath
-      topLevelDirs <- liftIO $ getTopLevelDirs videoDirPath
-      let getDir :: TopLevelDir -> (Path Rel Dir, Text, Maybe (Int, Int))
-          getDir dir =
-            let dirName = dirname $ topLevelToAbsDir dir
-                dirInfo = Map.lookup dir tempVideoData
-             in ( dirName,
-                  maybe (niceDirNameT dirName) (directoryInfoTitle . fst) dirInfo,
-                  case snd <$> dirInfo of
-                    Nothing -> Nothing
-                    Just w ->
-                      Just
-                        ( watchedInfoPlayedVideoFileCount w,
-                          watchedInfoVideoFileCount w
-                        )
-                )
-      pure $ getDir <$> topLevelDirs
-    _ -> do
-      let getDir :: Path Rel Dir -> Handler (Path Rel Dir, Text, Maybe (Int, Int))
-          getDir dirName = do
-            watched <- liftIO $ readWatchedInfoAgg $ absPath </> dirName
-            pure
-              ( dirName,
-                niceDirNameT dirName,
-                Just
-                  ( watched.watchedInfoPlayedVideoFileCount,
-                    watched.watchedInfoVideoFileCount
-                  )
-              )
-      mapM getDir dirRaw.directoryDirectories
+-- let files :: [(Path Abs File, Text)]
+--     files = map (\f -> (absPath </> f, niceFileNameT f)) dirRaw.directoryVideoFiles
 
-  let mkSegments :: Path Rel x -> [Text]
-      mkSegments d = segments ++ [T.pack $ dropTrailingPathSeparator $ toFilePath d]
+-- -- Get the dirs info. Depending on where we are we do different things:
+-- -- \* At the root (segments is empty): We have the required data cached in the tv state. We do this because this folder is expected to have many subfolders.
+-- -- \* In a sub-dir: We read the required stuff from disk. We do this so we always have to most up-to-date data, and we don't expect too much stuff in here, so should be fine to read anew.
+-- dirs :: [(Path Rel Dir, Text, Maybe (Int, Int))] <- case segments of
+--   [] -> do
+--     -- tvState <- getsYesod appTVState >>= liftIO . readTVarIO
+--     let tempVideoData = mempty
+--     videoDirPath <- liftIO getVideoDirPath
+--     topLevelDirs <- liftIO $ getTopLevelDirs videoDirPath
+--     let getDir :: Directory -> (Path Rel Dir, Text, Maybe (Int, Int))
+--         getDir dir =
+--           let dirName = dirname $ topLevelToAbsDir dir
+--               dirInfo = Map.lookup dir tempVideoData
+--            in ( dirName,
+--                 maybe (niceDirNameT dirName) (directoryInfoTitle . fst) dirInfo,
+--                 case snd <$> dirInfo of
+--                   Nothing -> Nothing
+--                   Just w ->
+--                     Just
+--                       ( watchedInfoPlayedVideoFileCount w,
+--                         watchedInfoVideoFileCount w
+--                       )
+--               )
+--     pure $ getDir <$> topLevelDirs
+--   _ -> do
+--     let getDir :: Path Rel Dir -> Handler (Path Rel Dir, Text, Maybe (Int, Int))
+--         getDir dirName = do
+--           watched <- liftIO $ readWatchedInfoAgg $ absPath </> dirName
+--           pure
+--             ( dirName,
+--               niceDirNameT dirName,
+--               Just
+--                 ( watched.watchedInfoPlayedVideoFileCount,
+--                   watched.watchedInfoVideoFileCount
+--                 )
+--             )
+--     mapM getDir dirRaw.directoryDirectories
 
-      mkAbsFilePath :: Path Abs File -> String
-      mkAbsFilePath filePath = replace "'" "\\'" $ fromAbsFile filePath
+-- let mkSegments :: Path Rel x -> [Text]
+--     mkSegments d = segments ++ [T.pack $ dropTrailingPathSeparator $ toFilePath d]
 
-  watchedFiles <- liftIO $ readWatchedInfo absPath
-  let watchedClassFile :: Path Abs File -> String
-      watchedClassFile filePath =
-        if hasBeenWatched watchedFiles filePath
-          then "watched"
-          else "unwatched"
+--     mkAbsFilePath :: Path Abs File -> String
+--     mkAbsFilePath filePath = replace "'" "\\'" $ fromAbsFile filePath
 
-      watchedClassDir :: Maybe (Int, Int) -> String
-      watchedClassDir Nothing = "white"
-      watchedClassDir (Just (watchedCount, totalCount)) =
-        if watchedCount < totalCount
-          then "unwatched"
-          else "watched"
+-- watchedFiles <- liftIO $ readWatchedInfo absPath
+-- let watchedClassFile :: Path Abs File -> String
+--     watchedClassFile filePath =
+--       if hasBeenWatched watchedFiles filePath
+--         then "watched"
+--         else "unwatched"
 
-  let title = toHtml $ (directoryInfoTitle <$> mInfo) `orElse` "Videos"
-  let showRefreshButton = null segments
-  defaultLayout title $(widgetFile "directory")
+--     watchedClassDir :: Maybe (Int, Int) -> String
+--     watchedClassDir Nothing = "white"
+--     watchedClassDir (Just (watchedCount, totalCount)) =
+--       if watchedCount < totalCount
+--         then "unwatched"
+--         else "watched"
+
+-- let title = toHtml $ (directoryInfoTitle <$> mInfo) `orElse` "Videos"
+-- let showRefreshButton = null segments
+-- defaultLayout title $(widgetFile "directory")
 
 getRemoteR :: Handler Html
 getRemoteR = do
@@ -373,64 +389,39 @@ main = do
   when (not isDevelopment) $ do
     callProcess "xdg-open" [url]
 
-  let dataUpdate :: IO [(TopLevelDir, DirectoryInfo)] -> IO ()
-      dataUpdate infoGetter = do
-        startTime <- getCurrentTime
-        infosWithPath <- infoGetter
-        let addFSInfo (path, info) = do
-              infoFS <- readWatchedInfoAgg $ topLevelToAbsDir path
-              pure (path, (info, infoFS))
-        infos <- mapM addFSInfo infosWithPath
-        atomically $ do
-          state <- readTVar tvState
-          writeTVar
-            tvState
-            state {tvVideoData = Map.fromList infos}
-        endTime <- getCurrentTime
-        putStrLn $ "Refreshed video data in " ++ show (diffUTCTime endTime startTime)
+  let openConnectionCount = 10
+  runStderrLoggingT $
+    withSqlitePool "pablo-tv-data.db3" openConnectionCount $ \connPool -> liftIO $ do
+      -- Migrate DB
+      runDBWithConn connPool $ runMigration migrateAll
 
-  -- In a thread do the data updating async
-  let dataThread =
-        asyncOnTrigger videoDataRefreshTrigger $
-          dataUpdate $ case tvdbToken of
-            Nothing -> updateAllDirectoryInfosGuessOnly
-            Just t -> updateAllDirectoryInfos t
+      -- Update data, eventually I want to do this on a separate thread
+      videoDirPath <- getVideoDirPath
+      updateData connPool videoDirPath
 
-  -- The thread that'll be listening for files being played, and marking them as watched
-  let watchedThread =
-        onFilePlayStarted $ \case
-          Nothing -> pure ()
-          Just path -> do
-            putStrLn $ "Playing file: " ++ show path
-            result <- try $ markFileAsWatched path
-            case result of
-              Right AlreadyWatched -> pure ()
-              Right MarkedAsWatched -> addToAggWatched tvState (parent path) 1
-              Left (e :: SomeException) -> putStrLn $ "Failed marking as watched in thread: " ++ displayException e
-
-  -- The thread for the app
-  let appThread pool = do
-        app <-
-          toWaiAppPlain
+      -- Start the rest of the server
+      let app =
             App
               { appPort = port,
                 appTVDBToken = tvdbToken,
                 appInputDevice = inputDevice,
-                appSqlPool = pool,
+                appTVState = tvState,
+                appSqlPool = connPool,
                 appGetStatic = embeddedStatic,
                 appVideoDataRefreshTrigger = videoDataRefreshTrigger
               }
-        run port $ defaultMiddlewaresNoLogging app
+      -- The thread for the app
+      let appThread = toWaiAppPlain app >>= run port . defaultMiddlewaresNoLogging
 
-  let openConnectionCount = 10
-  runStderrLoggingT $
-    withSqlitePool "pablo-tv-data.db3" openConnectionCount $ \connPool -> do
-      liftIO $ runDBWithConn connPool $ runMigration migrateAll
-      videoDirPath <- liftIO getVideoDirPath
-      liftIO $ updateData connPool (unRootDir videoDirPath)
-      liftIO $ do
-        putStrLn "Starting race..."
-        race_ (appThread connPool) $
-          race_ dataThread watchedThread
+      -- The thread that'll be listening for files being played, and marking them as watched
+      let watchedThread =
+            onFilePlayStarted $ \case
+              Nothing -> pure ()
+              Just path -> do
+                putStrLn $ "Playing file: " ++ show path
+                performActionIO app $ ActionMarkAsWatched $ File path
+
+      putStrLn "Starting race..."
+      race_ appThread watchedThread
 
   putStrLn "Server quite."

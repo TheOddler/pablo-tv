@@ -8,8 +8,10 @@ import Data.ByteString.Lazy qualified as LBS
 import Data.Default (def)
 import Data.List (isPrefixOf)
 import Data.List.NonEmpty qualified as NE
+import Data.List.NonEmpty.Extra qualified as NE
 import Data.Text qualified as T
-import Data.Time (NominalDiffTime, diffUTCTime, getCurrentTime)
+import Data.Time (NominalDiffTime, UTCTime, diffUTCTime, getCurrentTime)
+import Data.Time.Clock.POSIX (posixSecondsToUTCTime)
 import GHC.Conc (TVar, atomically, readTVar, readTVarIO, retry)
 import GHC.List (uncons)
 import IsDevelopment (isDevelopment)
@@ -137,3 +139,9 @@ withKeyFromValue keyGetter (Entity _ value) =
 
 entityToKeyValue :: Entity a -> (Key a, a)
 entityToKeyValue (Entity key val) = (key, val)
+
+-- | Returns `posixSecondsToUTCTime 0` for empty lists.
+safeMaxUTCTime :: [UTCTime] -> UTCTime
+safeMaxUTCTime times = case NE.nonEmpty times of
+  Nothing -> posixSecondsToUTCTime 0
+  Just neTimes -> NE.maximum1 neTimes

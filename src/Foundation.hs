@@ -15,10 +15,12 @@ import Data.ByteString.Char8 qualified as BS
 import Data.Maybe (isNothing, listToMaybe)
 import Database.Persist.Sqlite (ConnectionPool, SqlBackend)
 import Evdev.Uinput (Device)
+import GHC.Conc (TVar)
 import GHC.Utils.Misc (sortWith)
 import IsDevelopment (isDevelopment)
 import Network.Info (getNetworkInterfaces)
 import TVDB (TVDBToken)
+import TVState (TVState)
 import Text.Hamlet (hamletFile)
 import Util (networkInterfaceWorthiness, showIpV4OrV6WithPort, widgetFile)
 import Yesod hiding (defaultLayout, replace)
@@ -30,6 +32,7 @@ data App = App
     appTVDBToken :: Maybe TVDBToken,
     appInputDevice :: Device,
     appGetStatic :: EmbeddedStatic,
+    appTVState :: TVar TVState,
     appSqlPool :: ConnectionPool,
     appVideoDataRefreshTrigger :: MVar ()
   }

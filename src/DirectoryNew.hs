@@ -1,14 +1,33 @@
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 module DirectoryNew where
 
+import Algorithms.NaturalSort qualified as Natural
+import Control.Applicative ((<|>))
 import DB
+import Data.List (sortBy)
+import Data.List.NonEmpty qualified as NE
+import Data.Maybe (isJust, listToMaybe, mapMaybe)
+import Data.Text (Text)
+import Data.Text qualified as T
 import Data.Time (NominalDiffTime, getCurrentTime)
 import Database.Persist.Sqlite (ConnectionPool, PersistStoreWrite (..))
+import GHC.Data.Maybe (firstJusts, orElse)
+import GHC.Exts (sortWith)
 import Path
+import SaferIO (FSRead)
 import System.Directory (listDirectory)
-import System.FilePath (hasExtension)
+import System.FilePath (dropTrailingPathSeparator, hasExtension)
+import Text.Read (readMaybe)
+import Text.Regex.TDFA ((=~))
 import Util (logDuration, withDuration)
+
+getVideoDirPath :: (FSRead m) => m (Path Abs Dir)
+getVideoDirPath = do
+  -- home <- getHomeDir
+  -- let videoDirName = $(mkRelDir "Videos")
+  pure $ $(mkAbsDir "/run/user/1000/gvfs/smb-share:server=192.168.0.99,share=videos")
 
 -- | Reading the file info of a path is rather slow, so we want to minimise the ones we read it for.
 -- So instead of reading it for every path, we first do a guess what the path is, and read it for dirs only.
@@ -144,3 +163,130 @@ updateData dbConnPool root = logDuration "Updated data" $ do
   putStrLn $ "Ignored paths: " ++ show ignoredPaths
 
   pure ()
+
+-- Some helpers
+
+readInt :: String -> Maybe Int
+readInt = readMaybe
+
+tryRegex :: Path x y -> ([String] -> Maybe a) -> String -> Maybe a
+tryRegex source resultParser regex =
+  let res :: (String, String, String, [String])
+      res = toFilePath source =~ regex
+      (_, _, _, matches) = res
+   in resultParser matches
+
+expect1Int :: [String] -> Maybe Int
+expect1Int = \case
+  [a] ->
+    readInt a
+  _ -> Nothing
+
+expect2Ints :: [String] -> Maybe (Int, Int)
+expect2Ints = \case
+  [a, b] ->
+    (,) <$> readInt a <*> readInt b
+  _ -> Nothing
+
+expect3Ints :: [String] -> Maybe (Int, Int, Int)
+expect3Ints = \case
+  [a, b, c] ->
+    (,,) <$> readInt a <*> readInt b <*> readInt c
+  _ -> Nothing
+
+seasonFromDir :: Path a Dir -> Maybe Int
+seasonFromDir dir =
+  tryRegex dir expect1Int "[Ss]eason ([0-9]+)"
+    <|> tryRegex dir expect1Int "[Ss]eries ([0-9]+)"
+    <|> tryRegex dir expect1Int "[Ss]eizoen ([0-9]+)"
+
+seasonFromFiles :: [Path a File] -> Maybe Int
+seasonFromFiles files =
+  case mSeason of
+    Just season -> Just season
+    Nothing -> if looseEpisodesFound then Just 1 else Nothing
+  where
+    mSeason = NE.head <$> listToMaybe (sortWith NE.length $ NE.group (mapMaybe seasonFromFile files))
+    looseEpisodesFound = any (isJust . snd . episodeInfoFromFile) files
+
+    seasonFromFile :: Path a File -> Maybe Int
+    seasonFromFile file =
+      tryRegex file expect1Int "[Ss]eason ([0-9]+)"
+        <|> tryRegex file expect1Int "[Ss]eries ([0-9]+)"
+        <|> tryRegex file expect1Int "[Ss]eizoen ([0-9]+)"
+        <|> tryRegex file expect1Int "[Ss]([0-9]+)[Ee][0-9]+"
+        <|> tryRegex file expect1Int "([0-9]+)[Xx][0-9]+"
+
+episodeInfoFromFile :: Path a File -> (Maybe Int, Maybe (Either Int (Int, Int)))
+episodeInfoFromFile file =
+  let double :: Maybe (Int, Int, Int)
+      double =
+        tryRegex file expect3Ints "[Ss]([0-9]+)[Ee]([0-9]+)-[Ee]([0-9]+)"
+
+      seasonAndEp :: Maybe (Int, Int)
+      seasonAndEp =
+        tryRegex file expect2Ints "[Ss]([0-9]+)[Ee]([0-9]+)"
+          <|> tryRegex file expect2Ints "([0-9]+)[Xx]([0-9]+)"
+
+      epOnly :: Maybe Int
+      epOnly =
+        tryRegex file expect1Int "[Ee]pisode ([0-9]+)"
+          <|> tryRegex file expect1Int "[Aa]flevering ([0-9]+)"
+   in case double of
+        Just (s, a, b) -> (Just s, Just $ Right (a, b))
+        Nothing -> case seasonAndEp of
+          Just (s, a) -> (Just s, Just $ Left a)
+          Nothing -> case epOnly of
+            Just a -> (Nothing, Just $ Left a)
+            Nothing -> (Nothing, Nothing)
+
+yearRegex :: String
+yearRegex = "((19|20)[0-9][0-9])"
+
+yearFromDir :: Path a Dir -> Maybe Int
+yearFromDir dir =
+  -- Take fst because the regex parses doesn't support non-capturing groups
+  -- so we capture two, but only use the first, and ignore the inner group
+  fst <$> tryRegex (dirname dir) expect2Ints yearRegex
+
+yearFromFiles :: [Path a File] -> Maybe Int
+yearFromFiles files =
+  firstJusts (try <$> files)
+  where
+    try file = fst <$> tryRegex file expect2Ints yearRegex
+
+titleFromDir :: Path a Dir -> Text
+titleFromDir folder = T.strip . fst $ T.breakOn "(" (niceDirNameT folder)
+
+niceDirNameT :: Path a Dir -> Text
+niceDirNameT = T.pack . dropTrailingPathSeparator . fromRelDir . dirname
+
+niceFileNameT :: Path a File -> Text
+niceFileNameT file =
+  let withoutExt = (fst <$> splitExtension file) `orElse` file
+      name = fromRelFile $ filename withoutExt
+   in T.replace "." " " $ T.pack name
+
+isVideoFile :: Path b File -> Bool
+isVideoFile file =
+  case fileExtension file of
+    Just ext -> ext `elem` [".mp4", ".mkv", ".avi", ".webm"]
+    Nothing -> False
+
+-- | Sorts the dirs, taking into account numbers properly
+smartDirSort :: [Path Rel Dir] -> [Path Rel Dir]
+smartDirSort = sortBy sorting
+  where
+    sorting a b =
+      Natural.compare
+        (T.toLower $ niceDirNameT a)
+        (T.toLower $ niceDirNameT b)
+
+-- | Sorts the dirs, taking into account numbers properly
+smartFileSort :: [Path Rel File] -> [Path Rel File]
+smartFileSort = sortBy sorting
+  where
+    sorting a b =
+      Natural.compare
+        (T.toLower $ niceFileNameT a)
+        (T.toLower $ niceFileNameT b)

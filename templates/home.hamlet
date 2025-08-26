@@ -9,7 +9,7 @@
               <a class="el" href=@{DirectoryR segments}>
                 <img src=@{ImageR segments} alt="#{name}" loading="lazy">
                 <div class="watched">
-                  $maybe WatchedInfoAgg _ _ _ totalCount watchedCount <- mWatched
+                  $maybe WatchedInfoAgg _ _ totalCount watchedCount <- mWatched
                     $if watchedCount < totalCount
                       <i class="fa-regular fa-eye">
                     $else
