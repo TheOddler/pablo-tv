@@ -77,7 +77,7 @@ import Util
     widgetFile,
   )
 import Yesod hiding (defaultLayout, replace)
-import Yesod.WebSockets (race_, webSockets)
+import Yesod.WebSockets (concurrently_, race_, webSockets)
 
 mkYesodDispatch "App" resourcesApp
 
@@ -380,9 +380,10 @@ main = do
       -- Migrate DB
       runDBWithConn connPool $ runMigration migrateAll
 
-      -- Update data, eventually I want to do this on a separate thread
-      videoDirPath <- getVideoDirPath
-      updateData connPool videoDirPath
+      let dataThread = do
+            -- Update data, eventually I want to do this on a separate thread
+            videoDirPath <- getVideoDirPath
+            updateData connPool videoDirPath
 
       -- Start the rest of the server
       let app =
@@ -395,6 +396,7 @@ main = do
                 appGetStatic = embeddedStatic,
                 appVideoDataRefreshTrigger = videoDataRefreshTrigger
               }
+
       -- The thread for the app
       let appThread = toWaiAppPlain app >>= run port . defaultMiddlewaresNoLogging
 
@@ -407,6 +409,7 @@ main = do
                 performActionIO app $ ActionMarkAsWatched $ File path
 
       putStrLn "Starting race..."
-      race_ appThread watchedThread
+      concurrently_ dataThread $
+        race_ appThread watchedThread
 
   putStrLn "Server quite."
