@@ -19,6 +19,7 @@ import GHC.Conc (TVar)
 import GHC.Utils.Misc (sortWith)
 import IsDevelopment (isDevelopment)
 import Network.Info (getNetworkInterfaces)
+import Path (Abs, Dir, Path)
 import TVDB (TVDBToken)
 import TVState (TVState)
 import Text.Hamlet (hamletFile)
@@ -37,6 +38,8 @@ data App = App
     appVideoDataRefreshTrigger :: MVar ()
   }
 
+type PathAbsDir = Path Abs Dir
+
 mkYesodData
   "App"
   [parseRoutes|
@@ -44,10 +47,10 @@ mkYesodData
 /ips AllIPsR GET
 /input InputR GET
 /remote RemoteR GET
-/dir/+Texts DirectoryR GET
+/dir/#PathAbsDir DirectoryR GET
 
 -- Other
-/image/+Texts ImageR GET
+/image/#PathAbsDir ImageR GET
 /static StaticR EmbeddedStatic appGetStatic
 |]
 

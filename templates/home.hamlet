@@ -6,14 +6,14 @@
           <h1>#{name}
           <div class="row">
             $forall dir <- dirs
-              <a class="el" href=@{DirectoryR $ dirDataSegments dir}>
-                <img src=@{ImageR $ dirDataSegments dir} alt="#{dirDataName dir}" loading="lazy">
+              <a class="el" href=@{DirectoryR $ dirPath dir}>
+                <img src=@{ImageR $ dirPath dir} alt="#{dirNiceName dir}" loading="lazy">
                 <div class="watched">
-                  $if dirDataPlayedVideoFileCount dir < dirDataVideoFileCount dir
+                  $if dirPlayedVideoFileCount dir < dirVideoFileCount dir
                     <i class="fa-regular fa-eye">
                   $else
                     <i class="fa-solid fa-check">
-                  #{dirDataPlayedVideoFileCount dir}/#{dirDataVideoFileCount dir}
+                  #{dirPlayedVideoFileCount dir}/#{dirVideoFileCount dir}
 
       $of ExternalLinks name links
         <h1>#{name}
@@ -22,5 +22,5 @@
             <a class="el logo" href="#" onclick="sendAction('#{ActionOpenUrlOnTV link}')">
               <img src="@{img}" alt="#{name}" loading="lazy">
   
-  <h1 class="center">
-    <a href=@{DirectoryR []}>View all
+  $# <h1 class="center">
+  $#   <a href=@{DirectoryR []}>View all

@@ -2,7 +2,7 @@
   <div class="row">
     <div>
     <div>
-    <a class="button" href=@{DirectoryR []}>
+    <a class="button" href=@{HomeR}>
       <i class="fa-solid fa-file-video">
     <div>
     <button class="red" onclick="sendAction('#{ActionCloseWindow}')">

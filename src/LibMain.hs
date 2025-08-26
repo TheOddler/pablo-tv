@@ -34,7 +34,6 @@ import Data.Text (Text, intercalate, unpack)
 import Data.Text qualified as T
 import Data.Text qualified as Text
 import Data.Time (UTCTime)
-import Data.Time.Clock.POSIX (posixSecondsToUTCTime)
 import Database.Persist.Sqlite (runMigration, withSqlitePool)
 import DirectoryNew (getVideoDirPath, niceDirNameT, updateData)
 import Foundation (App (..), Handler, Route (..), defaultLayout, embeddedStatic, resourcesApp, static_images_apple_tv_plus_png, static_images_netflix_png, static_images_youtube_png)
@@ -83,13 +82,14 @@ import Yesod.WebSockets (race_, webSockets)
 mkYesodDispatch "App" resourcesApp
 
 data DirData = DirData
-  { dirDataName :: Text,
-    dirDataSegments :: [Text],
-    dirDataLastModified :: UTCTime,
-    dirDataLastWatched :: UTCTime,
-    dirDataVideoFileCount :: Int,
-    dirDataPlayedVideoFileCount :: Int,
-    dirDataFiles :: [VideoFile]
+  { dirNiceName :: Text,
+    dirPath :: Path Abs Dir,
+    dirLastModified :: UTCTime,
+    dirLastWatched :: UTCTime,
+    dirVideoFileCount :: Int,
+    dirPlayedVideoFileCount :: Int,
+    dirChildFiles :: [Path Abs File],
+    dirChildDirs :: [Path Abs Dir]
   }
 
 type ImageRoute = Route App
@@ -98,37 +98,40 @@ type Link = Text
 
 type NamedLink = (Text, ImageRoute, Link)
 
-getDirData :: Path Abs Dir -> Handler [DirData]
-getDirData dir = do
+getDirData :: [Directory] -> [VideoFile] -> Path Abs Dir -> DirData
+getDirData allDirs allFiles dir =
+  DirData
+    { dirNiceName = niceDirNameT dir,
+      dirPath = dir,
+      dirLastModified =
+        safeMaxUTCTime $ map videoFileAdded allDescendantFiles,
+      dirLastWatched =
+        safeMaxUTCTime $ mapMaybe videoFileWatched allDescendantFiles,
+      dirVideoFileCount =
+        length allDescendantFiles,
+      dirPlayedVideoFileCount =
+        length $ filter (isJust . videoFileWatched) allDescendantFiles,
+      dirChildFiles = childFiles,
+      dirChildDirs = childDirs
+    }
+  where
+    allDescendantFiles =
+      filter (\f -> dir `isProperPrefixOf` videoFilePath f) allFiles
+    childFiles =
+      filter ((dir ==) . parent) $
+        map videoFilePath allDescendantFiles
+    childDirs =
+      filter ((dir ==) . parent) $
+        map directoryPath allDirs
+
+getAllChildDirData :: Path Abs Dir -> Handler [DirData]
+getAllChildDirData parentDir = do
   (allDirs' :: [Entity Directory], allFiles' :: [Entity VideoFile]) <- runDB $ do
     (,) <$> selectList [] [] <*> selectList [] []
   let allDirs = map entityVal allDirs'
   let allFiles = map entityVal allFiles'
-  let topLevelDirs = filter ((dir ==) . parent . directoryPath) allDirs
-
-  let dirToData :: Directory -> DirData
-      dirToData childDir =
-        let path = directoryPath childDir
-            dirName = dirname path
-            segments = fileNameToSegments dirName
-            files = filter (\f -> path `isProperPrefixOf` f.videoFilePath) allFiles
-         in DirData
-              { dirDataName = niceDirNameT dirName,
-                dirDataSegments = segments,
-                dirDataLastModified =
-                  safeMaxUTCTime $ map videoFileAdded files,
-                dirDataLastWatched =
-                  safeMaxUTCTime $ mapMaybe videoFileWatched files,
-                dirDataVideoFileCount =
-                  length files,
-                dirDataPlayedVideoFileCount =
-                  length $ filter (isJust . videoFileWatched) files,
-                dirDataFiles = files
-              }
-  pure $ dirToData <$> topLevelDirs
-  where
-    fileNameToSegments :: Path Rel a -> [Text]
-    fileNameToSegments f = [T.pack $ toFilePath f]
+  let topLevelDirs = filter ((parentDir ==) . parent) $ map directoryPath allDirs
+  pure $ map (getDirData allDirs allFiles) topLevelDirs
 
 data HomeSection
   = LocalVideos Text [DirData]
@@ -141,17 +144,17 @@ getHomeR = do
   webSockets $ race_ actionsWebSocket (tvStateWebSocket tvStateTVar)
 
   homeDir <- liftIO getVideoDirPath -- For now we just use the hardcoded path as home, but the plan is to support multiple root folders
-  videoData <- getDirData homeDir
+  dirData <- getAllChildDirData homeDir
   let mkRandom =
         -- When in dev we auto-reload the page every second or so,
         -- so we want the same random shuffle every time, otherwise the page
         -- keeps changing which is annoying.
         if isDevelopment then pure (mkStdGen 2) else initStdGen
   randomGenerator <- mkRandom
-  let isUnwatched d = d.dirDataPlayedVideoFileCount < d.dirDataVideoFileCount
-      unwatched = filter isUnwatched videoData
-      recentlyAdded d = Down d.dirDataLastModified
-      recentlyWatched d = d.dirDataLastWatched
+  let isUnwatched d = d.dirPlayedVideoFileCount < d.dirVideoFileCount
+      unwatched = filter isUnwatched dirData
+      recentlyAdded d = Down d.dirLastModified
+      recentlyWatched d = d.dirLastWatched
 
   let sections =
         [ LocalVideos "New" $
@@ -165,11 +168,11 @@ getHomeR = do
               ("Apple TV+", StaticR static_images_apple_tv_plus_png, "https://tv.apple.com")
             ],
           LocalVideos "Recently Added" $
-            sortWith recentlyAdded videoData,
+            sortWith recentlyAdded dirData,
           LocalVideos "Random (All)" $
-            shuffle videoData randomGenerator,
+            shuffle dirData randomGenerator,
           LocalVideos "Recently Watched" . reverse $
-            sortWith recentlyWatched videoData
+            sortWith recentlyWatched dirData
         ]
 
   defaultLayout "Home" $(widgetFile "home")
@@ -217,16 +220,11 @@ parseSegments segmentsT = do
             else tryDir
         Nothing -> tryDir
 
-getDirectoryR :: [Text] -> Handler Html
-getDirectoryR segments = do
-  absPath <-
-    parseSegments segments >>= \case
-      Just (p, Nothing) -> pure p
-      _ -> redirect $ maybe HomeR DirectoryR $ removeLast segments
+getDirectoryR :: Path Abs Dir -> Handler Html
+getDirectoryR absPath = do
+  dirData <- getAllChildDirData absPath
 
-  videoData <- getDirData absPath
-
-  undefined videoData
+  undefined
 
 -- mPathAndInfo <- liftIO $ readDirectoryInfoRec absPath
 -- let mInfo = snd <$> mPathAndInfo
@@ -301,12 +299,8 @@ getRemoteR :: Handler Html
 getRemoteR = do
   defaultLayout "Remote" $(widgetFile "remote")
 
-getImageR :: [Text] -> Handler Html
-getImageR segments = do
-  dir <-
-    parseSegments segments >>= \case
-      Just (d, _) -> pure d
-      _ -> notFound
+getImageR :: Path Abs Dir -> Handler Html
+getImageR dir = do
   mImg <- firstJustsM $ tryGetImage <$> take 3 (iterate parent dir)
   case mImg of
     Just (contentType, path) ->
