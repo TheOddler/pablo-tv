@@ -43,7 +43,6 @@ library
     exposed-modules:
         Actions
         DB
-        Directory
         DirectoryNew
         Foundation
         IsDevelopment
@@ -55,7 +54,6 @@ library
         TVDB
         TVState
         Util
-        Watched
     if flag(development)
         cpp-options: -DDEVELOPMENT
     build-depends:

@@ -6,6 +6,7 @@ import Autodocodec (Autodocodec (..), Discriminator, HasCodec (..), HasObjectCod
 import Autodocodec.Aeson (toJSONViaCodec)
 import Control.Concurrent (MVar, tryPutMVar)
 import Control.Monad (forever, when)
+import DB qualified
 import Data.Char (isSpace)
 import Data.HashMap.Strict qualified as HashMap
 import Data.Int (Int32)
@@ -13,20 +14,22 @@ import Data.List (dropWhileEnd, nub)
 import Data.Scientific (Scientific, scientific)
 import Data.Text (Text)
 import Data.Text.Lazy.Encoding qualified as T
+import Data.Time (getCurrentTime)
 import Data.Void (Void)
+import Database.Persist.Sqlite (PersistStoreWrite (..))
 import Evdev.Codes
 import Evdev.Uinput
+import Foundation (Handler)
 import GHC.Conc (TVar, atomically, readTVar, writeTVar)
-import Path (Abs, Dir, File, Path, fromAbsDir, fromAbsFile, parent, parseAbsDir, parseAbsFile)
+import Path (Abs, Dir, File, Path, fromAbsDir, fromAbsFile, parseAbsDir, parseAbsFile)
 import Playerctl qualified
 import SafeMaths (int32ToInteger)
 import System.Process (callProcess, readProcess)
-import TVState (TVState (..), addToAggWatched)
+import TVState (TVState (..))
 import Text.Blaze qualified as Blaze
 import Text.Julius (ToJavascript (..))
 import Util (boundedEnumCodec)
-import Watched (MarkAsUnwatchedResult (..), MarkAsWatchedResult (..), markAllAsUnwatched, markAllAsWatched, markFileAsUnwatched, markFileAsWatched)
-import Yesod (FromJSON, MonadHandler, liftIO)
+import Yesod (FromJSON, lift, liftIO, runDB, (=.))
 import Yesod.WebSockets (WebSocketsT, receiveData)
 
 data DirOrFile
@@ -200,41 +203,44 @@ keyboardButtonToEvdevKey = \case
   KeyboardVolumeUp -> KeyVolumeup
   KeyboardVolumeDown -> KeyVolumedown
 
-actionsWebSocket :: (MonadHandler m) => Device -> TVar TVState -> MVar () -> WebSocketsT m ()
+actionsWebSocket :: Device -> TVar TVState -> MVar () -> WebSocketsT Handler ()
 actionsWebSocket inputDevice tvStateTVar videoDataRefreshTrigger = forever $ do
   d <- receiveData
-  liftIO $ case eitherDecodeJSONViaCodec d of
-    Left err -> putStrLn $ "Error decoding action: " <> err
-    Right action -> performAction inputDevice tvStateTVar videoDataRefreshTrigger action
+  case eitherDecodeJSONViaCodec d of
+    Left err -> liftIO $ putStrLn $ "Error decoding action: " <> err
+    Right action -> lift $ performAction inputDevice tvStateTVar videoDataRefreshTrigger action
 
-performAction :: Device -> TVar TVState -> MVar () -> Action -> IO ()
+performAction :: Device -> TVar TVState -> MVar () -> Action -> Handler ()
 performAction inputDevice tvStateTVar videoDataRefreshTrigger action = do
-  putStrLn $ "Performing action: " <> show action
+  liftIO $ putStrLn $ "Performing action: " <> show action
   case action of
     ActionClickMouse btn' ->
       let btn = mouseButtonToEvdevKey btn'
-       in writeBatch
-            inputDevice
-            [ KeyEvent btn Pressed,
-              SyncEvent SynReport,
-              KeyEvent btn Released
-              -- Batch automatically adds a sync at the end too
-            ]
+       in liftIO $
+            writeBatch
+              inputDevice
+              [ KeyEvent btn Pressed,
+                SyncEvent SynReport,
+                KeyEvent btn Released
+                -- Batch automatically adds a sync at the end too
+              ]
     ActionPressKeyboard key' ->
       let key = keyboardButtonToEvdevKey key'
-       in writeBatch
-            inputDevice
-            [ KeyEvent key Pressed,
-              SyncEvent SynReport,
-              KeyEvent key Released
-              -- Batch automatically adds a sync at the end too
-            ]
+       in liftIO $
+            writeBatch
+              inputDevice
+              [ KeyEvent key Pressed,
+                SyncEvent SynReport,
+                KeyEvent key Released
+                -- Batch automatically adds a sync at the end too
+              ]
     ActionMoveMouse x y ->
-      writeBatch
-        inputDevice
-        [ RelativeEvent RelX $ EventValue x,
-          RelativeEvent RelY $ EventValue y
-        ]
+      liftIO $
+        writeBatch
+          inputDevice
+          [ RelativeEvent RelX $ EventValue x,
+            RelativeEvent RelY $ EventValue y
+          ]
     ActionPointMouse lr ud -> do
       let -- I assume the screen is in landscape mode
           fromInt32 int32 = scientific (int32ToInteger int32) 0
@@ -243,20 +249,22 @@ performAction inputDevice tvStateTVar videoDataRefreshTrigger action = do
           centerY = fromInt32 screenHeight / 2
           pointerX = floor $ centerX + lr * screenHalfSize
           pointerY = floor $ centerY + ud * screenHalfSize
-      writeBatch
-        inputDevice
-        [ AbsoluteEvent AbsX $ EventValue pointerX,
-          AbsoluteEvent AbsY $ EventValue pointerY
-        ]
+      liftIO $
+        writeBatch
+          inputDevice
+          [ AbsoluteEvent AbsX $ EventValue pointerX,
+            AbsoluteEvent AbsY $ EventValue pointerY
+          ]
     ActionMouseScroll amount ->
-      writeBatch
-        inputDevice
-        [ RelativeEvent RelWheel $ EventValue amount
-        ]
+      liftIO $
+        writeBatch
+          inputDevice
+          [ RelativeEvent RelWheel $ EventValue amount
+          ]
     ActionWrite text -> do
       let events = concatMap (clickKeyCombo . charToKey) text
-      writeBatch inputDevice events
-    ActionPlayPath dirOrFile -> do
+      liftIO $ writeBatch inputDevice events
+    ActionPlayPath dirOrFile -> liftIO $ do
       defaultVideoPlayer' <- readProcess "xdg-mime" ["query", "default", "video/x-msvideo"] ""
       let defaultVideoPlayer = dropWhileEnd isSpace defaultVideoPlayer'
       callProcess
@@ -271,17 +279,17 @@ performAction inputDevice tvStateTVar videoDataRefreshTrigger action = do
     ActionMarkAsUnwatched dirOrFile ->
       markDirOrFileAsUnwatched dirOrFile
     ActionCloseWindow ->
-      writeBatch inputDevice $ clickKeyCombo [KeyLeftctrl, KeyQ]
+      liftIO $ writeBatch inputDevice $ clickKeyCombo [KeyLeftctrl, KeyQ]
     ActionOpenUrlOnTV url ->
       liftIO $ atomically $ do
         tvState <- readTVar tvStateTVar
         writeTVar tvStateTVar $ tvState {tvPage = url}
-    ActionRefreshTVState -> do
+    ActionRefreshTVState -> liftIO $ do
       success <- tryPutMVar videoDataRefreshTrigger ()
       when (not success) $
         putStrLn "Already refreshing"
     ActionMedia playerCtlAction ->
-      Playerctl.performAction playerCtlAction
+      liftIO $ Playerctl.performAction playerCtlAction
   where
     clickKeyCombo keys =
       map (`KeyEvent` Pressed) keys
@@ -289,25 +297,22 @@ performAction inputDevice tvStateTVar videoDataRefreshTrigger action = do
         ++ map (`KeyEvent` Released) (reverse keys)
         ++ [SyncEvent SynReport]
 
-    markDirOrFileAsWatched dirOrFile =
-      case dirOrFile of
+    markDirOrFileAsWatched :: DirOrFile -> Handler ()
+    markDirOrFileAsWatched dirOrFile = do
+      now <- liftIO getCurrentTime
+      runDB $ case dirOrFile of
         Dir path -> do
-          count <- markAllAsWatched path
-          addToAggWatched tvStateTVar path count
+          pure ()
         File path ->
-          markFileAsWatched path >>= \case
-            AlreadyWatched -> pure ()
-            MarkedAsWatched -> addToAggWatched tvStateTVar (parent path) 1
+          update (DB.VideoFileKey path) [DB.VideoFileWatched =. Just now]
 
+    markDirOrFileAsUnwatched :: DirOrFile -> Handler ()
     markDirOrFileAsUnwatched dirOrFile =
-      case dirOrFile of
+      runDB $ case dirOrFile of
         Dir path -> do
-          count <- markAllAsUnwatched path
-          addToAggWatched tvStateTVar path (-count)
+          pure ()
         File path ->
-          markFileAsUnwatched path >>= \case
-            AlreadyUnwatched -> pure ()
-            MarkedAsUnwatched -> addToAggWatched tvStateTVar (parent path) (-1)
+          update (DB.VideoFileKey path) [DB.VideoFileWatched =. Nothing]
 
 charToKey :: Char -> [Key]
 charToKey = \case

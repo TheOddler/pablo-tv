@@ -8,14 +8,11 @@
 
 module Foundation where
 
-import Actions (Action (..))
 import Control.Concurrent (MVar)
 import Control.Monad (when)
 import DB (runDBWithConn)
 import Data.ByteString.Char8 qualified as BS
-import Data.Maybe (fromMaybe, isNothing, listToMaybe)
-import Data.Text (Text)
-import Data.Text.Encoding (decodeUtf8Lenient)
+import Data.Maybe (isNothing, listToMaybe)
 import Database.Persist.Sqlite (ConnectionPool, SqlBackend)
 import Evdev.Uinput (Device)
 import GHC.Utils.Misc (sortWith)
@@ -23,7 +20,7 @@ import IsDevelopment (isDevelopment)
 import Network.Info (getNetworkInterfaces)
 import TVDB (TVDBToken)
 import Text.Hamlet (hamletFile)
-import Util (networkInterfaceWorthiness, showIpV4OrV6WithPort, toUrlRel, widgetFile)
+import Util (networkInterfaceWorthiness, showIpV4OrV6WithPort, widgetFile)
 import Yesod hiding (defaultLayout, replace)
 import Yesod qualified
 import Yesod.EmbeddedStatic
@@ -98,10 +95,10 @@ instance Yesod App where
 
       addScript $ StaticR static_reconnecting_websocket_js
       addStylesheet $ StaticR static_fontawesome_css_all_min_css
-      currentRoute <- fromMaybe HomeR <$> getCurrentRoute
-      currentUrlBS <- toUrlRel currentRoute
-      let currentUrl :: Text
-          currentUrl = decodeUtf8Lenient $ BS.toStrict currentUrlBS
+      -- currentRoute <- fromMaybe HomeR <$> getCurrentRoute
+      -- currentUrlBS <- toUrlRel currentRoute
+      -- let currentUrl :: Text
+      --     currentUrl = decodeUtf8Lenient $ BS.toStrict currentUrlBS
       $(widgetFile "default")
     withUrlRenderer $
       $(hamletFile "templates/page-wrapper.hamlet")

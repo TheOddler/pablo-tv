@@ -35,22 +35,6 @@ import Data.Text qualified as Text
 import Data.Time (diffUTCTime, getCurrentTime)
 import Data.Time.Clock.POSIX (posixSecondsToUTCTime)
 import Database.Persist.Sqlite (runMigration, withSqlitePool)
-import Directory
-  ( DirectoryInfo (..),
-    DirectoryKind (..),
-    DirectoryRaw (..),
-    TopLevelDir,
-    getTopLevelDirs,
-    getVideoDirPath,
-    niceDirNameT,
-    niceFileNameT,
-    readDirectoryInfoRec,
-    readDirectoryRaw,
-    topLevelToAbsDir,
-    unRootDir,
-    updateAllDirectoryInfos,
-    updateAllDirectoryInfosGuessOnly,
-  )
 import DirectoryNew (updateData)
 import Foreign.C (CTime (..))
 import Foundation (App (..), Handler, Route (..), defaultLayout, embeddedStatic, resourcesApp, static_images_apple_tv_plus_png, static_images_netflix_png, static_images_youtube_png)
@@ -84,7 +68,6 @@ import System.FilePath (dropTrailingPathSeparator)
 import System.Process (callProcess)
 import System.Random (initStdGen, mkStdGen)
 import TVDB (TVDBToken (..))
-import TVState (TVState (..), addToAggWatched, startingTVState, tvStateWebSocket)
 import Util
   ( asyncOnTrigger,
     networkInterfaceWorthiness,
@@ -92,14 +75,6 @@ import Util
     shuffle,
     unsnoc,
     widgetFile,
-  )
-import Watched
-  ( MarkAsWatchedResult (..),
-    WatchedInfoAgg (..),
-    hasBeenWatched,
-    markFileAsWatched,
-    readWatchedInfo,
-    readWatchedInfoAgg,
   )
 import Yesod hiding (defaultLayout, replace)
 import Yesod.WebSockets (race_, webSockets)
