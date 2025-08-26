@@ -16,6 +16,7 @@ import Actions
     MouseButton (..),
     actionsWebSocket,
     mkInputDevice,
+    performAction,
     performActionIO,
   )
 import Control.Monad (filterM, when)
@@ -187,12 +188,8 @@ postHomeR =
     Error s -> do
       liftIO $ putStrLn $ "Failed parsing action: " ++ s
       invalidArgs [Text.pack s]
-    Success (_action :: Actions.Action) -> do
-      -- inputDevice <- getsYesod appInputDevice
-      -- tvStateTVar <- getsYesod appTVState
-      -- videoDataRefreshTrigger <- getsYesod appVideoDataRefreshTrigger
-      -- liftIO $ performAction inputDevice tvStateTVar videoDataRefreshTrigger action
-      pure ()
+    Success action -> do
+      performAction action
 
 -- | Turn the segments into a directory path and optionally a filename
 -- Also checks if the file/directory actually exists, if not, return Nothing
