@@ -341,7 +341,7 @@ main = do
   when (not isDevelopment) $ do
     callProcess "xdg-open" [url]
 
-  let openConnectionCount = 10
+  let openConnectionCount = 1 -- If we increase this, you should also change the connection string to allow for concurrent read/writes
   runStderrLoggingT $
     withSqlitePool "pablo-tv-data.db3" openConnectionCount $ \connPool -> liftIO $ do
       -- Migrate DB
