@@ -236,7 +236,7 @@ getDirectoryR absPath = do
       [sqlQQ|
         SELECT @{DirectoryPath}
         FROM ^{Directory}
-        WHERE 
+        WHERE
           -- This checks that it's a sub-directory
           @{DirectoryPath} GLOB #{absPath} || '*'
           -- This makes sure it's a direct child
@@ -248,8 +248,8 @@ getDirectoryR absPath = do
       [sqlQQ|
         SELECT ??
         FROM ^{VideoFile}
-        WHERE 
-          -- This checks that it's a sub-directory
+        WHERE
+          -- This checks that it's a sub-file
           @{VideoFilePath} GLOB #{absPath} || '*'
           -- This makes sure it's a direct child
           AND instr(substr(@{VideoFilePath}, length(#{absPath})+1), '/') = 0
