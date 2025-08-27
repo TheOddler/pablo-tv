@@ -26,6 +26,10 @@ VideoFile
   added UTCTime
   watched UTCTime Maybe
   Primary path
+
+ImageFile
+  path (Path Abs File)
+  Primary path
 |]
 
 runDBWithConn :: (MonadUnliftIO m) => ConnectionPool -> ReaderT SqlBackend m a -> m a

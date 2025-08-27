@@ -18,7 +18,7 @@ import GHC.Exts (sortWith)
 import Path
 import SaferIO (FSRead)
 import System.Directory (listDirectory)
-import System.FilePath (dropTrailingPathSeparator, hasExtension)
+import System.FilePath (dropTrailingPathSeparator)
 import Text.Read (readMaybe)
 import Text.Regex.TDFA ((=~))
 import Util (logDuration, withDuration)
@@ -34,71 +34,76 @@ getVideoDirPath = do
 -- There's also some paths we ignore, regardless of wether they are files or dirs.
 data LikelyPathType
   = LikelyDir (Path Abs Dir)
-  | LikelyFile (Path Abs File)
+  | LikelyVideoFile (Path Abs File)
+  | LikelyImageFile (Path Abs File)
   | LikelyIgnored FilePath
 
 -- | If this guess is wrong, we won't explore the directory.
--- This expects an absolute path
-guessPathType :: FilePath -> LikelyPathType
-guessPathType p = case p of
+-- This expects just the file or directory name
+guessPathType :: Path Abs Dir -> FilePath -> LikelyPathType
+guessPathType basePath p = case p of
   "" -> LikelyIgnored p
   '.' : _ -> LikelyIgnored p
-  _ | hasExtension p -> case parseAbsFile p of
-    Just absPath -> LikelyFile absPath
-    Nothing -> LikelyIgnored p
-  _ -> case parseAbsDir p of
-    Just absPath -> LikelyDir absPath
-    Nothing -> LikelyIgnored p
+  _ -> case parseRelFile p of
+    Just relPath | isVideoFile relPath -> LikelyVideoFile $ basePath </> relPath
+    Just relPath | isImageFile relPath -> LikelyImageFile $ basePath </> relPath
+    Just relPath | isJust $ fileExtension relPath -> LikelyIgnored p
+    _ -> case parseRelDir p of
+      Just relPath -> LikelyDir $ basePath </> relPath
+      Nothing -> LikelyIgnored p
 
-partitionPathTypes :: [LikelyPathType] -> ([Path Abs Dir], [Path Abs File], [FilePath])
+partitionPathTypes :: [LikelyPathType] -> ([Path Abs Dir], [Path Abs File], [Path Abs File], [FilePath])
 partitionPathTypes =
   foldr
-    ( \guess (ds, fs, is) -> case guess of
-        LikelyDir d -> (d : ds, fs, is)
-        LikelyFile f -> (ds, f : fs, is)
-        LikelyIgnored i -> (ds, fs, i : is)
+    ( \guess (dirs, vids, imgs, igns) -> case guess of
+        LikelyDir d -> (d : dirs, vids, imgs, igns)
+        LikelyVideoFile v -> (dirs, v : vids, imgs, igns)
+        LikelyImageFile i -> (dirs, vids, i : imgs, igns)
+        LikelyIgnored i -> (dirs, vids, imgs, i : igns)
     )
-    ([], [], [])
+    ([], [], [], [])
 
 data StepInfo = StepInfo
   { stepDir :: Path Abs Dir,
     stepDuration :: NominalDiffTime,
     stepSubDirs :: [Path Abs Dir],
-    stepSubFiles :: [Path Abs File],
+    stepVideoFiles :: [Path Abs File],
+    stepImageFiles :: [Path Abs File],
     stepIgnoredPaths :: [FilePath]
   }
 
 walkDir ::
   Path Abs Dir ->
   (StepInfo -> IO ()) ->
-  IO ([Path Abs Dir], [Path Abs File], [FilePath])
+  IO ([Path Abs Dir], [Path Abs File], [Path Abs File], [FilePath])
 walkDir rootDir onStep = do
-  fst <$> step [rootDir] ([], [], [])
+  fst <$> step [rootDir] ([], [], [], [])
   where
-    listDir' :: Path Abs Dir -> IO ([Path Abs Dir], [Path Abs File], [FilePath])
+    listDir' :: Path Abs Dir -> IO ([Path Abs Dir], [Path Abs File], [Path Abs File], [FilePath])
     listDir' dir = do
       let absDirPath = fromAbsDir dir
       (relPaths, duration) <- withDuration $ listDirectory absDirPath
-      let absPaths = map (absDirPath ++) relPaths
-      let pathGuesses = map guessPathType absPaths
-      let dirInfo@(subDirs, subFiles, ignoredPaths) = partitionPathTypes pathGuesses
+      let pathGuesses = map (guessPathType dir) relPaths
+      let dirInfo@(subDirs, videoFiles, imageFiles, ignoredPaths) =
+            partitionPathTypes pathGuesses
       onStep
         StepInfo
           { stepDir = dir,
             stepDuration = duration,
             stepSubDirs = subDirs,
-            stepSubFiles = subFiles,
+            stepVideoFiles = videoFiles,
+            stepImageFiles = imageFiles,
             stepIgnoredPaths = ignoredPaths
           }
       pure dirInfo
 
     step ::
       [Path Abs Dir] ->
-      ([Path Abs Dir], [Path Abs File], [FilePath]) ->
-      IO (([Path Abs Dir], [Path Abs File], [FilePath]), [Path Abs Dir])
+      ([Path Abs Dir], [Path Abs File], [Path Abs File], [FilePath]) ->
+      IO (([Path Abs Dir], [Path Abs File], [Path Abs File], [FilePath]), [Path Abs Dir])
     step [] agg = pure (agg, [])
     step (dirTodo : nextDirs) agg = do
-      dirInfo@(subDirs, _, _) <- listDir' dirTodo
+      dirInfo@(subDirs, _, _, _) <- listDir' dirTodo
       -- let newDirsToCheck = nextDirs <> subDirs -- Depth-first walk
       let newDirsToCheck = nextDirs <> subDirs -- Breadth-first walk
       let newAgg = agg <> dirInfo
@@ -122,15 +127,15 @@ updateData dbConnPool root = logDuration "Updated data" $ do
   -- We're likely to be using a network share for the data, so walking this dir is slow.
   -- That means, we have plenty of time on each step to write to the locally stored DB.
   -- It also means that the locally stored DB might be partially updated during a full update of the data. But that's fine, we're not doing brain surgery here, it's fine to have imperfect data at times, we just want it quickly.
-  (allDirs, allFiles, ignoredPaths) <- walkDir root $ \StepInfo {..} -> do
+  (allDirs, allVideoFiles, allImageFiles, ignoredPaths) <- walkDir root $ \StepInfo {..} -> do
     ((), dbUpdateDur) <- withDuration $ runDBWithConn dbConnPool $ do
       -- Make sure the directory exists
       _ <-
         repsert (DirectoryKey stepDir) (Directory stepDir)
 
-      -- Update files
-      let fileUpdates :: [(Key VideoFile, VideoFile)]
-          fileUpdates = flip map stepSubFiles $ \filePath ->
+      -- Insert/update video files
+      let videoUpdates :: [(Key VideoFile, VideoFile)]
+          videoUpdates = flip map stepVideoFiles $ \filePath ->
             ( VideoFileKey filePath,
               VideoFile
                 { videoFilePath = filePath,
@@ -138,7 +143,15 @@ updateData dbConnPool root = logDuration "Updated data" $ do
                   videoFileWatched = Nothing
                 }
             )
-      repsertMany fileUpdates
+      repsertMany videoUpdates
+
+      -- Insert/update image files
+      let imageUpdates :: [(Key ImageFile, ImageFile)]
+          imageUpdates = flip map stepVideoFiles $ \filePath ->
+            ( ImageFileKey filePath,
+              ImageFile filePath
+            )
+      repsertMany imageUpdates
 
     -- TODO Idea:
     -- Read all known data (commented out above), and do a `getFileStatus` for any new directories to get when they were last modified.
@@ -159,7 +172,8 @@ updateData dbConnPool root = logDuration "Updated data" $ do
         ]
 
   putStrLn $ "Found dirs: " ++ show allDirs
-  putStrLn $ "Found files: " ++ show allFiles
+  putStrLn $ "Found video files: " ++ show allVideoFiles
+  putStrLn $ "Found image files: " ++ show allImageFiles
   putStrLn $ "Ignored paths: " ++ show ignoredPaths
 
   pure ()
@@ -267,10 +281,16 @@ niceFileNameT file =
       name = fromRelFile $ filename withoutExt
    in T.replace "." " " $ T.pack name
 
-isVideoFile :: Path b File -> Bool
+isVideoFile :: Path Rel File -> Bool
 isVideoFile file =
   case fileExtension file of
-    Just ext -> ext `elem` [".mp4", ".mkv", ".avi", ".webm"]
+    Just ext -> ext `elem` [".mp4", ".mkv", ".avi", ".webm", ".mov", ".m4v"]
+    Nothing -> False
+
+isImageFile :: Path Rel File -> Bool
+isImageFile file =
+  case fileExtension file of
+    Just ext -> ext `elem` [".jpg", ".jpeg", ".png", ".gif", ".webp"]
     Nothing -> False
 
 -- | Sorts the dirs, taking into account numbers properly
