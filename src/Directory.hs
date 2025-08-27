@@ -1,7 +1,7 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TemplateHaskell #-}
 
-module DirectoryNew where
+module Directory where
 
 import Algorithms.NaturalSort qualified as Natural
 import Control.Applicative ((<|>))
