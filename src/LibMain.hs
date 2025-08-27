@@ -93,6 +93,12 @@ data HomeData = HomeData
     hPlayedVideoFileCount :: Int
   }
 
+data NamedLink = NamedLink
+  { linkName :: Text,
+    linkImage :: Route App,
+    linkUrl :: Text
+  }
+
 data HomeSection
   = LocalVideos Text [HomeData]
   | ExternalLinks Text [NamedLink]
@@ -159,9 +165,18 @@ getHomeR = do
             shuffle unwatched randomGenerator,
           ExternalLinks
             "External Links"
-            [ ("YouTube", StaticR static_images_youtube_png, "https://www.youtube.com/feed/subscriptions"),
-              ("Netflix", StaticR static_images_netflix_png, "https://www.netflix.com"),
-              ("Apple TV+", StaticR static_images_apple_tv_plus_png, "https://tv.apple.com")
+            [ NamedLink
+                "YouTube"
+                (StaticR static_images_youtube_png)
+                "https://www.youtube.com/feed/subscriptions",
+              NamedLink
+                "Netflix"
+                (StaticR static_images_netflix_png)
+                "https://www.netflix.com",
+              NamedLink
+                "Apple TV+"
+                (StaticR static_images_apple_tv_plus_png)
+                "https://tv.apple.com"
             ],
           LocalVideos "Recently Added" $
             sortWith recentlyAdded homeData,
@@ -226,12 +241,6 @@ data DirData = DirData
     dirChildFiles :: [Path Abs File],
     dirChildDirs :: [Path Abs Dir]
   }
-
-type ImageRoute = Route App
-
-type Link = Text
-
-type NamedLink = (Text, ImageRoute, Link)
 
 getDirData :: [Directory] -> [VideoFile] -> Path Abs Dir -> DirData
 getDirData allDirs allFiles dir =

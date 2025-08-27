@@ -18,9 +18,9 @@
       $of ExternalLinks name links
         <h1>#{name}
         <div class="row">
-          $forall (name, img, link) <- links
-            <a class="el logo" href="#" onclick="sendAction('#{ActionOpenUrlOnTV link}')">
-              <img src="@{img}" alt="#{name}" loading="lazy">
+          $forall l <- links
+            <a class="el logo" href="#" onclick="sendAction('#{ActionOpenUrlOnTV l.linkUrl}')">
+              <img src="@{l.linkImage}" alt="#{l.linkName}" loading="lazy">
   
   $# <h1 class="center">
   $#   <a href=@{DirectoryR []}>View all
