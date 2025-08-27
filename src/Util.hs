@@ -12,6 +12,7 @@ import Data.List.NonEmpty.Extra qualified as NE
 import Data.Text qualified as T
 import Data.Time (NominalDiffTime, UTCTime, diffUTCTime, getCurrentTime)
 import Data.Time.Clock.POSIX (posixSecondsToUTCTime)
+import Database.Persist.Sqlite (Single (..))
 import GHC.Conc (TVar, atomically, readTVar, readTVarIO, retry)
 import GHC.List (uncons)
 import IsDevelopment (isDevelopment)
@@ -145,3 +146,25 @@ safeMaxUTCTime :: [UTCTime] -> UTCTime
 safeMaxUTCTime times = case NE.nonEmpty times of
   Nothing -> posixSecondsToUTCTime 0
   Just neTimes -> NE.maximum1 neTimes
+
+fst5 :: (a, b, c, d, e) -> a
+fst5 (a, _, _, _, _) = a
+
+uncurry5 :: (a -> b -> c -> d -> e -> f) -> (a, b, c, d, e) -> f
+uncurry5 f (a, b, c, d, e) = f a b c d e
+
+unSingle5 ::
+  ( Single a,
+    Single b,
+    Single c,
+    Single d,
+    Single e
+  ) ->
+  (a, b, c, d, e)
+unSingle5
+  ( Single a,
+    Single b,
+    Single c,
+    Single d,
+    Single e
+    ) = (a, b, c, d, e)

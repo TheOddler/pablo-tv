@@ -82,6 +82,7 @@ library
       , path
       , path-io
       , persistent
+      , persistent-qq
       , persistent-sqlite
       , process
       , random

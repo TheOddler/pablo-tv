@@ -21,7 +21,7 @@ import Actions
   )
 import Control.Monad (filterM, when)
 import Control.Monad.Logger (runStderrLoggingT)
-import DB (Directory (..), VideoFile (..), migrateAll, runDBWithConn)
+import DB (Directory (..), EntityField (..), VideoFile (..), migrateAll, runDBWithConn)
 import Data.Aeson (Result (..))
 import Data.ByteString.Char8 qualified as BS
 import Data.Char (isSpace, toLower)
@@ -34,6 +34,8 @@ import Data.Text (Text, intercalate, unpack)
 import Data.Text qualified as T
 import Data.Text qualified as Text
 import Data.Time (UTCTime)
+import Data.Time.Clock.POSIX (posixSecondsToUTCTime)
+import Database.Persist.Sql.Raw.QQ (sqlQQ)
 import Database.Persist.Sqlite (runMigration, withSqlitePool)
 import DirectoryNew (getVideoDirPath, niceDirNameT, updateData)
 import Foundation (App (..), Handler, Route (..), defaultLayout, embeddedStatic, resourcesApp, static_images_apple_tv_plus_png, static_images_netflix_png, static_images_youtube_png)
@@ -50,7 +52,6 @@ import Path
     File,
     Path,
     Rel,
-    dirname,
     fileExtension,
     fromAbsFile,
     isProperPrefixOf,
@@ -58,7 +59,6 @@ import Path
     parent,
     parseRelDir,
     parseRelFile,
-    toFilePath,
     (</>),
   )
 import Path.IO (doesDirExist, doesFileExist, getHomeDir, listDir)
@@ -69,72 +69,32 @@ import System.Random (initStdGen, mkStdGen)
 import TVDB (TVDBToken (..))
 import TVState (startingTVState, tvStateWebSocket)
 import Util
-  ( networkInterfaceWorthiness,
-    removeLast,
+  ( fst5,
+    logDuration,
+    networkInterfaceWorthiness,
     safeMaxUTCTime,
     shuffle,
+    unSingle5,
+    uncurry5,
     unsnoc,
     widgetFile,
   )
 import Yesod hiding (defaultLayout, replace)
-import Yesod.WebSockets (concurrently_, race_, webSockets)
+import Yesod.WebSockets (race_, webSockets)
 
 mkYesodDispatch "App" resourcesApp
 
-data DirData = DirData
-  { dirNiceName :: Text,
-    dirPath :: Path Abs Dir,
-    dirLastModified :: UTCTime,
-    dirLastWatched :: UTCTime,
-    dirVideoFileCount :: Int,
-    dirPlayedVideoFileCount :: Int,
-    dirChildFiles :: [Path Abs File],
-    dirChildDirs :: [Path Abs Dir]
+data HomeDirData = HomeDirData
+  { homeDirNiceName :: Text,
+    homeDirPath :: Path Abs Dir,
+    homeDirLastModified :: UTCTime,
+    homeDirLastWatched :: UTCTime,
+    homeDirVideoFileCount :: Int,
+    homeDirPlayedVideoFileCount :: Int
   }
 
-type ImageRoute = Route App
-
-type Link = Text
-
-type NamedLink = (Text, ImageRoute, Link)
-
-getDirData :: [Directory] -> [VideoFile] -> Path Abs Dir -> DirData
-getDirData allDirs allFiles dir =
-  DirData
-    { dirNiceName = niceDirNameT dir,
-      dirPath = dir,
-      dirLastModified =
-        safeMaxUTCTime $ map videoFileAdded allDescendantFiles,
-      dirLastWatched =
-        safeMaxUTCTime $ mapMaybe videoFileWatched allDescendantFiles,
-      dirVideoFileCount =
-        length allDescendantFiles,
-      dirPlayedVideoFileCount =
-        length $ filter (isJust . videoFileWatched) allDescendantFiles,
-      dirChildFiles = childFiles,
-      dirChildDirs = childDirs
-    }
-  where
-    allDescendantFiles =
-      filter (\f -> dir `isProperPrefixOf` videoFilePath f) allFiles
-    childFiles =
-      filter ((dir ==) . parent) $
-        map videoFilePath allDescendantFiles
-    childDirs =
-      filter ((dir ==) . parent) $
-        map directoryPath allDirs
-
-getAllChildDirData :: Path Abs Dir -> Handler [DirData]
-getAllChildDirData parentDir = do
-  (allDirs' :: [Entity Directory], allFiles' :: [Entity VideoFile]) <- runDB $ do
-    (,) <$> selectList [] [] <*> selectList [] []
-  let allDirs = map entityVal allDirs'
-  let allFiles = map entityVal allFiles'
-  let topLevelDirs = filter ((parentDir ==) . parent) $ map directoryPath allDirs
-  pure $ map (getDirData allDirs allFiles) topLevelDirs
-
 data HomeSection
-  = LocalVideos Text [DirData]
+  = LocalVideos Text [HomeDirData]
   | ExternalLinks Text [NamedLink]
 
 getHomeR :: Handler Html
@@ -144,17 +104,52 @@ getHomeR = do
   webSockets $ race_ actionsWebSocket (tvStateWebSocket tvStateTVar)
 
   homeDir <- liftIO getVideoDirPath -- For now we just use the hardcoded path as home, but the plan is to support multiple root folders
-  dirData <- getAllChildDirData homeDir
+  let epoch = posixSecondsToUTCTime 0
+  homeDirData' <-
+    map unSingle5
+      <$> runDB
+        [sqlQQ|
+          SELECT
+            d.@{DirectoryPath},
+            max(v.@{VideoFileAdded}),
+            COALESCE(max(v.@{VideoFileWatched}), #{epoch}),
+            count(v.@{VideoFilePath}),
+            SUM(IIF(v.@{VideoFileWatched} IS NOT NULL, 1, 0))
+          FROM ^{Directory} d
+          LEFT JOIN ^{VideoFile} v
+            ON v.@{VideoFilePath} GLOB d.@{DirectoryPath} || '*'
+          WHERE 
+            -- This checks that it's a sub-directory
+            -- SQLite has some GLOB optimisations, so this is fast
+            d.@{DirectoryPath} GLOB #{homeDir} || '*'
+            -- This makes sure it's a direct child
+            AND instr(rtrim(substr(d.@{DirectoryPath}, length(#{homeDir})+1), '/'), '/') = 0
+            -- And this removed the homeDir itself
+            AND d.@{DirectoryPath} <> #{homeDir}
+          GROUP BY
+            d.@{DirectoryPath}
+        |]
+  let toHomeDirData ::
+        ( Path Abs Dir,
+          UTCTime,
+          UTCTime,
+          Int,
+          Int
+        ) ->
+        HomeDirData
+      toHomeDirData d = uncurry5 (HomeDirData $ niceDirNameT $ fst5 d) d
+
+  let homeDirData = map toHomeDirData homeDirData'
   let mkRandom =
         -- When in dev we auto-reload the page every second or so,
         -- so we want the same random shuffle every time, otherwise the page
         -- keeps changing which is annoying.
         if isDevelopment then pure (mkStdGen 2) else initStdGen
   randomGenerator <- mkRandom
-  let isUnwatched d = d.dirPlayedVideoFileCount < d.dirVideoFileCount
-      unwatched = filter isUnwatched dirData
-      recentlyAdded d = Down d.dirLastModified
-      recentlyWatched d = d.dirLastWatched
+  let isUnwatched d = d.homeDirPlayedVideoFileCount < d.homeDirVideoFileCount
+      unwatched = filter isUnwatched homeDirData
+      recentlyAdded d = Down d.homeDirLastModified
+      recentlyWatched d = d.homeDirLastWatched
 
   let sections =
         [ LocalVideos "New" $
@@ -168,11 +163,11 @@ getHomeR = do
               ("Apple TV+", StaticR static_images_apple_tv_plus_png, "https://tv.apple.com")
             ],
           LocalVideos "Recently Added" $
-            sortWith recentlyAdded dirData,
+            sortWith recentlyAdded homeDirData,
           LocalVideos "Random (All)" $
-            shuffle dirData randomGenerator,
+            shuffle homeDirData randomGenerator,
           LocalVideos "Recently Watched" . reverse $
-            sortWith recentlyWatched dirData
+            sortWith recentlyWatched homeDirData
         ]
 
   defaultLayout "Home" $(widgetFile "home")
@@ -220,11 +215,60 @@ parseSegments segmentsT = do
             else tryDir
         Nothing -> tryDir
 
+data DirData = DirData
+  { dirNiceName :: Text,
+    dirPath :: Path Abs Dir,
+    dirLastModified :: UTCTime,
+    dirLastWatched :: UTCTime,
+    dirVideoFileCount :: Int,
+    dirPlayedVideoFileCount :: Int,
+    dirChildFiles :: [Path Abs File],
+    dirChildDirs :: [Path Abs Dir]
+  }
+
+type ImageRoute = Route App
+
+type Link = Text
+
+type NamedLink = (Text, ImageRoute, Link)
+
+getDirData :: [Directory] -> [VideoFile] -> Path Abs Dir -> DirData
+getDirData allDirs allFiles dir =
+  DirData
+    { dirNiceName = niceDirNameT dir,
+      dirPath = dir,
+      dirLastModified =
+        safeMaxUTCTime $ map videoFileAdded allDescendantFiles,
+      dirLastWatched =
+        safeMaxUTCTime $ mapMaybe videoFileWatched allDescendantFiles,
+      dirVideoFileCount =
+        length allDescendantFiles,
+      dirPlayedVideoFileCount =
+        length $ filter (isJust . videoFileWatched) allDescendantFiles,
+      dirChildFiles = childFiles,
+      dirChildDirs = childDirs
+    }
+  where
+    allDescendantFiles =
+      filter (\f -> dir `isProperPrefixOf` videoFilePath f) allFiles
+    childFiles =
+      filter ((dir ==) . parent) $
+        map videoFilePath allDescendantFiles
+    childDirs =
+      filter ((dir ==) . parent) $
+        map directoryPath allDirs
+
 getDirectoryR :: Path Abs Dir -> Handler Html
 getDirectoryR absPath = do
-  dirData <- getAllChildDirData absPath
+  liftIO $ putStrLn $ "Path: " ++ show absPath
 
-  undefined
+  (allDirs' :: [Entity Directory], allFiles' :: [Entity VideoFile]) <- logDuration "readWholeDB" $ runDB $ do
+    (,) <$> selectList [] [] <*> selectList [] []
+  let allDirs = map entityVal allDirs'
+  let allFiles = map entityVal allFiles'
+  let dirData = getDirData allDirs allFiles absPath
+
+  notFound
 
 -- mPathAndInfo <- liftIO $ readDirectoryInfoRec absPath
 -- let mInfo = snd <$> mPathAndInfo
@@ -409,7 +453,7 @@ main = do
                 performActionIO app $ ActionMarkAsWatched $ File path
 
       putStrLn "Starting race..."
-      concurrently_ dataThread $
-        race_ appThread watchedThread
+      -- concurrently_ dataThread $
+      race_ appThread watchedThread
 
   putStrLn "Server quite."
