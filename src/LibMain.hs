@@ -278,7 +278,9 @@ getImageR absPath = do
                 FROM ^{ImageFile}
                 WHERE
                   -- Any image that is in the given path, or any of it's parents
-                  #{absPath} GLOB replace(@{ImageFilePath}, rtrim(@{ImageFilePath}, replace(@{ImageFilePath}, '/', '')), '') || '*'
+                  #{absPath} GLOB rtrim(@{ImageFilePath}, replace(@{ImageFilePath}, '/', '')) || '*'
+                  -- Or any image in a child folder
+                OR rtrim(@{ImageFilePath}, replace(@{ImageFilePath}, '/', '')) GLOB #{absPath} || '*'
                 LIMIT 1
               |]
   liftIO $ print image
