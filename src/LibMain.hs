@@ -19,15 +19,15 @@ import Actions
     performAction,
     performActionIO,
   )
-import Control.Monad (filterM, when)
+import Control.Monad (when)
 import Control.Monad.Logger (runStderrLoggingT)
-import DB (Directory (..), EntityField (..), VideoFile (..), migrateAll, runDBWithConn)
+import DB (Directory (..), EntityField (..), ImageFile, VideoFile (..), migrateAll, runDBWithConn)
 import Data.Aeson (Result (..))
 import Data.ByteString.Char8 qualified as BS
 import Data.Char (isSpace, toLower)
 import Data.List (foldl')
 import Data.List.Extra (notNull)
-import Data.Maybe (fromMaybe, isNothing)
+import Data.Maybe (isNothing)
 import Data.Ord (Down (..))
 import Data.String (fromString)
 import Data.Text (Text, intercalate, unpack)
@@ -40,7 +40,7 @@ import Database.Persist.Sqlite (Single (..), runMigration, withSqlitePool)
 import Directory (getVideoDirPath, niceDirNameT, niceFileNameT, updateData)
 import Foundation (App (..), Handler, Route (..), defaultLayout, embeddedStatic, resourcesApp, static_images_apple_tv_plus_png, static_images_netflix_png, static_images_youtube_png)
 import GHC.Conc (newTVarIO)
-import GHC.Data.Maybe (firstJustsM, listToMaybe)
+import GHC.Data.Maybe (listToMaybe)
 import GHC.MVar (newMVar)
 import GHC.Utils.Misc (sortWith)
 import IsDevelopment (isDevelopment)
@@ -55,12 +55,11 @@ import Path
     fileExtension,
     fromAbsFile,
     mkRelDir,
-    parent,
     parseRelDir,
     parseRelFile,
     (</>),
   )
-import Path.IO (doesDirExist, doesFileExist, getHomeDir, listDir)
+import Path.IO (doesDirExist, doesFileExist, getHomeDir)
 import Playerctl (Action (..), onFilePlayStarted)
 import System.Environment (lookupEnv)
 import System.Process (callProcess)
@@ -78,7 +77,7 @@ import Util
     widgetFile,
   )
 import Yesod hiding (defaultLayout, replace)
-import Yesod.WebSockets (race_, webSockets)
+import Yesod.WebSockets (concurrently_, race_, webSockets)
 
 mkYesodDispatch "App" resourcesApp
 
@@ -269,36 +268,35 @@ getRemoteR = do
   defaultLayout "Remote" $(widgetFile "remote")
 
 getImageR :: Path Abs Dir -> Handler Html
-getImageR dir = do
-  mImg <- firstJustsM $ tryGetImage <$> take 3 (iterate parent dir)
-  case mImg of
-    Just (contentType, path) ->
-      sendFile contentType $ fromAbsFile path
+getImageR absPath = do
+  (image :: [Path Abs File]) <-
+    logDuration "Get image" $
+      runDB $
+        map unSingle
+          <$> [sqlQQ|
+                SELECT @{ImageFilePath}
+                FROM ^{ImageFile}
+                WHERE
+                  -- Any image that is in the given path, or any of it's parents
+                  #{absPath} GLOB replace(@{ImageFilePath}, rtrim(@{ImageFilePath}, replace(@{ImageFilePath}, '/', '')), '') || '*'
+                LIMIT 1
+              |]
+  liftIO $ print image
+  case listToMaybe image >>= mkContent of
     Nothing ->
       notFound
+    Just (contentType, imgPath) ->
+      sendFile contentType $ fromAbsFile imgPath
   where
-    tryGetImage :: Path Abs Dir -> Handler (Maybe (ContentType, Path Abs File))
-    tryGetImage dir = do
-      (_dirs, files) <- liftIO $ listDir dir
-      let hasImageExt :: Path a File -> Bool
-          hasImageExt file =
-            let ext = fromMaybe "" (fileExtension file)
-             in ext `elem` [".jpg", ".jpeg", ".png", ".gif"]
-          isImage :: Path Abs File -> IO Bool
-          isImage file =
-            if not $ hasImageExt file
-              then pure False
-              else doesFileExist file
-      mImageFile <- liftIO $ listToMaybe <$> filterM isImage files
-      case mImageFile of
-        Nothing -> pure Nothing
-        Just absPath -> do
-          ext <- fileExtension absPath
-          let cleanedExt = map toLower $
-                case ext of
-                  '.' : e -> e
-                  e -> e
-          pure $ Just ("image/" <> fromString cleanedExt, absPath)
+    mkContent :: Path Abs File -> Maybe (ContentType, Path Abs File)
+    mkContent filePath = case fileExtension filePath of
+      Nothing -> Nothing
+      Just ext ->
+        let cleanedExt = map toLower $
+              case ext of
+                '.' : e -> e
+                e -> e
+         in Just ("image/" <> fromString cleanedExt, filePath)
 
 getInputR :: Handler Html
 getInputR = do
@@ -347,7 +345,7 @@ main = do
   runStderrLoggingT $
     withSqlitePool "pablo-tv-data.db3" openConnectionCount $ \connPool -> liftIO $ do
       -- Migrate DB
-      runDBWithConn connPool $ runMigration migrateAll
+      logDuration "Migration" $ runDBWithConn connPool $ runMigration migrateAll
 
       let dataThread = do
             -- Update data, eventually I want to do this on a separate thread
@@ -378,7 +376,7 @@ main = do
                 performActionIO app $ ActionMarkAsWatched $ File path
 
       putStrLn "Starting race..."
-      -- concurrently_ dataThread $
-      race_ appThread watchedThread
+      concurrently_ dataThread $
+        race_ appThread watchedThread
 
   putStrLn "Server quite."
