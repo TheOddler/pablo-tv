@@ -6,14 +6,14 @@
           <h1>#{name}
           <div class="row">
             $forall dir <- dirs
-              <a class="el" href=@{DirectoryR $ homeDirPath dir}>
-                <img src=@{ImageR $ homeDirPath dir} alt="#{homeDirNiceName dir}" loading="lazy">
+              <a class="el" href=@{DirectoryR $ hPath dir}>
+                <img src=@{ImageR $ hPath dir} alt="#{hNiceName dir}" loading="lazy">
                 <div class="watched">
-                  $if homeDirPlayedVideoFileCount dir < homeDirVideoFileCount dir
+                  $if hPlayedVideoFileCount dir < hVideoFileCount dir
                     <i class="fa-regular fa-eye">
                   $else
                     <i class="fa-solid fa-check">
-                  #{homeDirPlayedVideoFileCount dir}/#{homeDirVideoFileCount dir}
+                  #{hPlayedVideoFileCount dir}/#{hVideoFileCount dir}
 
       $of ExternalLinks name links
         <h1>#{name}

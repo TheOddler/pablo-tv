@@ -84,17 +84,17 @@ import Yesod.WebSockets (race_, webSockets)
 
 mkYesodDispatch "App" resourcesApp
 
-data HomeDirData = HomeDirData
-  { homeDirNiceName :: Text,
-    homeDirPath :: Path Abs Dir,
-    homeDirLastModified :: UTCTime,
-    homeDirLastWatched :: UTCTime,
-    homeDirVideoFileCount :: Int,
-    homeDirPlayedVideoFileCount :: Int
+data HomeData = HomeData
+  { hNiceName :: Text,
+    hPath :: Path Abs Dir,
+    hLastModified :: UTCTime,
+    hLastWatched :: UTCTime,
+    hVideoFileCount :: Int,
+    hPlayedVideoFileCount :: Int
   }
 
 data HomeSection
-  = LocalVideos Text [HomeDirData]
+  = LocalVideos Text [HomeData]
   | ExternalLinks Text [NamedLink]
 
 getHomeR :: Handler Html
@@ -105,51 +105,52 @@ getHomeR = do
 
   homeDir <- liftIO getVideoDirPath -- For now we just use the hardcoded path as home, but the plan is to support multiple root folders
   let epoch = posixSecondsToUTCTime 0
-  homeDirData' <-
-    map unSingle5
-      <$> runDB
-        [sqlQQ|
-          SELECT
-            d.@{DirectoryPath},
-            max(v.@{VideoFileAdded}),
-            COALESCE(max(v.@{VideoFileWatched}), #{epoch}),
-            count(v.@{VideoFilePath}),
-            SUM(IIF(v.@{VideoFileWatched} IS NOT NULL, 1, 0))
-          FROM ^{Directory} d
-          LEFT JOIN ^{VideoFile} v
-            ON v.@{VideoFilePath} GLOB d.@{DirectoryPath} || '*'
-          WHERE 
-            -- This checks that it's a sub-directory
-            -- SQLite has some GLOB optimisations, so this is fast
-            d.@{DirectoryPath} GLOB #{homeDir} || '*'
-            -- This makes sure it's a direct child
-            AND instr(rtrim(substr(d.@{DirectoryPath}, length(#{homeDir})+1), '/'), '/') = 0
-            -- And this removed the homeDir itself
-            AND d.@{DirectoryPath} <> #{homeDir}
-          GROUP BY
-            d.@{DirectoryPath}
-        |]
-  let toHomeDirData ::
+  homeData' <-
+    logDuration "Queried DB for home data" $
+      map unSingle5
+        <$> runDB
+          [sqlQQ|
+            SELECT
+              d.@{DirectoryPath},
+              max(v.@{VideoFileAdded}),
+              COALESCE(max(v.@{VideoFileWatched}), #{epoch}),
+              count(v.@{VideoFilePath}),
+              SUM(IIF(v.@{VideoFileWatched} IS NOT NULL, 1, 0))
+            FROM ^{Directory} d
+            LEFT JOIN ^{VideoFile} v
+              ON v.@{VideoFilePath} GLOB d.@{DirectoryPath} || '*'
+            WHERE 
+              -- This checks that it's a sub-directory
+              -- SQLite has some GLOB optimisations, so this is fast
+              d.@{DirectoryPath} GLOB #{homeDir} || '*'
+              -- This makes sure it's a direct child
+              AND instr(rtrim(substr(d.@{DirectoryPath}, length(#{homeDir})+1), '/'), '/') = 0
+              -- And this removed the homeDir itself
+              AND d.@{DirectoryPath} <> #{homeDir}
+            GROUP BY
+              d.@{DirectoryPath}
+          |]
+  let toHomeData ::
         ( Path Abs Dir,
           UTCTime,
           UTCTime,
           Int,
           Int
         ) ->
-        HomeDirData
-      toHomeDirData d = uncurry5 (HomeDirData $ niceDirNameT $ fst5 d) d
+        HomeData
+      toHomeData d = uncurry5 (HomeData $ niceDirNameT $ fst5 d) d
 
-  let homeDirData = map toHomeDirData homeDirData'
+  let homeData = map toHomeData homeData'
   let mkRandom =
         -- When in dev we auto-reload the page every second or so,
         -- so we want the same random shuffle every time, otherwise the page
         -- keeps changing which is annoying.
         if isDevelopment then pure (mkStdGen 2) else initStdGen
   randomGenerator <- mkRandom
-  let isUnwatched d = d.homeDirPlayedVideoFileCount < d.homeDirVideoFileCount
-      unwatched = filter isUnwatched homeDirData
-      recentlyAdded d = Down d.homeDirLastModified
-      recentlyWatched d = d.homeDirLastWatched
+  let isUnwatched d = d.hPlayedVideoFileCount < d.hVideoFileCount
+      unwatched = filter isUnwatched homeData
+      recentlyAdded d = Down d.hLastModified
+      recentlyWatched d = d.hLastWatched
 
   let sections =
         [ LocalVideos "New" $
@@ -163,11 +164,11 @@ getHomeR = do
               ("Apple TV+", StaticR static_images_apple_tv_plus_png, "https://tv.apple.com")
             ],
           LocalVideos "Recently Added" $
-            sortWith recentlyAdded homeDirData,
+            sortWith recentlyAdded homeData,
           LocalVideos "Random (All)" $
-            shuffle homeDirData randomGenerator,
+            shuffle homeData randomGenerator,
           LocalVideos "Recently Watched" . reverse $
-            sortWith recentlyWatched homeDirData
+            sortWith recentlyWatched homeData
         ]
 
   defaultLayout "Home" $(widgetFile "home")
