@@ -14,7 +14,7 @@
           <i class="fa-regular fa-eye">
         <a href="#" onclick="markAllAsUnwatched(event)" title="Mark all as unwatched">
           <i class="fa-regular fa-eye-slash">
-    $forall (path, watched) <- files
+    $forall VideoFile path _added watched <- files
       <div class="row #{watchedClass watched}" data-path="#{path}">
         <a href="#" class="name" onclick="playPath(event)">
           <i class="fa-solid fa-play">

@@ -27,7 +27,7 @@ import Data.ByteString.Char8 qualified as BS
 import Data.Char (isSpace, toLower)
 import Data.List (foldl')
 import Data.List.Extra (notNull)
-import Data.Maybe (fromMaybe, isJust, isNothing, mapMaybe)
+import Data.Maybe (fromMaybe, isNothing)
 import Data.Ord (Down (..))
 import Data.String (fromString)
 import Data.Text (Text, intercalate, unpack)
@@ -54,7 +54,6 @@ import Path
     Rel,
     fileExtension,
     fromAbsFile,
-    isProperPrefixOf,
     mkRelDir,
     parent,
     parseRelDir,
@@ -72,9 +71,7 @@ import Util
   ( fst5,
     logDuration,
     networkInterfaceWorthiness,
-    safeMaxUTCTime,
     shuffle,
-    unSingle2,
     unSingle5,
     uncurry5,
     unsnoc,
@@ -234,34 +231,30 @@ parseSegments segmentsT = do
 
 getDirectoryR :: Path Abs Dir -> Handler Html
 getDirectoryR absPath = do
-  (dirs :: [Path Abs Dir]) <-
-    logDuration "Get child dirs" $
-      map unSingle
-        <$> runDB
-          [sqlQQ|
-            SELECT @{DirectoryPath}
-            FROM ^{Directory}
-            WHERE 
-              -- This checks that it's a sub-directory
-              @{DirectoryPath} GLOB #{absPath} || '*'
-              -- This makes sure it's a direct child
-              AND instr(rtrim(substr(@{DirectoryPath}, length(#{absPath})+1), '/'), '/') = 0
-              -- And this removed the homeDir itself
-              AND @{DirectoryPath} <> #{absPath}
-          |]
-  (files :: [(Path Abs File, Maybe UTCTime)]) <-
-    logDuration "Get child files" $
-      map unSingle2
-        <$> runDB
-          [sqlQQ|
-            SELECT @{VideoFilePath}, @{VideoFileWatched}
-            FROM ^{VideoFile}
-            WHERE 
-              -- This checks that it's a sub-directory
-              @{VideoFilePath} GLOB #{absPath} || '*'
-              -- This makes sure it's a direct child
-              AND instr(substr(@{VideoFilePath}, length(#{absPath})+1), '/') = 0
-          |]
+  (dirs :: [Path Abs Dir], files :: [VideoFile]) <- logDuration "Get child dirs and files" $ runDB $ do
+    ds <-
+      [sqlQQ|
+        SELECT @{DirectoryPath}
+        FROM ^{Directory}
+        WHERE 
+          -- This checks that it's a sub-directory
+          @{DirectoryPath} GLOB #{absPath} || '*'
+          -- This makes sure it's a direct child
+          AND instr(rtrim(substr(@{DirectoryPath}, length(#{absPath})+1), '/'), '/') = 0
+          -- And this removed the homeDir itself
+          AND @{DirectoryPath} <> #{absPath}
+      |]
+    fs <-
+      [sqlQQ|
+        SELECT ??
+        FROM ^{VideoFile}
+        WHERE 
+          -- This checks that it's a sub-directory
+          @{VideoFilePath} GLOB #{absPath} || '*'
+          -- This makes sure it's a direct child
+          AND instr(substr(@{VideoFilePath}, length(#{absPath})+1), '/') = 0
+      |]
+    pure (map unSingle ds, map entityVal fs)
 
   let watchedClass :: Maybe UTCTime -> Html
       watchedClass = \case
