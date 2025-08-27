@@ -1,10 +1,9 @@
-$if isJust mInfo
-  <img src=@{ImageR segments} alt="🖼️ Missing poster ☹️" class="header" onerror="this.style.display = 'none'">
+<img src=@{ImageR absPath} alt="🖼️ Missing poster ☹️" class="header" onerror="this.style.display = 'none'">
 <h1>#{title}
 
 <div class="section">
   $if (not $ null files)
-      <h1>Files
+    <h1>Files
     
     $if (length files > 1)
       <div class="row white">
@@ -15,11 +14,11 @@ $if isJust mInfo
           <i class="fa-regular fa-eye">
         <a href="#" onclick="markAllAsUnwatched(event)" title="Mark all as unwatched">
           <i class="fa-regular fa-eye-slash">
-    $forall (path, name) <- files
-      <div class="row #{watchedClassFile path}" data-path="#{mkAbsFilePath path}">
+    $forall (path, watched) <- files
+      <div class="row #{watchedClass watched}" data-path="#{path}">
         <a href="#" class="name" onclick="playPath(event)">
           <i class="fa-solid fa-play">
-          <span>#{name}
+          <span>#{niceFileNameT path}
         <a href="#" onclick="markAsWatched(event)" title="Mark as watched">
           <i class="fa-regular fa-eye">
         <a href="#" onclick="markAsUnwatched(event)" title="Mark as unwatched">
@@ -29,24 +28,25 @@ $if isJust mInfo
   $if (not $ null dirs)
     $if (not $ null files)
       <h1>Directories
-    $forall (path, name, mWatched) <- dirs
-      <div class="row #{watchedClassDir mWatched}">
-        <a href=@{DirectoryR $ mkSegments path} class="name">
+    $forall path <- dirs
+      <div> 
+        $# class="row #{watchedClassDir mWatched}">
+        <a href=@{DirectoryR path} class="name">
           <i class="fa-regular fa-folder-open">
-          <span>#{name}
-        $maybe (watchedCount, totalCount) <- mWatched
-          $if watchedCount < totalCount
-            <div>
-          $else
-            <i class="fa-solid fa-check">
-          <span>#{watchedCount}/#{totalCount}
-        $nothing
-          <i class="fa-regular fa-circle-question" title="Unparsed folder, refresh data to parse.">
-          <span title="Unparsed folder, refresh data to parse.">?/?
+          <span>#{niceDirNameT path}
+        $# $maybe (watchedCount, totalCount) <- mWatched
+        $#   $if watchedCount < totalCount
+        $#     <div>
+        $#   $else
+        $#     <i class="fa-solid fa-check">
+        $#   <span>#{watchedCount}/#{totalCount}
+        $# $nothing
+        $#   <i class="fa-regular fa-circle-question" title="Unparsed folder, refresh data to parse.">
+        $#   <span title="Unparsed folder, refresh data to parse.">?/?
 
 
-$if showRefreshButton
-  <h2 class="refresh">
-    <a href="#" onclick="refreshLibrary(event)">
-      <i class="fa-solid fa-arrows-rotate">
-      Refresh library
+$# $if showRefreshButton
+$#   <h2 class="refresh">
+$#     <a href="#" onclick="refreshLibrary(event)">
+$#       <i class="fa-solid fa-arrows-rotate">
+$#       Refresh library

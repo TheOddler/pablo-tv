@@ -10,6 +10,8 @@ import Foreign.C (CTime (..))
 import GHC.Read (Read (..))
 import Path (Abs, Dir, File, Path, fromAbsDir, fromAbsFile, parseAbsDir, parseAbsFile)
 import System.Posix (CIno (..), EpochTime, FileID)
+import Text.Blaze (ToMarkup (..))
+import Text.Blaze qualified as Blaze
 import Web.HttpApiData (FromHttpApiData (..), ToHttpApiData (..))
 import Yesod (PathPiece (..), PersistField (..), PersistValue (..), SqlType (..))
 
@@ -83,6 +85,9 @@ instance PathPiece (Path Abs File) where
   fromPathPiece = parseAbsFile . T.unpack
   toPathPiece :: Path Abs File -> T.Text
   toPathPiece = T.pack . fromAbsFile
+
+instance Blaze.ToMarkup (Path Abs File) where
+  toMarkup = toMarkup . fromAbsFile
 
 deriving newtype instance PersistField EpochTime
 

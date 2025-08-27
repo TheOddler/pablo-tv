@@ -168,3 +168,6 @@ unSingle5
     Single d,
     Single e
     ) = (a, b, c, d, e)
+
+unSingle2 :: (Single a, Single b) -> (a, b)
+unSingle2 (Single a, Single b) = (a, b)

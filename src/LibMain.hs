@@ -36,8 +36,8 @@ import Data.Text qualified as Text
 import Data.Time (UTCTime)
 import Data.Time.Clock.POSIX (posixSecondsToUTCTime)
 import Database.Persist.Sql.Raw.QQ (sqlQQ)
-import Database.Persist.Sqlite (runMigration, withSqlitePool)
-import DirectoryNew (getVideoDirPath, niceDirNameT, updateData)
+import Database.Persist.Sqlite (Single (..), runMigration, withSqlitePool)
+import DirectoryNew (getVideoDirPath, niceDirNameT, niceFileNameT, updateData)
 import Foundation (App (..), Handler, Route (..), defaultLayout, embeddedStatic, resourcesApp, static_images_apple_tv_plus_png, static_images_netflix_png, static_images_youtube_png)
 import GHC.Conc (newTVarIO)
 import GHC.Data.Maybe (firstJustsM, listToMaybe)
@@ -74,6 +74,7 @@ import Util
     networkInterfaceWorthiness,
     safeMaxUTCTime,
     shuffle,
+    unSingle2,
     unSingle5,
     uncurry5,
     unsnoc,
@@ -231,123 +232,44 @@ parseSegments segmentsT = do
             else tryDir
         Nothing -> tryDir
 
-data DirData = DirData
-  { dirNiceName :: Text,
-    dirPath :: Path Abs Dir,
-    dirLastModified :: UTCTime,
-    dirLastWatched :: UTCTime,
-    dirVideoFileCount :: Int,
-    dirPlayedVideoFileCount :: Int,
-    dirChildFiles :: [Path Abs File],
-    dirChildDirs :: [Path Abs Dir]
-  }
-
-getDirData :: [Directory] -> [VideoFile] -> Path Abs Dir -> DirData
-getDirData allDirs allFiles dir =
-  DirData
-    { dirNiceName = niceDirNameT dir,
-      dirPath = dir,
-      dirLastModified =
-        safeMaxUTCTime $ map videoFileAdded allDescendantFiles,
-      dirLastWatched =
-        safeMaxUTCTime $ mapMaybe videoFileWatched allDescendantFiles,
-      dirVideoFileCount =
-        length allDescendantFiles,
-      dirPlayedVideoFileCount =
-        length $ filter (isJust . videoFileWatched) allDescendantFiles,
-      dirChildFiles = childFiles,
-      dirChildDirs = childDirs
-    }
-  where
-    allDescendantFiles =
-      filter (\f -> dir `isProperPrefixOf` videoFilePath f) allFiles
-    childFiles =
-      filter ((dir ==) . parent) $
-        map videoFilePath allDescendantFiles
-    childDirs =
-      filter ((dir ==) . parent) $
-        map directoryPath allDirs
-
 getDirectoryR :: Path Abs Dir -> Handler Html
 getDirectoryR absPath = do
-  liftIO $ putStrLn $ "Path: " ++ show absPath
+  (dirs :: [Path Abs Dir]) <-
+    logDuration "Get child dirs" $
+      map unSingle
+        <$> runDB
+          [sqlQQ|
+            SELECT @{DirectoryPath}
+            FROM ^{Directory}
+            WHERE 
+              -- This checks that it's a sub-directory
+              @{DirectoryPath} GLOB #{absPath} || '*'
+              -- This makes sure it's a direct child
+              AND instr(rtrim(substr(@{DirectoryPath}, length(#{absPath})+1), '/'), '/') = 0
+              -- And this removed the homeDir itself
+              AND @{DirectoryPath} <> #{absPath}
+          |]
+  (files :: [(Path Abs File, Maybe UTCTime)]) <-
+    logDuration "Get child files" $
+      map unSingle2
+        <$> runDB
+          [sqlQQ|
+            SELECT @{VideoFilePath}, @{VideoFileWatched}
+            FROM ^{VideoFile}
+            WHERE 
+              -- This checks that it's a sub-directory
+              @{VideoFilePath} GLOB #{absPath} || '*'
+              -- This makes sure it's a direct child
+              AND instr(substr(@{VideoFilePath}, length(#{absPath})+1), '/') = 0
+          |]
 
-  (allDirs' :: [Entity Directory], allFiles' :: [Entity VideoFile]) <- logDuration "readWholeDB" $ runDB $ do
-    (,) <$> selectList [] [] <*> selectList [] []
-  let allDirs = map entityVal allDirs'
-  let allFiles = map entityVal allFiles'
-  let dirData = getDirData allDirs allFiles absPath
+  let watchedClass :: Maybe UTCTime -> Html
+      watchedClass = \case
+        Just _ -> "watched"
+        Nothing -> "unwatched"
 
-  notFound
-
--- mPathAndInfo <- liftIO $ readDirectoryInfoRec absPath
--- let mInfo = snd <$> mPathAndInfo
--- dirRaw <- liftIO $ readDirectoryRaw absPath
-
--- let files :: [(Path Abs File, Text)]
---     files = map (\f -> (absPath </> f, niceFileNameT f)) dirRaw.directoryVideoFiles
-
--- -- Get the dirs info. Depending on where we are we do different things:
--- -- \* At the root (segments is empty): We have the required data cached in the tv state. We do this because this folder is expected to have many subfolders.
--- -- \* In a sub-dir: We read the required stuff from disk. We do this so we always have to most up-to-date data, and we don't expect too much stuff in here, so should be fine to read anew.
--- dirs :: [(Path Rel Dir, Text, Maybe (Int, Int))] <- case segments of
---   [] -> do
---     -- tvState <- getsYesod appTVState >>= liftIO . readTVarIO
---     let tempVideoData = mempty
---     videoDirPath <- liftIO getVideoDirPath
---     topLevelDirs <- liftIO $ getTopLevelDirs videoDirPath
---     let getDir :: Directory -> (Path Rel Dir, Text, Maybe (Int, Int))
---         getDir dir =
---           let dirName = dirname $ topLevelToAbsDir dir
---               dirInfo = Map.lookup dir tempVideoData
---            in ( dirName,
---                 maybe (niceDirNameT dirName) (directoryInfoTitle . fst) dirInfo,
---                 case snd <$> dirInfo of
---                   Nothing -> Nothing
---                   Just w ->
---                     Just
---                       ( watchedInfoPlayedVideoFileCount w,
---                         watchedInfoVideoFileCount w
---                       )
---               )
---     pure $ getDir <$> topLevelDirs
---   _ -> do
---     let getDir :: Path Rel Dir -> Handler (Path Rel Dir, Text, Maybe (Int, Int))
---         getDir dirName = do
---           watched <- liftIO $ readWatchedInfoAgg $ absPath </> dirName
---           pure
---             ( dirName,
---               niceDirNameT dirName,
---               Just
---                 ( watched.watchedInfoPlayedVideoFileCount,
---                   watched.watchedInfoVideoFileCount
---                 )
---             )
---     mapM getDir dirRaw.directoryDirectories
-
--- let mkSegments :: Path Rel x -> [Text]
---     mkSegments d = segments ++ [T.pack $ dropTrailingPathSeparator $ toFilePath d]
-
---     mkAbsFilePath :: Path Abs File -> String
---     mkAbsFilePath filePath = replace "'" "\\'" $ fromAbsFile filePath
-
--- watchedFiles <- liftIO $ readWatchedInfo absPath
--- let watchedClassFile :: Path Abs File -> String
---     watchedClassFile filePath =
---       if hasBeenWatched watchedFiles filePath
---         then "watched"
---         else "unwatched"
-
---     watchedClassDir :: Maybe (Int, Int) -> String
---     watchedClassDir Nothing = "white"
---     watchedClassDir (Just (watchedCount, totalCount)) =
---       if watchedCount < totalCount
---         then "unwatched"
---         else "watched"
-
--- let title = toHtml $ (directoryInfoTitle <$> mInfo) `orElse` "Videos"
--- let showRefreshButton = null segments
--- defaultLayout title $(widgetFile "directory")
+  let title = toHtml $ niceDirNameT absPath
+  defaultLayout title $(widgetFile "directory")
 
 getRemoteR :: Handler Html
 getRemoteR = do
