@@ -16,12 +16,12 @@ putLog level msg =
   -- Don't use putStrLn as that isn't. Instead append the newline, even though that requires more memory.
   liftIO . BS.putStr . BS.fromString $
     concat
-      [ "\ESC[0m▽▽▽\n",
+      [ "\ESC[0m🭺🭺🭺\n",
         case level of
           Debug -> "\ESC[34m" -- Blue
           Info -> "\ESC[36m" -- Cyan
           Warning -> "\ESC[33m" -- Yellow
           Error -> "\ESC[31m", -- Red
         msg,
-        "\ESC[0m\n△△△\n"
+        "\ESC[0m\n🭷🭷🭷\n"
       ]
