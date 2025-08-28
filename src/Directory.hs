@@ -7,7 +7,7 @@ import Algorithms.NaturalSort qualified as Natural
 import Control.Applicative ((<|>))
 import DB
 import Data.HashSet qualified as Set
-import Data.List (sortBy)
+import Data.List (intercalate, sortBy)
 import Data.List.NonEmpty qualified as NE
 import Data.Maybe (isJust, listToMaybe, mapMaybe)
 import Data.Text (Text)
@@ -21,7 +21,7 @@ import GHC.Utils.Exception (displayException, tryIO)
 import Path
 import SaferIO (FSRead (..))
 import System.Directory (listDirectory)
-import System.FilePath (dropTrailingPathSeparator)
+import System.FilePath (dropTrailingPathSeparator, takeExtension)
 import Text.Read (readMaybe)
 import Text.Regex.TDFA ((=~))
 import Util (logDuration, withDuration)
@@ -191,6 +191,26 @@ updateData dbConnPool root = logDuration "Updated data" $ do
   putStrLn $ "Found image files: " ++ show allImageFiles
   putStrLn $ "Ignored paths: " ++ show ignoredPaths
 
+  let showUnique :: [String] -> String
+      showUnique els = intercalate ", " $ Set.toList $ Set.fromList els
+  putStrLn $
+    "Found video files extensions: "
+      ++ showUnique (mapMaybe fileExtension allVideoFiles)
+  putStrLn $
+    "Found image files extensions: "
+      ++ showUnique (mapMaybe fileExtension allImageFiles)
+  let isHiddenPath = \case
+        '.' : _ -> True
+        _ -> False
+      ignoredNonHidden = filter (not . isHiddenPath) ignoredPaths
+      ignoredHidden = filter isHiddenPath ignoredPaths
+  putStrLn $
+    "Ignored paths extensions: "
+      ++ showUnique (map takeExtension ignoredNonHidden)
+  putStrLn $
+    "Ignored hidden paths extensions: "
+      ++ showUnique (map takeExtension ignoredHidden)
+
   pure ()
 
 -- Some helpers
@@ -347,6 +367,7 @@ isCommonFileExt ext =
         ".exe",
         ".flac",
         ".gz",
+        ".idx",
         ".img",
         ".iso",
         ".mp3",
@@ -362,6 +383,7 @@ isCommonFileExt ext =
         ".rtf",
         ".sh",
         ".srt",
+        ".sub",
         ".tar.gz",
         ".tar",
         ".txt",
