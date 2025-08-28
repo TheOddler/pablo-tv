@@ -18,6 +18,7 @@ import GHC.Data.Maybe (firstJusts, orElse)
 import GHC.Exts (sortWith)
 import GHC.IO.Exception (IOErrorType (..), IOException (..))
 import GHC.Utils.Exception (displayException, tryIO)
+import Logging (LogLevel (..), putLog)
 import Path
 import SaferIO (FSRead (..))
 import System.Directory (listDirectory)
@@ -95,9 +96,9 @@ walkDir rootDir onStep = do
             InappropriateType ->
               -- This dir is actually a file. It didn't have the right extension, as we guessed wrong, so return it as an ignored path.
               -- TODO Should I do something more with this information?
-              putStrLn $ "Guessed directory but turns out to be a file: " ++ show dir
+              putLog Warning $ "Guessed directory but turns out to be a file: " ++ show dir
             _ ->
-              putStrLn $ "Error while trying to list directory: " ++ displayException err
+              putLog Error $ "Error while trying to list directory: " ++ displayException err
           pure ([], [], [], [fromAbsDir dir])
         Right (relPaths, duration) -> do
           let pathGuesses = map (guessPathType dir) relPaths
@@ -175,7 +176,7 @@ updateData dbConnPool root = logDuration "Updated data" $ do
     -- That way we do a bit more work for completely new directories (usually there will only be a few, only when creating the DB for the first time will there be many),
     -- and we'll have better timestamps for when new files are added (and we only really care about that on a per-directory level).
     -- Though, one problem with adding this timestamp to directories is that we'd either have to update all parent directories as well, or when reading check if there are any child directories to get a fully accurate timestamp.
-    putStrLn $
+    putLog Info $
       concat
         [ "Walked ",
           show stepDir,
@@ -186,17 +187,17 @@ updateData dbConnPool root = logDuration "Updated data" $ do
           ")"
         ]
 
-  putStrLn $ "Found dirs: " ++ show allDirs
-  putStrLn $ "Found video files: " ++ show allVideoFiles
-  putStrLn $ "Found image files: " ++ show allImageFiles
-  putStrLn $ "Ignored paths: " ++ show ignoredPaths
+  putLog Info $ "Found dirs: " ++ show allDirs
+  putLog Info $ "Found video files: " ++ show allVideoFiles
+  putLog Info $ "Found image files: " ++ show allImageFiles
+  putLog Info $ "Ignored paths: " ++ show ignoredPaths
 
   let showUnique :: [String] -> String
       showUnique els = intercalate ", " $ Set.toList $ Set.fromList els
-  putStrLn $
+  putLog Info $
     "Found video files extensions: "
       ++ showUnique (mapMaybe fileExtension allVideoFiles)
-  putStrLn $
+  putLog Info $
     "Found image files extensions: "
       ++ showUnique (mapMaybe fileExtension allImageFiles)
   let isHiddenPath = \case
@@ -204,10 +205,10 @@ updateData dbConnPool root = logDuration "Updated data" $ do
         _ -> False
       ignoredNonHidden = filter (not . isHiddenPath) ignoredPaths
       ignoredHidden = filter isHiddenPath ignoredPaths
-  putStrLn $
+  putLog Info $
     "Ignored paths extensions: "
       ++ showUnique (map takeExtension ignoredNonHidden)
-  putStrLn $
+  putLog Info $
     "Ignored hidden paths extensions: "
       ++ showUnique (map takeExtension ignoredHidden)
 

@@ -47,6 +47,7 @@ library
         Foundation
         IsDevelopment
         LibMain
+        Logging
         Orphanage
         Playerctl
         SafeMaths
@@ -98,6 +99,7 @@ library
       , transformers
       , unix
       , unordered-containers
+      , utf8-string
       , warp
       , yesod
       , yesod-static
