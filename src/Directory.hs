@@ -6,6 +6,7 @@ module Directory where
 import Algorithms.NaturalSort qualified as Natural
 import Control.Applicative ((<|>))
 import DB
+import Data.HashSet qualified as Set
 import Data.List (sortBy)
 import Data.List.NonEmpty qualified as NE
 import Data.Maybe (isJust, listToMaybe, mapMaybe)
@@ -15,8 +16,10 @@ import Data.Time (NominalDiffTime, getCurrentTime)
 import Database.Persist.Sqlite (ConnectionPool, PersistStoreWrite (..))
 import GHC.Data.Maybe (firstJusts, orElse)
 import GHC.Exts (sortWith)
+import GHC.IO.Exception (IOErrorType (..), IOException (..))
+import GHC.Utils.Exception (displayException, tryIO)
 import Path
-import SaferIO (FSRead)
+import SaferIO (FSRead (..))
 import System.Directory (listDirectory)
 import System.FilePath (dropTrailingPathSeparator)
 import Text.Read (readMaybe)
@@ -27,6 +30,7 @@ getVideoDirPath :: (FSRead m) => m (Path Abs Dir)
 getVideoDirPath = do
   -- home <- getHomeDir
   -- let videoDirName = $(mkRelDir "Videos")
+  -- pure $ home </> videoDirName
   pure $ $(mkAbsDir "/run/user/1000/gvfs/smb-share:server=192.168.0.99,share=videos")
 
 -- | Reading the file info of a path is rather slow, so we want to minimise the ones we read it for.
@@ -45,10 +49,15 @@ guessPathType basePath p = case p of
   "" -> LikelyIgnored p
   '.' : _ -> LikelyIgnored p
   _ -> case parseRelFile p of
-    Just relPath | isVideoFile relPath -> LikelyVideoFile $ basePath </> relPath
-    Just relPath | isImageFile relPath -> LikelyImageFile $ basePath </> relPath
-    Just relPath | isJust $ fileExtension relPath -> LikelyIgnored p
-    _ -> case parseRelDir p of
+    Just relPath -> case fileExtension relPath of
+      Nothing -> tryDir
+      Just ext | isVideoFileExt ext -> LikelyVideoFile $ basePath </> relPath
+      Just ext | isImageFileExt ext -> LikelyImageFile $ basePath </> relPath
+      Just ext | isCommonFileExt ext -> LikelyIgnored p
+      Just _ext -> tryDir -- Probably just a directory with a . in it's name
+    Nothing -> tryDir
+  where
+    tryDir = case parseRelDir p of
       Just relPath -> LikelyDir $ basePath </> relPath
       Nothing -> LikelyIgnored p
 
@@ -66,10 +75,8 @@ partitionPathTypes =
 data StepInfo = StepInfo
   { stepDir :: Path Abs Dir,
     stepDuration :: NominalDiffTime,
-    stepSubDirs :: [Path Abs Dir],
     stepVideoFiles :: [Path Abs File],
-    stepImageFiles :: [Path Abs File],
-    stepIgnoredPaths :: [FilePath]
+    stepImageFiles :: [Path Abs File]
   }
 
 walkDir ::
@@ -82,20 +89,28 @@ walkDir rootDir onStep = do
     listDir' :: Path Abs Dir -> IO ([Path Abs Dir], [Path Abs File], [Path Abs File], [FilePath])
     listDir' dir = do
       let absDirPath = fromAbsDir dir
-      (relPaths, duration) <- withDuration $ listDirectory absDirPath
-      let pathGuesses = map (guessPathType dir) relPaths
-      let dirInfo@(subDirs, videoFiles, imageFiles, ignoredPaths) =
-            partitionPathTypes pathGuesses
-      onStep
-        StepInfo
-          { stepDir = dir,
-            stepDuration = duration,
-            stepSubDirs = subDirs,
-            stepVideoFiles = videoFiles,
-            stepImageFiles = imageFiles,
-            stepIgnoredPaths = ignoredPaths
-          }
-      pure dirInfo
+      tryIO (withDuration $ listDirectory absDirPath) >>= \case
+        Left err -> do
+          case ioe_type err of
+            InappropriateType ->
+              -- This dir is actually a file. It didn't have the right extension, as we guessed wrong, so return it as an ignored path.
+              -- TODO Should I do something more with this information?
+              putStrLn $ "Guessed directory but turns out to be a file: " ++ show dir
+            _ ->
+              putStrLn $ "Error while trying to list directory: " ++ displayException err
+          pure ([], [], [], [fromAbsDir dir])
+        Right (relPaths, duration) -> do
+          let pathGuesses = map (guessPathType dir) relPaths
+          let dirInfo = partitionPathTypes pathGuesses
+          let (_dirs, videoFiles, imageFiles, _ignoredPaths) = dirInfo
+          onStep
+            StepInfo
+              { stepDir = dir,
+                stepDuration = duration,
+                stepVideoFiles = videoFiles,
+                stepImageFiles = imageFiles
+              }
+          pure dirInfo
 
     step ::
       [Path Abs Dir] ->
@@ -281,17 +296,81 @@ niceFileNameT file =
       name = fromRelFile $ filename withoutExt
    in T.replace "." " " $ T.pack name
 
-isVideoFile :: Path Rel File -> Bool
-isVideoFile file =
-  case fileExtension file of
-    Just ext -> ext `elem` [".mp4", ".mkv", ".avi", ".webm", ".mov", ".m4v"]
-    Nothing -> False
+isVideoFileExt :: String -> Bool
+isVideoFileExt ext =
+  ext
+    `Set.member` Set.fromList
+      [ ".avi",
+        ".flv",
+        ".m4v",
+        ".mkv",
+        ".mov",
+        ".mp4",
+        ".mpeg",
+        ".mpg",
+        ".webm",
+        ".wmv"
+      ]
 
-isImageFile :: Path Rel File -> Bool
-isImageFile file =
-  case fileExtension file of
-    Just ext -> ext `elem` [".jpg", ".jpeg", ".png", ".gif", ".webp"]
-    Nothing -> False
+isImageFileExt :: String -> Bool
+isImageFileExt ext =
+  ext
+    `Set.member` Set.fromList
+      [ ".bmp",
+        ".gif",
+        ".heic",
+        ".heif",
+        ".jpeg",
+        ".jpg",
+        ".png",
+        ".svg",
+        ".tif",
+        ".tiff",
+        ".webp"
+      ]
+
+-- | For non-video, non-image ext.
+-- This is used to improve guesses on what are files and what are directories.
+isCommonFileExt :: String -> Bool
+isCommonFileExt ext =
+  ext
+    `Set.member` Set.fromList
+      [ ".7z",
+        ".aac",
+        ".apk",
+        ".bat",
+        ".csv",
+        ".db",
+        ".dmg",
+        ".doc",
+        ".docx",
+        ".exe",
+        ".flac",
+        ".gz",
+        ".img",
+        ".iso",
+        ".mp3",
+        ".msi",
+        ".odp",
+        ".ods",
+        ".odt",
+        ".ogg",
+        ".pdf",
+        ".ppt",
+        ".pptx",
+        ".rar",
+        ".rtf",
+        ".sh",
+        ".srt",
+        ".tar.gz",
+        ".tar",
+        ".txt",
+        ".wav",
+        ".xls",
+        ".xlsx",
+        ".yaml",
+        ".zip"
+      ]
 
 -- | Sorts the dirs, taking into account numbers properly
 smartDirSort :: [Path Rel Dir] -> [Path Rel Dir]
