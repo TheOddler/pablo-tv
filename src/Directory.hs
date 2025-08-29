@@ -5,15 +5,18 @@ module Directory where
 
 import Algorithms.NaturalSort qualified as Natural
 import Control.Applicative ((<|>))
+import Control.Monad (void)
 import DB
+import Data.ByteString qualified as BS
 import Data.HashSet qualified as Set
 import Data.List (intercalate, sortBy)
+import Data.List.Extra (lower)
 import Data.List.NonEmpty qualified as NE
 import Data.Maybe (isJust, listToMaybe, mapMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Time (NominalDiffTime, getCurrentTime)
-import Database.Persist.Sqlite (ConnectionPool, PersistStoreWrite (..))
+import Database.Persist.Sqlite (ConnectionPool, Entity (..), PersistStoreWrite (..), upsert, (=.))
 import GHC.Data.Maybe (firstJusts, orElse)
 import GHC.Exts (sortWith)
 import GHC.IO.Exception (IOErrorType (..), IOException (..))
@@ -25,7 +28,7 @@ import System.Directory (listDirectory)
 import System.FilePath (dropTrailingPathSeparator, takeExtension)
 import Text.Read (readMaybe)
 import Text.Regex.TDFA ((=~))
-import Util (withDuration)
+import Util (safeMinimumOn, withDuration)
 
 getVideoDirPath :: (FSRead m) => m (Path Abs Dir)
 getVideoDirPath = do
@@ -125,6 +128,12 @@ walkDir rootDir onStep = do
       let newAgg = agg <> dirInfo
       step newDirsToCheck newAgg
 
+bestImageFile :: [Path Abs File] -> Maybe (Path Abs File)
+bestImageFile = safeMinimumOn $ \path ->
+  case lower . fromRelFile . fst <$> splitExtension (filename path) of
+    Just "poster" -> 0 :: Int
+    _ -> 100
+
 -- | Here we don't use the typed listDir as it's slow.
 -- My hunch is that it actually does IO to check if something is a file or not, which is slow.
 -- Instead, I use the untyped FilePath API here, and then make guesses on what is a file or dir.
@@ -144,30 +153,58 @@ updateData dbConnPool root = logDuration "Updated data" $ do
   -- That means, we have plenty of time on each step to write to the locally stored DB.
   -- It also means that the locally stored DB might be partially updated during a full update of the data. But that's fine, we're not doing brain surgery here, it's fine to have imperfect data at times, we just want it quickly.
   (allDirs, allVideoFiles, allImageFiles, ignoredPaths) <- walkDir root $ \StepInfo {..} -> do
-    ((), dbUpdateDur) <- withDuration $ runDBWithConn dbConnPool $ do
-      -- Make sure the directory exists
-      _ <-
-        repsert (DirectoryKey stepDir) (Directory stepDir)
+    ((), dbUpdateDur) <- withDuration $ do
+      -- Find best image
+      let mBestImg = bestImageFile stepImageFiles
+      -- Try and do as much in a single transaction, but we might need some followup work that reads from disk and then does a second transaction
+      (followupAction :: IO ()) <- runDBWithConn dbConnPool $ do
+        -- Add dir, and if it already exists leave the image as is (we might update that later in the followup action)
+        existingDir <-
+          upsert
+            (Directory stepDir Nothing)
+            $ (DirectoryPath =. stepDir)
+              : case mBestImg of
+                Nothing -> [DirectoryImage =. Nothing]
+                Just _ -> [] -- We'll set the image in the followup as it requires slow IO
 
-      -- Insert/update video files
-      let videoUpdates :: [(Key VideoFile, VideoFile)]
-          videoUpdates = flip map stepVideoFiles $ \filePath ->
-            ( VideoFileKey filePath,
-              VideoFile
-                { videoFilePath = filePath,
-                  videoFileAdded = now,
-                  videoFileWatched = Nothing
-                }
-            )
-      repsertMany videoUpdates
+        -- Insert/update video files
+        let videoUpdates :: [(Key VideoFile, VideoFile)]
+            videoUpdates = flip map stepVideoFiles $ \filePath ->
+              ( VideoFileKey filePath,
+                VideoFile
+                  { videoFilePath = filePath,
+                    videoFileAdded = now,
+                    videoFileWatched = Nothing
+                  }
+              )
+        repsertMany videoUpdates
 
-      -- Insert/update image files
-      let imageUpdates :: [(Key ImageFile, ImageFile)]
-          imageUpdates = flip map stepVideoFiles $ \filePath ->
-            ( ImageFileKey filePath,
-              ImageFile filePath
-            )
-      repsertMany imageUpdates
+        -- Figure out if we should do another update after.
+        -- We do this in two steps because this followup action can then do slow IO, like reading the image from disk
+        let mExistingImgName = fst <$> directoryImage (entityVal existingDir)
+        let followup :: IO ()
+            followup = case (mBestImg, mExistingImgName) of
+              (Just foundImg, Just existingImgName)
+                | filename foundImg == existingImgName ->
+                    -- The best image we found is already in the db, nothing more to do
+                    pure ()
+              (Just foundImg, _) -> do
+                -- We found an image, but it's not the one in the DB yet (might be none in the db)
+                -- So we update the directory in the db.
+                -- Since this requires slow IO, we do this in the followup.
+                -- It's an update, in case between this and the followup the directory got removed, it should then probably remain removed.
+                imageData <- BS.readFile $ fromAbsFile foundImg
+                void . runDBWithConn dbConnPool $
+                  update
+                    (entityKey existingDir)
+                    [DirectoryImage =. Just (filename foundImg, imageData)]
+              (Nothing, _) ->
+                -- If there were no images, we already removed it from the DB, so nothing to do in the followup
+                pure ()
+        pure followup
+
+      -- Run this followup action outside the transaction so we don't block too long with slow IO
+      followupAction
 
     -- TODO Idea:
     -- Read all known data (commented out above), and do a `getFileStatus` for any new directories to get when they were last modified.

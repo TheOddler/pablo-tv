@@ -7,8 +7,10 @@ import Data.Binary.Builder (toLazyByteString)
 import Data.ByteString.Lazy qualified as LBS
 import Data.Default (def)
 import Data.List (isPrefixOf)
+import Data.List.Extra (lower)
 import Data.List.NonEmpty qualified as NE
 import Data.List.NonEmpty.Extra qualified as NE
+import Data.String (fromString)
 import Data.Text qualified as T
 import Data.Time (NominalDiffTime, UTCTime, diffUTCTime, getCurrentTime)
 import Data.Time.Clock.POSIX (posixSecondsToUTCTime)
@@ -18,6 +20,7 @@ import GHC.List (uncons)
 import IsDevelopment (isDevelopment)
 import Language.Haskell.TH.Syntax (Exp, Q)
 import Network.Info (IPv4 (..), NetworkInterface (..))
+import Path (File, Path, Rel, fileExtension)
 import System.Random (RandomGen)
 import System.Random.Shuffle (shuffle')
 import Yesod
@@ -141,6 +144,11 @@ safeMaxUTCTime times = case NE.nonEmpty times of
   Nothing -> posixSecondsToUTCTime 0
   Just neTimes -> NE.maximum1 neTimes
 
+safeMinimumOn :: (Ord o) => (a -> o) -> [a] -> Maybe a
+safeMinimumOn scale as = case NE.nonEmpty as of
+  Nothing -> Nothing
+  Just neA -> Just $ NE.minimumOn1 scale neA
+
 fst5 :: (a, b, c, d, e) -> a
 fst5 (a, _, _, _, _) = a
 
@@ -162,3 +170,13 @@ unSingle5
     Single d,
     Single e
     ) = (a, b, c, d, e)
+
+getImageContentType :: Path Rel File -> ContentType
+getImageContentType filePath = case fileExtension filePath of
+  Nothing -> typeOctet -- What would be the best fallback?
+  Just ext ->
+    let cleanedExt = lower $
+          case ext of
+            '.' : e -> e
+            e -> e
+     in "image/" <> fromString cleanedExt

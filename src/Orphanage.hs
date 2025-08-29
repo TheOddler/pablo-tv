@@ -8,7 +8,7 @@ import Data.Text qualified as T
 import Database.Persist.Sqlite (PersistFieldSql (..))
 import Foreign.C (CTime (..))
 import GHC.Read (Read (..))
-import Path (Abs, Dir, File, Path, fromAbsDir, fromAbsFile, parseAbsDir, parseAbsFile)
+import Path (Abs, Dir, File, Path, Rel, fromAbsDir, fromAbsFile, fromRelDir, fromRelFile, parseAbsDir, parseAbsFile, parseRelDir, parseRelFile)
 import System.Posix (CIno (..), EpochTime, FileID)
 import Text.Blaze (ToMarkup (..))
 import Text.Blaze qualified as Blaze
@@ -42,6 +42,30 @@ instance PersistField (Path Abs File) where
         <> T.pack (show x)
 
 instance PersistFieldSql (Path Abs File) where
+  sqlType _ = SqlString
+
+instance PersistField (Path Rel Dir) where
+  toPersistValue path = PersistText $ T.pack $ fromRelDir path
+  fromPersistValue (PersistText t) =
+    leftExceptionToText $ parseRelDir $ T.unpack t
+  fromPersistValue x =
+    Left $
+      "Failed parsing Path Rel Dir: expected PersistText, received "
+        <> T.pack (show x)
+
+instance PersistFieldSql (Path Rel Dir) where
+  sqlType _ = SqlString
+
+instance PersistField (Path Rel File) where
+  toPersistValue path = PersistText $ T.pack $ fromRelFile path
+  fromPersistValue (PersistText t) =
+    leftExceptionToText $ parseRelFile $ T.unpack t
+  fromPersistValue x =
+    Left $
+      "Failed parsing Path Rel File: expected PersistText, received "
+        <> T.pack (show x)
+
+instance PersistFieldSql (Path Rel File) where
   sqlType _ = SqlString
 
 instance Read (Path Abs Dir) where

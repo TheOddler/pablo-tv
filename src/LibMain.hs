@@ -20,15 +20,14 @@ import Actions
     performActionIO,
   )
 import Control.Monad (when)
-import DB (Directory (..), EntityField (..), ImageFile, VideoFile (..), migrateAll, runDBWithConn)
+import DB (Directory (..), EntityField (..), Image, VideoFile (..), migrateAll, runDBWithConn)
 import Data.Aeson qualified as Aeson
 import Data.ByteString.Char8 qualified as BS
-import Data.Char (isSpace, toLower)
+import Data.Char (isSpace)
 import Data.List (foldl')
 import Data.List.Extra (notNull)
 import Data.Maybe (isNothing)
 import Data.Ord (Down (..))
-import Data.String (fromString)
 import Data.Text (Text, intercalate, unpack)
 import Data.Text qualified as T
 import Data.Text qualified as Text
@@ -39,7 +38,6 @@ import Database.Persist.Sqlite (Single (..), runMigration, withSqlitePool)
 import Directory (getVideoDirPath, niceDirNameT, niceFileNameT, updateData)
 import Foundation (App (..), Handler, Route (..), defaultLayout, embeddedStatic, resourcesApp, static_images_apple_tv_plus_png, static_images_netflix_png, static_images_youtube_png)
 import GHC.Conc (newTVarIO)
-import GHC.Data.Maybe (listToMaybe)
 import GHC.MVar (newMVar)
 import GHC.Utils.Misc (sortWith)
 import IsDevelopment (isDevelopment)
@@ -52,8 +50,6 @@ import Path
     File,
     Path,
     Rel,
-    fileExtension,
-    fromAbsFile,
     mkRelDir,
     parseRelDir,
     parseRelFile,
@@ -68,6 +64,7 @@ import TVDB (TVDBToken (..))
 import TVState (startingTVState, tvStateWebSocket)
 import Util
   ( fst5,
+    getImageContentType,
     networkInterfaceWorthiness,
     shuffle,
     unSingle5,
@@ -268,36 +265,23 @@ getRemoteR = do
 
 getImageR :: Path Abs Dir -> Handler Html
 getImageR absPath = do
-  (image :: [Path Abs File]) <-
+  (image :: [Image]) <-
     logDuration "Get image" $
       runDB $
         map unSingle
           <$> [sqlQQ|
-                SELECT @{ImageFilePath}
-                FROM ^{ImageFile}
+                SELECT @{DirectoryImage}
+                FROM ^{Directory}
                 WHERE
                   -- Any image that is in the given path, or any of it's parents
-                  #{absPath} GLOB rtrim(@{ImageFilePath}, replace(@{ImageFilePath}, '/', '')) || '*'
+                  #{absPath} GLOB @{DirectoryPath} || '*'
                   -- Or any image in a child folder
-                OR rtrim(@{ImageFilePath}, replace(@{ImageFilePath}, '/', '')) GLOB #{absPath} || '*'
+                OR @{DirectoryPath} GLOB #{absPath} || '*'
                 LIMIT 1
               |]
-  putLog Debug $ show image
-  case listToMaybe image >>= mkContent of
-    Nothing ->
-      notFound
-    Just (contentType, imgPath) ->
-      sendFile contentType $ fromAbsFile imgPath
-  where
-    mkContent :: Path Abs File -> Maybe (ContentType, Path Abs File)
-    mkContent filePath = case fileExtension filePath of
-      Nothing -> Nothing
-      Just ext ->
-        let cleanedExt = map toLower $
-              case ext of
-                '.' : e -> e
-                e -> e
-         in Just ("image/" <> fromString cleanedExt, filePath)
+  case image of
+    [] -> notFound
+    (imgName, imgBytes) : _ -> sendResponse (getImageContentType imgName, toContent imgBytes)
 
 getInputR :: Handler Html
 getInputR = do
