@@ -60,19 +60,15 @@ library
     build-depends:
         aeson
       , autodocodec
-      , autodocodec-yaml
       , binary
       , blaze-markup
       , bytestring
-      , containers
       , data-default
       , directory
       , evdev
-      , exceptions
       , extra
       , filepath
       , ghc
-      , hashable
       , HTTP
       , http-api-data
       , http-client
@@ -82,7 +78,6 @@ library
       , network-info
       , path
       , path-io
-      , persistent
       , persistent-qq
       , persistent-sqlite
       , process
