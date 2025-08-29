@@ -161,10 +161,13 @@ updateData dbConnPool root = logDuration "Updated data" $ do
         -- Add dir, and if it already exists leave the image as is (we might update that later in the followup action)
         existingDir <-
           upsert
-            (Directory stepDir Nothing)
+            (Directory stepDir Nothing Nothing)
             $ (DirectoryPath =. stepDir)
               : case mBestImg of
-                Nothing -> [DirectoryImage =. Nothing]
+                Nothing ->
+                  [ DirectoryImageName =. Nothing,
+                    DirectoryImage =. Nothing
+                  ]
                 Just _ -> [] -- We'll set the image in the followup as it requires slow IO
 
         -- Insert/update video files
@@ -181,7 +184,7 @@ updateData dbConnPool root = logDuration "Updated data" $ do
 
         -- Figure out if we should do another update after.
         -- We do this in two steps because this followup action can then do slow IO, like reading the image from disk
-        let mExistingImgName = fst <$> directoryImage (entityVal existingDir)
+        let mExistingImgName = directoryImageName (entityVal existingDir)
         let followup :: IO ()
             followup = case (mBestImg, mExistingImgName) of
               (Just foundImg, Just existingImgName)
@@ -197,7 +200,9 @@ updateData dbConnPool root = logDuration "Updated data" $ do
                 void . runDBWithConn dbConnPool $
                   update
                     (entityKey existingDir)
-                    [DirectoryImage =. Just (filename foundImg, imageData)]
+                    [ DirectoryImageName =. Just (filename foundImg),
+                      DirectoryImage =. Just imageData
+                    ]
               (Nothing, _) ->
                 -- If there were no images, we already removed it from the DB, so nothing to do in the followup
                 pure ()

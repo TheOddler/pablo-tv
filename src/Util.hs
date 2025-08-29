@@ -155,6 +155,9 @@ fst5 (a, _, _, _, _) = a
 uncurry5 :: (a -> b -> c -> d -> e -> f) -> (a, b, c, d, e) -> f
 uncurry5 f (a, b, c, d, e) = f a b c d e
 
+unSingle2 :: (Single a, Single b) -> (a, b)
+unSingle2 (Single a, Single b) = (a, b)
+
 unSingle5 ::
   ( Single a,
     Single b,

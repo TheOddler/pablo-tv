@@ -15,19 +15,14 @@ import Orphanage ()
 import Path (Abs, Dir, File, Path, Rel)
 import Yesod
 
-type Image =
-  ( -- Original file name
-    Path Rel File,
-    -- File bytes
-    BS.ByteString
-  )
-
 share
   [mkPersist sqlSettings, mkMigrate "migrateAll"]
   [persistLowerCase|
 Directory
   path (Path Abs Dir)
-  image Image Maybe
+  -- Image and ImageName should be kept in sync, either both Nothing or Both Just. But we save them separately because if we save them as a tuple together the image bytes get turned into a varchar
+  imageName (Path Rel File) Maybe
+  image BS.ByteString Maybe
   Primary path
 
 VideoFile

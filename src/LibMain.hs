@@ -20,7 +20,7 @@ import Actions
     performActionIO,
   )
 import Control.Monad (when)
-import DB (Directory (..), EntityField (..), Image, VideoFile (..), migrateAll, runDBWithConn)
+import DB (Directory (..), EntityField (..), VideoFile (..), migrateAll, runDBWithConn)
 import Data.Aeson qualified as Aeson
 import Data.ByteString.Char8 qualified as BS
 import Data.Char (isSpace)
@@ -67,6 +67,7 @@ import Util
     getImageContentType,
     networkInterfaceWorthiness,
     shuffle,
+    unSingle2,
     unSingle5,
     uncurry5,
     unsnoc,
@@ -265,18 +266,22 @@ getRemoteR = do
 
 getImageR :: Path Abs Dir -> Handler Html
 getImageR absPath = do
-  (image :: [Image]) <-
+  (image :: [(Path Rel File, BS.ByteString)]) <-
     logDuration "Get image" $
       runDB $
-        map unSingle
+        map unSingle2
           <$> [sqlQQ|
-                SELECT @{DirectoryImage}
+                SELECT @{DirectoryImageName}, @{DirectoryImage}
                 FROM ^{Directory}
                 WHERE
+                    @{DirectoryImageName} IS NOT NULL
+                AND @{DirectoryImage} IS NOT NULL
+                AND (
                   -- Any image that is in the given path, or any of it's parents
                   #{absPath} GLOB @{DirectoryPath} || '*'
                   -- Or any image in a child folder
-                OR @{DirectoryPath} GLOB #{absPath} || '*'
+                  OR @{DirectoryPath} GLOB #{absPath} || '*'
+                )
                 LIMIT 1
               |]
   case image of
