@@ -23,6 +23,7 @@ import Evdev.Codes
 import Evdev.Uinput
 import Foundation (App (..), Handler)
 import GHC.Conc (atomically, readTVar, writeTVar)
+import Logging (LogLevel (..), putLog)
 import Path (Abs, Dir, File, Path, fromAbsDir, fromAbsFile, parseAbsDir, parseAbsFile)
 import Playerctl qualified
 import SafeMaths (int32ToInteger)
@@ -209,7 +210,7 @@ actionsWebSocket :: WebSocketsT Handler ()
 actionsWebSocket = forever $ do
   d <- receiveData
   case eitherDecodeJSONViaCodec d of
-    Left err -> liftIO $ putStrLn $ "Error decoding action: " <> err
+    Left err -> liftIO $ putLog Error $ "Error decoding action: " <> err
     Right action -> lift $ performAction action
 
 performAction :: Action -> Handler ()
@@ -219,7 +220,7 @@ performAction action = do
 
 performActionIO :: App -> Action -> IO ()
 performActionIO app action = do
-  liftIO $ putStrLn $ "Performing action: " <> show action
+  liftIO $ putLog Debug $ "Performing action: " <> show action
   case action of
     ActionClickMouse btn' ->
       let btn = mouseButtonToEvdevKey btn'
@@ -294,7 +295,7 @@ performActionIO app action = do
     ActionRefreshTVState -> liftIO $ do
       success <- tryPutMVar videoDataRefreshTrigger ()
       when (not success) $
-        putStrLn "Already refreshing"
+        putLog Warning "Already refreshing"
     ActionMedia playerCtlAction ->
       liftIO $ Playerctl.performAction playerCtlAction
   where

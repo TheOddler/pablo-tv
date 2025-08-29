@@ -17,9 +17,10 @@ import Data.ByteString qualified as BS
 import Data.Maybe (listToMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
+import Logging (LogLevel (..), Logger (..))
 import Network.HTTP.Client (responseHeaders)
 import Network.HTTP.Req (GET (GET), HttpResponse (toVanillaResponse), NoReqBody (..), Option, Url, bsResponse, defaultHttpConfig, https, jsonResponse, oAuth2Bearer, req, responseBody, useURI, (/:), (=:))
-import SaferIO (Logger (..), NetworkRead (..))
+import SaferIO (NetworkRead (..))
 import Text.Read (readMaybe)
 import Text.URI (mkURI)
 import Util (mapLeft)
@@ -113,10 +114,10 @@ getInfoFromTVDB (TVDBToken tvdbToken) title type' mRemoteId mYear = do
 
   case response of
     Left err -> do
-      logStr $ "Failed TVDB request: " <> show err <> "; " <> show debugInfo
+      putLog Error $ "Failed TVDB request: " <> show err <> "; " <> show debugInfo
       pure Nothing
     (Right Nothing) -> do
-      logStr $ "TVDB request return nothing. " <> show debugInfo
+      putLog Warning $ "TVDB request return nothing. " <> show debugInfo
       pure Nothing
     (Right (Just firstData)) -> do
       let imgUrl = rawResponseDataImageUrl firstData
@@ -129,7 +130,7 @@ getInfoFromTVDB (TVDBToken tvdbToken) title type' mRemoteId mYear = do
       imgOrError <- downloadImage imgUrl
       case imgOrError of
         Right _ -> pure ()
-        Left err -> logStr err
+        Left err -> putLog Error err
       pure $
         Just $
           TVDBData

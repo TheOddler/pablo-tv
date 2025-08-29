@@ -58,9 +58,3 @@ class (Monad m) => TimeRead m where
 
 instance TimeRead IO where
   getCurrentTime = Time.getCurrentTime
-
-class (Monad m) => Logger m where
-  logStr :: String -> m ()
-
-instance Logger IO where
-  logStr = putStrLn

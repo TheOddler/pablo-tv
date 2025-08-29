@@ -125,12 +125,6 @@ withDuration f = do
   endTime <- liftIO getCurrentTime
   pure (a, diffUTCTime endTime startTime)
 
-logDuration :: (MonadIO m) => String -> m a -> m a
-logDuration label action = do
-  (result, duration) <- withDuration action
-  liftIO $ putStrLn $ label ++ " (" ++ show duration ++ ")"
-  pure result
-
 withKey :: (v -> k) -> v -> (k, v)
 withKey keyGetter value = (keyGetter value, value)
 

@@ -18,14 +18,14 @@ import GHC.Data.Maybe (firstJusts, orElse)
 import GHC.Exts (sortWith)
 import GHC.IO.Exception (IOErrorType (..), IOException (..))
 import GHC.Utils.Exception (displayException, tryIO)
-import Logging (LogLevel (..), putLog)
+import Logging (LogLevel (..), logDuration, putLog)
 import Path
 import SaferIO (FSRead (..))
 import System.Directory (listDirectory)
 import System.FilePath (dropTrailingPathSeparator, takeExtension)
 import Text.Read (readMaybe)
 import Text.Regex.TDFA ((=~))
-import Util (logDuration, withDuration)
+import Util (withDuration)
 
 getVideoDirPath :: (FSRead m) => m (Path Abs Dir)
 getVideoDirPath = do

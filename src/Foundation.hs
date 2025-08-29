@@ -18,6 +18,7 @@ import Evdev.Uinput (Device)
 import GHC.Conc (TVar)
 import GHC.Utils.Misc (sortWith)
 import IsDevelopment (isDevelopment)
+import Logging (Logger (..))
 import Network.Info (getNetworkInterfaces)
 import Path (Abs, Dir, Path)
 import TVDB (TVDBToken)
@@ -128,3 +129,6 @@ instance YesodPersist App where
   runDB action = do
     state <- getYesod
     runDBWithConn (appSqlPool state) action
+
+instance Logger Handler where
+  putLog l = liftIO . putLog l

@@ -22,7 +22,7 @@ import Actions
 import Control.Monad (when)
 import Control.Monad.Logger (runStderrLoggingT)
 import DB (Directory (..), EntityField (..), ImageFile, VideoFile (..), migrateAll, runDBWithConn)
-import Data.Aeson (Result (..))
+import Data.Aeson qualified as Aeson
 import Data.ByteString.Char8 qualified as BS
 import Data.Char (isSpace, toLower)
 import Data.List (foldl')
@@ -44,6 +44,7 @@ import GHC.Data.Maybe (listToMaybe)
 import GHC.MVar (newMVar)
 import GHC.Utils.Misc (sortWith)
 import IsDevelopment (isDevelopment)
+import Logging (LogLevel (..), logDuration, putLog)
 import Network.Info (NetworkInterface (..), getNetworkInterfaces)
 import Network.Wai.Handler.Warp (run)
 import Path
@@ -68,7 +69,6 @@ import TVDB (TVDBToken (..))
 import TVState (startingTVState, tvStateWebSocket)
 import Util
   ( fst5,
-    logDuration,
     networkInterfaceWorthiness,
     shuffle,
     unSingle5,
@@ -188,10 +188,10 @@ getHomeR = do
 postHomeR :: Handler ()
 postHomeR =
   parseCheckJsonBody >>= \case
-    Error s -> do
-      liftIO $ putStrLn $ "Failed parsing action: " ++ s
+    Aeson.Error s -> do
+      liftIO $ putLog Error $ "Failed parsing action: " ++ s
       invalidArgs [Text.pack s]
-    Success action -> do
+    Aeson.Success action -> do
       performAction action
 
 -- | Turn the segments into a directory path and optionally a filename
@@ -326,7 +326,7 @@ main = do
         Just t | all isSpace t -> Nothing
         Just t -> Just $ TVDBToken $ BS.pack t
   when (isNothing tvdbToken) $
-    putStrLn "No tvdb token found, so running in read-only mode."
+    putLog Info "No tvdb token found, so running in read-only mode."
 
   inputDevice <- mkInputDevice
   tvState <- newTVarIO startingTVState
@@ -335,8 +335,8 @@ main = do
   let port = 8080
   let (homePath, _params) = renderRoute HomeR
   let url = "http://localhost:" ++ show port ++ "/" ++ unpack (intercalate "/" homePath)
-  putStrLn $ "Running on port " ++ show port ++ " - " ++ url
-  putStrLn $ "Development mode: " ++ show isDevelopment
+  putLog Info $ "Running on port " ++ show port ++ " - " ++ url
+  putLog Info $ "Development mode: " ++ show isDevelopment
 
   -- Only open the browser automatically in production because it;s annoying in
   -- development as it opens a new tab every time the server restarts.
@@ -374,11 +374,11 @@ main = do
             onFilePlayStarted $ \case
               Nothing -> pure ()
               Just path -> do
-                putStrLn $ "Playing file: " ++ show path
+                putLog Info $ "Heard file playing: " ++ show path
                 performActionIO app $ ActionMarkAsWatched $ File path
 
-      putStrLn "Starting race..."
+      putLog Info "Starting server..."
       concurrently_ dataThread $
         race_ appThread watchedThread
 
-  putStrLn "Server quite."
+  putLog Debug "Server quit."
