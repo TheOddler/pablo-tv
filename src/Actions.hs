@@ -24,7 +24,7 @@ import Evdev.Uinput
 import Foundation (App (..), Handler)
 import GHC.Conc (atomically, readTVar, writeTVar)
 import Logging (LogLevel (..), putLog)
-import Path (Abs, Dir, File, Path, fromAbsDir, fromAbsFile, parseAbsDir, parseAbsFile)
+import Path (Abs, Dir, File, Path, filename, fromAbsDir, fromAbsFile, parent, parseAbsDir, parseAbsFile)
 import Playerctl qualified
 import SafeMaths (int32ToInteger)
 import System.Process (callProcess, readProcess)
@@ -320,7 +320,9 @@ performActionIO app action = do
               PersistText $ T.pack $ fromAbsDir path ++ "*"
             ]
         File path ->
-          update (DB.VideoFileKey path) [DB.VideoFileWatched =. Just now]
+          update
+            (DB.VideoFileKey (DB.DirectoryKey $ parent path) (filename path))
+            [DB.VideoFileWatched =. Just now]
 
     markDirOrFileAsUnwatched :: DirOrFile -> IO ()
     markDirOrFileAsUnwatched dirOrFile =
@@ -332,7 +334,9 @@ performActionIO app action = do
               PersistText $ T.pack $ fromAbsDir path ++ "*"
             ]
         File path ->
-          update (DB.VideoFileKey path) [DB.VideoFileWatched =. Nothing]
+          update
+            (DB.VideoFileKey (DB.DirectoryKey $ parent path) (filename path))
+            [DB.VideoFileWatched =. Nothing]
 
 charToKey :: Char -> [Key]
 charToKey = \case

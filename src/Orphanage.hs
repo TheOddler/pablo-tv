@@ -82,6 +82,20 @@ instance Read (Path Abs File) where
       Right success -> pure success
       Left err -> fail $ displayException err
 
+instance Read (Path Rel Dir) where
+  readPrec = do
+    raw <- readPrec
+    case parseRelDir raw of
+      Right success -> pure success
+      Left err -> fail $ displayException err
+
+instance Read (Path Rel File) where
+  readPrec = do
+    raw <- readPrec
+    case parseRelFile raw of
+      Right success -> pure success
+      Left err -> fail $ displayException err
+
 instance FromHttpApiData (Path Abs Dir) where
   parseUrlPiece :: T.Text -> Either T.Text (Path Abs Dir)
   parseUrlPiece = leftExceptionToText . parseAbsDir . T.unpack

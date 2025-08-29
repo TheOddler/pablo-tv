@@ -5,7 +5,7 @@ module Directory where
 
 import Algorithms.NaturalSort qualified as Natural
 import Control.Applicative ((<|>))
-import Control.Monad (void)
+import Control.Monad (forM_, void)
 import DB
 import Data.ByteString qualified as BS
 import Data.HashSet qualified as Set
@@ -16,7 +16,7 @@ import Data.Maybe (isJust, listToMaybe, mapMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Time (NominalDiffTime, getCurrentTime)
-import Database.Persist.Sqlite (ConnectionPool, Entity (..), PersistStoreWrite (..), upsert, (=.))
+import Database.Persist.Sqlite (ConnectionPool, Entity (..), PersistStoreWrite (..), PersistUniqueWrite (..), upsert, (=.))
 import GHC.Data.Maybe (firstJusts, orElse)
 import GHC.Exts (sortWith)
 import GHC.IO.Exception (IOErrorType (..), IOException (..))
@@ -165,22 +165,25 @@ updateData dbConnPool root = logDuration "Updated data" $ do
             $ (DirectoryPath =. stepDir)
               : case mBestImg of
                 Nothing ->
+                  -- When there is no image in the directory, we remove whatever is in the DB as the image is gone
                   [ DirectoryImageName =. Nothing,
                     DirectoryImage =. Nothing
                   ]
-                Just _ -> [] -- We'll set the image in the followup as it requires slow IO
+                Just _ ->
+                  -- We'll set the image in the followup as it requires slow IO
+                  []
 
         -- Insert/update video files
-        let videoUpdates :: [(Key VideoFile, VideoFile)]
-            videoUpdates = flip map stepVideoFiles $ \filePath ->
-              ( VideoFileKey filePath,
-                VideoFile
-                  { videoFilePath = filePath,
-                    videoFileAdded = now,
-                    videoFileWatched = Nothing
-                  }
-              )
-        repsertMany videoUpdates
+        forM_ stepVideoFiles $ \filePath ->
+          insertUnique_
+            VideoFile
+              { videoFileParent = entityKey existingDir,
+                videoFileName = filename filePath,
+                videoFileAdded = now,
+                videoFileWatched = Nothing
+              }
+
+        -- Should we delete files that are no longe there?
 
         -- Figure out if we should do another update after.
         -- We do this in two steps because this followup action can then do slow IO, like reading the image from disk
@@ -190,6 +193,7 @@ updateData dbConnPool root = logDuration "Updated data" $ do
               (Just foundImg, Just existingImgName)
                 | filename foundImg == existingImgName ->
                     -- The best image we found is already in the db, nothing more to do
+                    -- TODO: Maybe we should just update it always? This would require reading every time, but then we can replace the poster with an image with the same name
                     pure ()
               (Just foundImg, _) -> do
                 -- We found an image, but it's not the one in the DB yet (might be none in the db)

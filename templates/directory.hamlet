@@ -14,11 +14,11 @@
           <i class="fa-regular fa-eye">
         <a href="#" onclick="markAllAsUnwatched(event)" title="Mark all as unwatched">
           <i class="fa-regular fa-eye-slash">
-    $forall VideoFile path _added watched <- files
-      <div class="row #{watchedClass watched}" data-path="#{path}">
+    $forall videoFile <- files
+      <div class="row #{watchedClass $ videoFileWatched videoFile}" data-path="#{videoFileAbsPath videoFile}">
         <a href="#" class="name" onclick="playPath(event)">
           <i class="fa-solid fa-play">
-          <span>#{niceFileNameT path}
+          <span>#{niceFileNameT $ videoFileName videoFile}
         <a href="#" onclick="markAsWatched(event)" title="Mark as watched">
           <i class="fa-regular fa-eye">
         <a href="#" onclick="markAsUnwatched(event)" title="Mark as unwatched">

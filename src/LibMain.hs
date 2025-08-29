@@ -114,11 +114,11 @@ getHomeR = do
               d.@{DirectoryPath},
               max(v.@{VideoFileAdded}),
               COALESCE(max(v.@{VideoFileWatched}), #{epoch}),
-              count(v.@{VideoFilePath}),
+              count(*),
               SUM(IIF(v.@{VideoFileWatched} IS NOT NULL, 1, 0))
             FROM ^{Directory} d
             LEFT JOIN ^{VideoFile} v
-              ON v.@{VideoFilePath} GLOB d.@{DirectoryPath} || '*'
+              ON v.@{VideoFileParent} GLOB d.@{DirectoryPath} || '*'
             WHERE 
               -- This checks that it's a sub-directory
               -- SQLite has some GLOB optimisations, so this is fast
@@ -244,11 +244,7 @@ getDirectoryR absPath = do
       [sqlQQ|
         SELECT ??
         FROM ^{VideoFile}
-        WHERE
-          -- This checks that it's a sub-file
-          @{VideoFilePath} GLOB #{absPath} || '*'
-          -- This makes sure it's a direct child
-          AND instr(substr(@{VideoFilePath}, length(#{absPath})+1), '/') = 0
+        WHERE @{VideoFileParent} = #{absPath}
       |]
     pure (map unSingle ds, map entityVal fs)
 
@@ -256,6 +252,8 @@ getDirectoryR absPath = do
       watchedClass = \case
         Just _ -> "watched"
         Nothing -> "unwatched"
+  let videoFileAbsPath :: VideoFile -> Path Abs File
+      videoFileAbsPath f = absPath </> videoFileName f
 
   let title = toHtml $ niceDirNameT absPath
   defaultLayout title $(widgetFile "directory")

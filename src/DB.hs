@@ -26,10 +26,11 @@ Directory
   Primary path
 
 VideoFile
-  path (Path Abs File)
+  parent DirectoryId
+  name (Path Rel File)
   added UTCTime
   watched UTCTime Maybe
-  Primary path
+  Primary parent name
 |]
 
 runDBWithConn :: (MonadUnliftIO m) => ConnectionPool -> ReaderT SqlBackend m a -> m a
