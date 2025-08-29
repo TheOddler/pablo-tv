@@ -20,7 +20,6 @@ import Actions
     performActionIO,
   )
 import Control.Monad (when)
-import Control.Monad.Logger (runStderrLoggingT)
 import DB (Directory (..), EntityField (..), ImageFile, VideoFile (..), migrateAll, runDBWithConn)
 import Data.Aeson qualified as Aeson
 import Data.ByteString.Char8 qualified as BS
@@ -44,7 +43,7 @@ import GHC.Data.Maybe (listToMaybe)
 import GHC.MVar (newMVar)
 import GHC.Utils.Misc (sortWith)
 import IsDevelopment (isDevelopment)
-import Logging (LogLevel (..), logDuration, putLog)
+import Logging (LogLevel (..), logDuration, putLog, runLoggingT)
 import Network.Info (NetworkInterface (..), getNetworkInterfaces)
 import Network.Wai.Handler.Warp (run)
 import Path
@@ -283,7 +282,7 @@ getImageR absPath = do
                 OR rtrim(@{ImageFilePath}, replace(@{ImageFilePath}, '/', '')) GLOB #{absPath} || '*'
                 LIMIT 1
               |]
-  liftIO $ print image
+  putLog Debug $ show image
   case listToMaybe image >>= mkContent of
     Nothing ->
       notFound
@@ -344,7 +343,7 @@ main = do
     callProcess "xdg-open" [url]
 
   let openConnectionCount = 1 -- If we increase this, you should also change the connection string to allow for concurrent read/writes
-  runStderrLoggingT $
+  runLoggingT $
     withSqlitePool "pablo-tv-data.db3" openConnectionCount $ \connPool -> liftIO $ do
       -- Migrate DB
       logDuration "Migration" $ runDBWithConn connPool $ runMigration migrateAll

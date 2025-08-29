@@ -88,11 +88,12 @@
   # Constructs rationals, which is either wrong or a bad idea.
   - {name: 'Data.Ratio.%', within: []}
 
-  # Don't use string for command-line output.
-  - {name: System.IO.putChar, within: []}
-  - {name: System.IO.putStr, within: []}
-  - {name: System.IO.putStrLn, within: []}
-  - {name: System.IO.print, within: []}
+  # Use my own logging module instead
+  - {name: putChar, within: []}
+  - name: putStr
+    within: Logging
+  - {name: putStrLn, within: []}
+  - {name: print, within: []}
 
   # Don't use string for command-line input either.
   - {name: System.IO.getChar, within: []}

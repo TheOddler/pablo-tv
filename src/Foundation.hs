@@ -131,4 +131,4 @@ instance YesodPersist App where
     runDBWithConn (appSqlPool state) action
 
 instance Logger Handler where
-  putLog l = liftIO . putLog l
+  putLogBS l = liftIO . putLogBS l
