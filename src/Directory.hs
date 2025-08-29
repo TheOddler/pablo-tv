@@ -25,7 +25,7 @@ import Logging (LogLevel (..), logDuration, putLog)
 import Path
 import SaferIO (FSRead (..))
 import System.Directory (listDirectory)
-import System.FilePath (dropTrailingPathSeparator, takeExtension)
+import System.FilePath (dropTrailingPathSeparator, takeExtension, takeFileName)
 import Text.Read (readMaybe)
 import Text.Regex.TDFA ((=~))
 import Util (safeMinimumOn, withDuration)
@@ -233,10 +233,14 @@ updateData dbConnPool root = logDuration "Updated data" $ do
           ")"
         ]
 
-  putLog Info $ "Found dirs: " ++ show allDirs
-  putLog Info $ "Found video files: " ++ show allVideoFiles
-  putLog Info $ "Found image files: " ++ show allImageFiles
-  putLog Info $ "Ignored paths: " ++ show ignoredPaths
+  let safeDropPrefix :: Path Abs a -> String
+      safeDropPrefix p = case stripProperPrefix root p of
+        Nothing -> toFilePath p
+        Just withoutPrefix -> toFilePath withoutPrefix
+  putLog Info $ "Found dirs: " ++ show (map safeDropPrefix allDirs)
+  putLog Info $ "Found video files: " ++ show (map safeDropPrefix allVideoFiles)
+  putLog Info $ "Found image files: " ++ show (map safeDropPrefix allImageFiles)
+  putLog Info $ "Ignored paths: " ++ show (map takeFileName ignoredPaths)
 
   let showUnique :: [String] -> String
       showUnique els = intercalate ", " $ Set.toList $ Set.fromList els
