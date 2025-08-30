@@ -34,9 +34,9 @@
           <i class="fa-regular fa-folder-open">
           <span>#{niceDirNameT $ aggDirPath dir}
         $if isWatchedDir dir
-          <div>
-        $else
           <i class="fa-solid fa-check">
+        $else
+          <div>
         <span>#{aggDirPlayedVideoFileCount dir}/#{aggDirVideoFileCount dir}
 
 
