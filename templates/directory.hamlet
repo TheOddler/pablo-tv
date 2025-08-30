@@ -28,16 +28,16 @@
   $if (not $ null dirs)
     $if (not $ null files)
       <h1>Directories
-    $forall (path, totalCount, watchedCount) <- dirs
-      <div class="row #{watchedClassI totalCount watchedCount}"> 
-        <a href=@{DirectoryR path} class="name">
+    $forall dir <- dirs
+      <div class="row #{watchedClassDir dir}"> 
+        <a href=@{DirectoryR $ aggDirPath dir} class="name">
           <i class="fa-regular fa-folder-open">
-          <span>#{niceDirNameT path}
-        $if watchedCount < totalCount
+          <span>#{niceDirNameT $ aggDirPath dir}
+        $if isWatchedDir dir
           <div>
         $else
           <i class="fa-solid fa-check">
-        <span>#{watchedCount}/#{totalCount}
+        <span>#{aggDirPlayedVideoFileCount dir}/#{aggDirVideoFileCount dir}
 
 
 $# $if showRefreshButton

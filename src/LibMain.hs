@@ -20,7 +20,7 @@ import Actions
     performActionIO,
   )
 import Control.Monad (when)
-import DB (Directory (..), EntityField (..), VideoFile (..), migrateAll, runDBPool)
+import DB (AggDirInfo (..), Directory (..), EntityField (..), VideoFile (..), getAggSubDirInfoQ, migrateAll, runDBPool)
 import Data.Aeson qualified as Aeson
 import Data.ByteString.Char8 qualified as BS
 import Data.Char (isSpace)
@@ -30,8 +30,6 @@ import Data.Ord (Down (..))
 import Data.Text (Text, intercalate, unpack)
 import Data.Text qualified as Text
 import Data.Time (UTCTime)
-import Data.Time.Clock.POSIX (posixSecondsToUTCTime)
-import Data.Tuple.Extra (fst3)
 import Database.Persist.Sql.Raw.QQ (sqlQQ)
 import Database.Persist.Sqlite (runMigration, withSqlitePool)
 import Directory (getVideoDirPath, naturalSortBy, niceDirNameT, niceFileNameT, updateData)
@@ -61,29 +59,16 @@ import System.Random (initStdGen, mkStdGen)
 import TVDB (TVDBToken (..))
 import TVState (startingTVState, tvStateWebSocket)
 import Util
-  ( fst5,
-    getImageContentType,
+  ( getImageContentType,
     networkInterfaceWorthiness,
     shuffle,
     unSingle2,
-    unSingle3,
-    unSingle5,
-    uncurry5,
     widgetFile,
   )
 import Yesod hiding (defaultLayout, replace)
 import Yesod.WebSockets (concurrently_, race_, webSockets)
 
 mkYesodDispatch "App" resourcesApp
-
-data HomeData = HomeData
-  { hNiceName :: Text,
-    hPath :: Path Abs Dir,
-    hLastModified :: UTCTime,
-    hLastWatched :: UTCTime,
-    hVideoFileCount :: Int,
-    hPlayedVideoFileCount :: Int
-  }
 
 data NamedLink = NamedLink
   { linkName :: Text,
@@ -92,7 +77,7 @@ data NamedLink = NamedLink
   }
 
 data HomeSection
-  = LocalVideos Text [HomeData]
+  = LocalVideos Text [AggDirInfo]
   | ExternalLinks Text [NamedLink]
 
 getHomeR :: Handler Html
@@ -102,54 +87,20 @@ getHomeR = do
   webSockets $ race_ actionsWebSocket (tvStateWebSocket tvStateTVar)
 
   homeDir <- liftIO getVideoDirPath -- For now we just use the hardcoded path as home, but the plan is to support multiple root folders
-  let epoch = posixSecondsToUTCTime 0
-  homeData' <-
-    logDuration "Queried DB for home data" $
-      map unSingle5
-        <$> runDB
-          [sqlQQ|
-            SELECT
-              d.@{DirectoryPath},
-              max(v.@{VideoFileAdded}),
-              COALESCE(max(v.@{VideoFileWatched}), #{epoch}),
-              count(*),
-              SUM(IIF(v.@{VideoFileWatched} IS NOT NULL, 1, 0))
-            FROM ^{Directory} d
-            LEFT JOIN ^{VideoFile} v
-              -- Join all video files that are direct or indirect children
-              ON v.@{VideoFileParent} GLOB d.@{DirectoryPath} || '*'
-            WHERE 
-              -- This checks that it's a sub-directory
-              -- SQLite has some GLOB optimisations, so this is fast
-              d.@{DirectoryPath} GLOB #{homeDir} || '*'
-              -- This makes sure it's a direct child
-              AND instr(rtrim(substr(d.@{DirectoryPath}, length(#{homeDir})+1), '/'), '/') = 0
-              -- And this removed the homeDir itself
-              AND d.@{DirectoryPath} <> #{homeDir}
-            GROUP BY
-              d.@{DirectoryPath}
-          |]
-  let toHomeData ::
-        ( Path Abs Dir,
-          UTCTime,
-          UTCTime,
-          Int,
-          Int
-        ) ->
-        HomeData
-      toHomeData d = uncurry5 (HomeData $ niceDirNameT $ fst5 d) d
+  homeData <-
+    logDuration "Queried DB for home data" . runDB $
+      getAggSubDirInfoQ homeDir
 
-  let homeData = map toHomeData homeData'
   let mkRandom =
         -- When in dev we auto-reload the page every second or so,
         -- so we want the same random shuffle every time, otherwise the page
         -- keeps changing which is annoying.
         if isDevelopment then pure (mkStdGen 2) else initStdGen
   randomGenerator <- mkRandom
-  let isUnwatched d = d.hPlayedVideoFileCount < d.hVideoFileCount
+  let isUnwatched d = aggDirPlayedVideoFileCount d < aggDirVideoFileCount d
       unwatched = filter isUnwatched homeData
-      recentlyAdded d = Down d.hLastModified
-      recentlyWatched d = d.hLastWatched
+      recentlyAdded d = Down $ aggDirLastModified d
+      recentlyWatched = aggDirLastWatched
 
   let sections =
         [ LocalVideos "New" $
@@ -192,45 +143,28 @@ postHomeR =
 
 getDirectoryR :: Path Abs Dir -> Handler Html
 getDirectoryR absPath = do
-  (dirs' :: [(Path Abs Dir, Int, Int)], files' :: [VideoFile]) <- logDuration "Get child dirs and files" $ runDB $ do
-    ds <-
-      [sqlQQ|
-        SELECT 
-          d.@{DirectoryPath},
-          count(*),
-          SUM(IIF(v.@{VideoFileWatched} IS NOT NULL, 1, 0))
-        FROM ^{Directory} d
-        LEFT JOIN ^{VideoFile} v
-          -- Join all video files that are direct or indirect children
-          ON v.@{VideoFileParent} GLOB d.@{DirectoryPath} || '*'
-        WHERE
-          -- This checks that it's a sub-directory
-          d.@{DirectoryPath} GLOB #{absPath} || '*'
-          -- This makes sure it's a direct child
-          AND instr(rtrim(substr(d.@{DirectoryPath}, length(#{absPath})+1), '/'), '/') = 0
-          -- And this removed the homeDir itself
-          AND d.@{DirectoryPath} <> #{absPath}
-        GROUP BY
-          d.@{DirectoryPath}
-      |]
+  (dirs' :: [AggDirInfo], files' :: [VideoFile]) <- logDuration "Get child dirs and files" $ runDB $ do
+    ds <- getAggSubDirInfoQ absPath
     fs <-
       [sqlQQ|
         SELECT ??
         FROM ^{VideoFile}
         WHERE @{VideoFileParent} = #{absPath}
       |]
-    pure (map unSingle3 ds, map entityVal fs)
+    pure (ds, map entityVal fs)
 
-  let dirs = naturalSortBy (fromRelDir . dirname . fst3) dirs'
+  let dirs = naturalSortBy (fromRelDir . dirname . aggDirPath) dirs'
       files = naturalSortBy (fromRelFile . videoFileName) files'
 
   let watchedClass :: Bool -> Html
       watchedClass watched = if watched then "watched" else "unwatched"
       watchedClassM :: Maybe UTCTime -> Html
       watchedClassM = watchedClass . isJust
-      watchedClassI :: Int -> Int -> Html
-      watchedClassI totalCount watchedCount =
-        watchedClass $ watchedCount >= totalCount
+      isWatchedDir :: AggDirInfo -> Bool
+      isWatchedDir dirInfo = aggDirPlayedVideoFileCount dirInfo >= aggDirVideoFileCount dirInfo
+      watchedClassDir :: AggDirInfo -> Html
+      watchedClassDir dirInfo =
+        watchedClass $ isWatchedDir dirInfo
 
   let videoFileAbsPath :: VideoFile -> Path Abs File
       videoFileAbsPath f = absPath </> videoFileName f

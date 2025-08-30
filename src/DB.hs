@@ -10,9 +10,12 @@ module DB where
 import Control.Monad.Trans.Reader (ReaderT)
 import Data.ByteString qualified as BS
 import Data.Time (UTCTime)
+import Data.Time.Clock.POSIX (posixSecondsToUTCTime)
+import Database.Persist.Sql.Raw.QQ (sqlQQ)
 import Database.Persist.Sqlite (ConnectionPool, SqlBackend, runSqlPool)
 import Orphanage ()
 import Path (Abs, Dir, File, Path, Rel)
+import Util (unSingle5, uncurry5)
 import Yesod
 
 share
@@ -35,3 +38,42 @@ VideoFile
 
 runDBPool :: (MonadUnliftIO m) => ConnectionPool -> ReaderT SqlBackend m a -> m a
 runDBPool connPool action = runSqlPool action connPool
+
+data AggDirInfo = AggDirInfo
+  { aggDirPath :: Path Abs Dir,
+    aggDirLastModified :: UTCTime,
+    aggDirLastWatched :: UTCTime,
+    aggDirVideoFileCount :: Int,
+    aggDirPlayedVideoFileCount :: Int
+  }
+
+getAggSubDirInfoQ ::
+  (MonadUnliftIO m) =>
+  Path Abs Dir ->
+  ReaderT SqlBackend m [AggDirInfo]
+getAggSubDirInfoQ root = do
+  let epoch = posixSecondsToUTCTime 0
+  raw <-
+    [sqlQQ|
+      SELECT
+        d.@{DirectoryPath},
+        max(v.@{VideoFileAdded}),
+        COALESCE(max(v.@{VideoFileWatched}), #{epoch}),
+        count(*),
+        SUM(IIF(v.@{VideoFileWatched} IS NOT NULL, 1, 0))
+      FROM ^{Directory} d
+      LEFT JOIN ^{VideoFile} v
+        -- Join all video files that are direct or indirect children
+        ON v.@{VideoFileParent} GLOB d.@{DirectoryPath} || '*'
+      WHERE 
+        -- This checks that it's a sub-directory
+        -- SQLite has some GLOB optimisations, so this is fast
+        d.@{DirectoryPath} GLOB #{root} || '*'
+        -- This makes sure it's a direct child
+        AND instr(rtrim(substr(d.@{DirectoryPath}, length(#{root})+1), '/'), '/') = 0
+        -- And this removed the root itself
+        AND d.@{DirectoryPath} <> #{root}
+      GROUP BY
+        d.@{DirectoryPath}
+    |]
+  pure $ uncurry5 AggDirInfo . unSingle5 <$> raw
