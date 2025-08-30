@@ -30,13 +30,14 @@ import Data.Ord (Down (..))
 import Data.Text (Text, intercalate, unpack)
 import Data.Text qualified as Text
 import Data.Time (UTCTime)
-import Database.Persist.Sqlite (runMigration, withSqlitePool)
+import Database.Persist.Sqlite (extraPragmas, mkSqliteConnectionInfo, runMigration, withSqlitePoolInfo)
 import Directory (getVideoDirPath, naturalSortBy, niceDirNameT, niceFileNameT, updateData)
 import Foundation (App (..), Handler, Route (..), defaultLayout, embeddedStatic, resourcesApp, static_images_apple_tv_plus_png, static_images_netflix_png, static_images_youtube_png)
 import GHC.Conc (newTVarIO)
 import GHC.MVar (newEmptyMVar, takeMVar)
 import GHC.Utils.Misc (sortWith)
 import IsDevelopment (isDevelopment)
+import Lens.Micro ((&), (.~))
 import Logging (LogLevel (..), logDuration, putLog, runLoggingT)
 import Network.Info (NetworkInterface (..), getNetworkInterfaces)
 import Network.Wai.Handler.Warp (run)
@@ -217,9 +218,14 @@ main = do
   when (not isDevelopment) $ do
     callProcess "xdg-open" [url]
 
-  let openConnectionCount = 1 -- If we increase this, you should also change the connection string to allow for concurrent read/writes
+  let openConnectionCount = 10
+  let connectionInfo =
+        mkSqliteConnectionInfo "pablo-tv-data.db3"
+          -- & walEnabled .~ True -- The default
+          -- & fkEnabled .~ True -- The default
+          & extraPragmas .~ ["PRAGMA busy_timeout = 5000"]
   runLoggingT $
-    withSqlitePool "pablo-tv-data.db3" openConnectionCount $ \connPool -> liftIO $ do
+    withSqlitePoolInfo connectionInfo openConnectionCount $ \connPool -> liftIO $ do
       -- Migrate DB
       logDuration "Migration" $ runDBPool connPool $ runMigration migrateAll
 
