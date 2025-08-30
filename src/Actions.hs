@@ -1,4 +1,5 @@
 {-# LANGUAGE DerivingVia #-}
+{-# LANGUAGE QuasiQuotes #-}
 
 module Actions where
 
@@ -14,11 +15,11 @@ import Data.Int (Int32)
 import Data.List (dropWhileEnd, nub)
 import Data.Scientific (Scientific, scientific)
 import Data.Text (Text)
-import Data.Text qualified as T
 import Data.Text.Lazy.Encoding qualified as T
 import Data.Time (getCurrentTime)
 import Data.Void (Void)
-import Database.Persist.Sqlite (PersistStoreWrite (..), PersistValue (..), rawExecute)
+import Database.Persist.Sql.Raw.QQ (executeQQ)
+import Database.Persist.Sqlite (PersistStoreWrite (..))
 import Evdev.Codes
 import Evdev.Uinput
 import Foundation (App (..), Handler)
@@ -314,11 +315,12 @@ performActionIO app action = do
       now <- liftIO getCurrentTime
       runDBPool app.appSqlPool $ case dirOrFile of
         Dir path ->
-          rawExecute
-            "UPDATE video_file SET watched = ? WHERE path GLOB ? AND watched IS NULL"
-            [ PersistUTCTime now,
-              PersistText $ T.pack $ fromAbsDir path ++ "*"
-            ]
+          [executeQQ|
+            UPDATE ^{DB.VideoFile}
+            SET @{DB.VideoFileWatched} = #{Just now}
+            WHERE @{DB.VideoFileParent} GLOB #{path} || '*'
+            AND @{DB.VideoFileWatched} IS NULL
+          |]
         File path ->
           update
             (DB.VideoFileKey (DB.DirectoryKey $ parent path) (filename path))
@@ -328,11 +330,12 @@ performActionIO app action = do
     markDirOrFileAsUnwatched dirOrFile =
       runDBPool app.appSqlPool $ case dirOrFile of
         Dir path ->
-          rawExecute
-            "UPDATE video_file SET watched = ? WHERE path GLOB ?"
-            [ PersistNull,
-              PersistText $ T.pack $ fromAbsDir path ++ "*"
-            ]
+          [executeQQ|
+            UPDATE ^{DB.VideoFile}
+            SET @{DB.VideoFileWatched} = NULL
+            WHERE @{DB.VideoFileParent} GLOB #{path} || '*'
+            AND @{DB.VideoFileWatched} IS NOT NULL
+          |]
         File path ->
           update
             (DB.VideoFileKey (DB.DirectoryKey $ parent path) (filename path))
