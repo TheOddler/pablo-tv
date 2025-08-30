@@ -158,6 +158,9 @@ uncurry5 f (a, b, c, d, e) = f a b c d e
 unSingle2 :: (Single a, Single b) -> (a, b)
 unSingle2 (Single a, Single b) = (a, b)
 
+unSingle3 :: (Single a, Single b, Single c) -> (a, b, c)
+unSingle3 (Single a, Single b, Single c) = (a, b, c)
+
 unSingle5 ::
   ( Single a,
     Single b,

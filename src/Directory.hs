@@ -440,20 +440,16 @@ isCommonFileExt ext =
         ".zip"
       ]
 
--- | Sorts the dirs, taking into account numbers properly
-smartDirSort :: [Path Rel Dir] -> [Path Rel Dir]
-smartDirSort = sortBy sorting
-  where
-    sorting a b =
-      Natural.compare
-        (T.toLower $ niceDirNameT a)
-        (T.toLower $ niceDirNameT b)
+-- | Compares taking into account numbers properly
+naturalCompareBy :: (a -> String) -> a -> a -> Ordering
+naturalCompareBy f a b = Natural.compare (lower $ f a) (lower $ f b)
 
--- | Sorts the dirs, taking into account numbers properly
-smartFileSort :: [Path Rel File] -> [Path Rel File]
-smartFileSort = sortBy sorting
-  where
-    sorting a b =
-      Natural.compare
-        (T.toLower $ niceFileNameT a)
-        (T.toLower $ niceFileNameT b)
+-- | Sorts taking into account numbers properly
+naturalSortBy :: (a -> String) -> [a] -> [a]
+naturalSortBy f = sortBy $ naturalCompareBy f
+
+naturalSortFiles :: [Path b File] -> [Path b File]
+naturalSortFiles = naturalSortBy (fromRelFile . filename)
+
+naturalSortDirs :: [Path b Dir] -> [Path b Dir]
+naturalSortDirs = naturalSortBy (fromRelDir . dirname)

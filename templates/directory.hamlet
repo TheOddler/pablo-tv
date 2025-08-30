@@ -15,7 +15,7 @@
         <a href="#" onclick="markAllAsUnwatched(event)" title="Mark all as unwatched">
           <i class="fa-regular fa-eye-slash">
     $forall videoFile <- files
-      <div class="row #{watchedClass $ videoFileWatched videoFile}" data-path="#{videoFileAbsPath videoFile}">
+      <div class="row #{watchedClassM $ videoFileWatched videoFile}" data-path="#{videoFileAbsPath videoFile}">
         <a href="#" class="name" onclick="playPath(event)">
           <i class="fa-solid fa-play">
           <span>#{niceFileNameT $ videoFileName videoFile}
@@ -28,21 +28,16 @@
   $if (not $ null dirs)
     $if (not $ null files)
       <h1>Directories
-    $forall path <- dirs
-      <div> 
-        $# class="row #{watchedClassDir mWatched}">
+    $forall (path, totalCount, watchedCount) <- dirs
+      <div class="row #{watchedClassI totalCount watchedCount}"> 
         <a href=@{DirectoryR path} class="name">
           <i class="fa-regular fa-folder-open">
           <span>#{niceDirNameT path}
-        $# $maybe (watchedCount, totalCount) <- mWatched
-        $#   $if watchedCount < totalCount
-        $#     <div>
-        $#   $else
-        $#     <i class="fa-solid fa-check">
-        $#   <span>#{watchedCount}/#{totalCount}
-        $# $nothing
-        $#   <i class="fa-regular fa-circle-question" title="Unparsed folder, refresh data to parse.">
-        $#   <span title="Unparsed folder, refresh data to parse.">?/?
+        $if watchedCount < totalCount
+          <div>
+        $else
+          <i class="fa-solid fa-check">
+        <span>#{watchedCount}/#{totalCount}
 
 
 $# $if showRefreshButton

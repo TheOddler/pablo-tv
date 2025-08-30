@@ -25,15 +25,16 @@ import Data.Aeson qualified as Aeson
 import Data.ByteString.Char8 qualified as BS
 import Data.Char (isSpace)
 import Data.List.Extra (notNull)
-import Data.Maybe (isNothing)
+import Data.Maybe (isJust, isNothing)
 import Data.Ord (Down (..))
 import Data.Text (Text, intercalate, unpack)
 import Data.Text qualified as Text
 import Data.Time (UTCTime)
 import Data.Time.Clock.POSIX (posixSecondsToUTCTime)
+import Data.Tuple.Extra (fst3)
 import Database.Persist.Sql.Raw.QQ (sqlQQ)
-import Database.Persist.Sqlite (Single (..), runMigration, withSqlitePool)
-import Directory (getVideoDirPath, niceDirNameT, niceFileNameT, updateData)
+import Database.Persist.Sqlite (runMigration, withSqlitePool)
+import Directory (getVideoDirPath, naturalSortBy, niceDirNameT, niceFileNameT, updateData)
 import Foundation (App (..), Handler, Route (..), defaultLayout, embeddedStatic, resourcesApp, static_images_apple_tv_plus_png, static_images_netflix_png, static_images_youtube_png)
 import GHC.Conc (newTVarIO)
 import GHC.MVar (newMVar)
@@ -48,6 +49,9 @@ import Path
     File,
     Path,
     Rel,
+    dirname,
+    fromRelDir,
+    fromRelFile,
     (</>),
   )
 import Playerctl (Action (..), onFilePlayStarted)
@@ -62,6 +66,7 @@ import Util
     networkInterfaceWorthiness,
     shuffle,
     unSingle2,
+    unSingle3,
     unSingle5,
     uncurry5,
     widgetFile,
@@ -187,18 +192,26 @@ postHomeR =
 
 getDirectoryR :: Path Abs Dir -> Handler Html
 getDirectoryR absPath = do
-  (dirs :: [Path Abs Dir], files :: [VideoFile]) <- logDuration "Get child dirs and files" $ runDB $ do
+  (dirs' :: [(Path Abs Dir, Int, Int)], files' :: [VideoFile]) <- logDuration "Get child dirs and files" $ runDB $ do
     ds <-
       [sqlQQ|
-        SELECT @{DirectoryPath}
-        FROM ^{Directory}
+        SELECT 
+          d.@{DirectoryPath},
+          count(*),
+          SUM(IIF(v.@{VideoFileWatched} IS NOT NULL, 1, 0))
+        FROM ^{Directory} d
+        LEFT JOIN ^{VideoFile} v
+          -- Join all video files that are direct or indirect children
+          ON v.@{VideoFileParent} GLOB d.@{DirectoryPath} || '*'
         WHERE
           -- This checks that it's a sub-directory
-          @{DirectoryPath} GLOB #{absPath} || '*'
+          d.@{DirectoryPath} GLOB #{absPath} || '*'
           -- This makes sure it's a direct child
-          AND instr(rtrim(substr(@{DirectoryPath}, length(#{absPath})+1), '/'), '/') = 0
+          AND instr(rtrim(substr(d.@{DirectoryPath}, length(#{absPath})+1), '/'), '/') = 0
           -- And this removed the homeDir itself
-          AND @{DirectoryPath} <> #{absPath}
+          AND d.@{DirectoryPath} <> #{absPath}
+        GROUP BY
+          d.@{DirectoryPath}
       |]
     fs <-
       [sqlQQ|
@@ -206,12 +219,19 @@ getDirectoryR absPath = do
         FROM ^{VideoFile}
         WHERE @{VideoFileParent} = #{absPath}
       |]
-    pure (map unSingle ds, map entityVal fs)
+    pure (map unSingle3 ds, map entityVal fs)
 
-  let watchedClass :: Maybe UTCTime -> Html
-      watchedClass = \case
-        Just _ -> "watched"
-        Nothing -> "unwatched"
+  let dirs = naturalSortBy (fromRelDir . dirname . fst3) dirs'
+      files = naturalSortBy (fromRelFile . videoFileName) files'
+
+  let watchedClass :: Bool -> Html
+      watchedClass watched = if watched then "watched" else "unwatched"
+      watchedClassM :: Maybe UTCTime -> Html
+      watchedClassM = watchedClass . isJust
+      watchedClassI :: Int -> Int -> Html
+      watchedClassI totalCount watchedCount =
+        watchedClass $ watchedCount >= totalCount
+
   let videoFileAbsPath :: VideoFile -> Path Abs File
       videoFileAbsPath f = absPath </> videoFileName f
 
