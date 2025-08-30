@@ -10,6 +10,7 @@ import Data.List (isPrefixOf)
 import Data.List.Extra (lower)
 import Data.List.NonEmpty qualified as NE
 import Data.List.NonEmpty.Extra qualified as NE
+import Data.Ord (Down)
 import Data.String (fromString)
 import Data.Text qualified as T
 import Data.Time (NominalDiffTime, UTCTime, diffUTCTime, getCurrentTime)
@@ -51,18 +52,25 @@ onChanges tVar f = do
       loop newVal
 
 -- | Return how likely this is the network interface people will want to connect to with their phones.
--- Mean to be used with `sortWith` so smaller numbers is more worthy.
-networkInterfaceWorthiness :: NetworkInterface -> Int
+-- Mean to be used with `sortWith` so returning Down as sortWith sorts lowest first.
+networkInterfaceWorthiness :: NetworkInterface -> Down Int
 networkInterfaceWorthiness NetworkInterface {name, ipv4, ipv6} =
-  8
-    - goodName `as` 4
-    + hasIpv4 `as` 2
-    + hasIpv6 `as` 1
+  sum
+    [ hasIpv4 `as` 2,
+      goodName `as` 1,
+      hasIpv6 `as` 1,
+      isLocalHost `as` (-10)
+    ]
   where
     bool `as` val = if bool then val else 0
     goodName = any (`isPrefixOf` name) ["en", "eth", "wl"]
     hasIpv4 = ipv4 /= minBound
     hasIpv6 = ipv6 /= minBound
+    isLocalHost = ipv4 == IPv4 16777343 -- Used rawShowIPv4 to find this
+
+-- | Used to find what the internal representation of localhost is
+rawShowIPv4 :: IPv4 -> String
+rawShowIPv4 (IPv4 raw) = show raw
 
 showIpV4OrV6WithPort :: Int -> NetworkInterface -> [Char]
 showIpV4OrV6WithPort port i =
