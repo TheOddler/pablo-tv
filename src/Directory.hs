@@ -142,11 +142,6 @@ updateData ::
   Path Abs Dir ->
   IO ()
 updateData dbConnPool root = logDuration "Updated data" $ do
-  -- Read once from the DB, the rest we do in memory
-  -- existingDirs' <-
-  --   logDuration "Read all dirs" $
-  --     runDBWithConn dbConnPool $
-  --       selectList [] []
   now <- getCurrentTime
 
   -- We're likely to be using a network share for the data, so walking this dir is slow.
@@ -157,7 +152,7 @@ updateData dbConnPool root = logDuration "Updated data" $ do
       -- Find best image
       let mBestImg = bestImageFile stepImageFiles
       -- Try and do as much in a single transaction, but we might need some followup work that reads from disk and then does a second transaction
-      (followupAction :: IO ()) <- runDBWithConn dbConnPool $ do
+      (followupAction :: IO ()) <- runDBPool dbConnPool $ do
         -- Add dir, and if it already exists leave the image as is (we might update that later in the followup action)
         existingDir <-
           upsert
@@ -201,7 +196,7 @@ updateData dbConnPool root = logDuration "Updated data" $ do
                 -- Since this requires slow IO, we do this in the followup.
                 -- It's an update, in case between this and the followup the directory got removed, it should then probably remain removed.
                 imageData <- BS.readFile $ fromAbsFile foundImg
-                void . runDBWithConn dbConnPool $
+                void . runDBPool dbConnPool $
                   update
                     (entityKey existingDir)
                     [ DirectoryImageName =. Just (filename foundImg),

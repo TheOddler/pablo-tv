@@ -6,7 +6,7 @@ import Autodocodec (Autodocodec (..), Discriminator, HasCodec (..), HasObjectCod
 import Autodocodec.Aeson (toJSONViaCodec)
 import Control.Concurrent (tryPutMVar)
 import Control.Monad (forever, when)
-import DB (runDBWithConn)
+import DB (runDBPool)
 import DB qualified
 import Data.Char (isSpace)
 import Data.HashMap.Strict qualified as HashMap
@@ -312,7 +312,7 @@ performActionIO app action = do
     markDirOrFileAsWatched :: DirOrFile -> IO ()
     markDirOrFileAsWatched dirOrFile = do
       now <- liftIO getCurrentTime
-      runDBWithConn app.appSqlPool $ case dirOrFile of
+      runDBPool app.appSqlPool $ case dirOrFile of
         Dir path ->
           rawExecute
             "UPDATE video_file SET watched = ? WHERE path GLOB ? AND watched IS NULL"
@@ -326,7 +326,7 @@ performActionIO app action = do
 
     markDirOrFileAsUnwatched :: DirOrFile -> IO ()
     markDirOrFileAsUnwatched dirOrFile =
-      runDBWithConn app.appSqlPool $ case dirOrFile of
+      runDBPool app.appSqlPool $ case dirOrFile of
         Dir path ->
           rawExecute
             "UPDATE video_file SET watched = ? WHERE path GLOB ?"

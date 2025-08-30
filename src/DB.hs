@@ -33,5 +33,5 @@ VideoFile
   Primary parent name
 |]
 
-runDBWithConn :: (MonadUnliftIO m) => ConnectionPool -> ReaderT SqlBackend m a -> m a
-runDBWithConn connPool action = runSqlPool action connPool
+runDBPool :: (MonadUnliftIO m) => ConnectionPool -> ReaderT SqlBackend m a -> m a
+runDBPool connPool action = runSqlPool action connPool

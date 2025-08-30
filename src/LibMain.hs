@@ -20,16 +20,14 @@ import Actions
     performActionIO,
   )
 import Control.Monad (when)
-import DB (Directory (..), EntityField (..), VideoFile (..), migrateAll, runDBWithConn)
+import DB (Directory (..), EntityField (..), VideoFile (..), migrateAll, runDBPool)
 import Data.Aeson qualified as Aeson
 import Data.ByteString.Char8 qualified as BS
 import Data.Char (isSpace)
-import Data.List (foldl')
 import Data.List.Extra (notNull)
 import Data.Maybe (isNothing)
 import Data.Ord (Down (..))
 import Data.Text (Text, intercalate, unpack)
-import Data.Text qualified as T
 import Data.Text qualified as Text
 import Data.Time (UTCTime)
 import Data.Time.Clock.POSIX (posixSecondsToUTCTime)
@@ -50,12 +48,8 @@ import Path
     File,
     Path,
     Rel,
-    mkRelDir,
-    parseRelDir,
-    parseRelFile,
     (</>),
   )
-import Path.IO (doesDirExist, doesFileExist, getHomeDir)
 import Playerctl (Action (..), onFilePlayStarted)
 import System.Environment (lookupEnv)
 import System.Process (callProcess)
@@ -70,7 +64,6 @@ import Util
     unSingle2,
     unSingle5,
     uncurry5,
-    unsnoc,
     widgetFile,
   )
 import Yesod hiding (defaultLayout, replace)
@@ -118,6 +111,7 @@ getHomeR = do
               SUM(IIF(v.@{VideoFileWatched} IS NOT NULL, 1, 0))
             FROM ^{Directory} d
             LEFT JOIN ^{VideoFile} v
+              -- Join all video files that are direct or indirect children
               ON v.@{VideoFileParent} GLOB d.@{DirectoryPath} || '*'
             WHERE 
               -- This checks that it's a sub-directory
@@ -191,40 +185,6 @@ postHomeR =
     Aeson.Success action -> do
       performAction action
 
--- | Turn the segments into a directory path and optionally a filename
--- Also checks if the file/directory actually exists, if not, return Nothing
-parseSegments :: [Text] -> Handler (Maybe (Path Abs Dir, Maybe (Path Rel File)))
-parseSegments segmentsT = do
-  home <- liftIO getHomeDir
-  let videoDirName = $(mkRelDir "Videos")
-  case unsnoc segmentsT of
-    Nothing -> pure $ Just (home </> videoDirName, Nothing)
-    Just (parentSegments, dirOfFileT) -> do
-      segments <- mapM parseRelDir (unpack <$> parentSegments)
-      let parentPath = home </> foldl' (</>) videoDirName segments
-          dirOfFile = T.unpack dirOfFileT
-          dirName :: Maybe (Path Rel Dir)
-          dirName = parseRelDir dirOfFile
-          fileName :: Maybe (Path Rel File)
-          fileName = parseRelFile dirOfFile
-
-          tryDir =
-            case dirName of
-              Nothing -> pure Nothing
-              Just dn -> do
-                dirExists <- liftIO $ doesDirExist $ parentPath </> dn
-                if dirExists
-                  then pure $ Just (parentPath </> dn, Nothing)
-                  else pure Nothing
-
-      case fileName of
-        Just fn -> do
-          fileExists <- liftIO $ doesFileExist $ parentPath </> fn
-          if fileExists
-            then pure $ Just (parentPath, Just fn)
-            else tryDir
-        Nothing -> tryDir
-
 getDirectoryR :: Path Abs Dir -> Handler Html
 getDirectoryR absPath = do
   (dirs :: [Path Abs Dir], files :: [VideoFile]) <- logDuration "Get child dirs and files" $ runDB $ do
@@ -258,10 +218,6 @@ getDirectoryR absPath = do
   let title = toHtml $ niceDirNameT absPath
   defaultLayout title $(widgetFile "directory")
 
-getRemoteR :: Handler Html
-getRemoteR = do
-  defaultLayout "Remote" $(widgetFile "remote")
-
 getImageR :: Path Abs Dir -> Handler Html
 getImageR absPath = do
   (image :: [(Path Rel File, BS.ByteString)]) <-
@@ -285,6 +241,10 @@ getImageR absPath = do
   case image of
     [] -> notFound
     (imgName, imgBytes) : _ -> sendResponse (getImageContentType imgName, toContent imgBytes)
+
+getRemoteR :: Handler Html
+getRemoteR = do
+  defaultLayout "Remote" $(widgetFile "remote")
 
 getInputR :: Handler Html
 getInputR = do
@@ -333,7 +293,7 @@ main = do
   runLoggingT $
     withSqlitePool "pablo-tv-data.db3" openConnectionCount $ \connPool -> liftIO $ do
       -- Migrate DB
-      logDuration "Migration" $ runDBWithConn connPool $ runMigration migrateAll
+      logDuration "Migration" $ runDBPool connPool $ runMigration migrateAll
 
       let dataThread = do
             -- Update data, eventually I want to do this on a separate thread

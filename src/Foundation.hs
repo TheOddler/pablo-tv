@@ -10,7 +10,7 @@ module Foundation where
 
 import Control.Concurrent (MVar)
 import Control.Monad (when)
-import DB (runDBWithConn)
+import DB (runDBPool)
 import Data.ByteString.Char8 qualified as BS
 import Data.Maybe (isNothing, listToMaybe)
 import Database.Persist.Sqlite (ConnectionPool, SqlBackend)
@@ -128,7 +128,7 @@ instance YesodPersist App where
 
   runDB action = do
     state <- getYesod
-    runDBWithConn (appSqlPool state) action
+    runDBPool (appSqlPool state) action
 
 instance Logger Handler where
   putLogBS l = liftIO . putLogBS l
