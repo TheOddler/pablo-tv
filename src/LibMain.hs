@@ -20,7 +20,7 @@ import Actions
     performActionIO,
   )
 import Control.Monad (when)
-import DB (AggDirInfo (..), Directory (..), EntityField (..), VideoFile (..), getAggSubDirInfoQ, migrateAll, runDBPool)
+import DB (AggDirInfo (..), EntityField (..), Key (..), VideoFile (..), getAggSubDirInfoQ, getNearestImage, migrateAll, runDBPool)
 import Data.Aeson qualified as Aeson
 import Data.ByteString.Char8 qualified as BS
 import Data.Char (isSpace)
@@ -30,7 +30,6 @@ import Data.Ord (Down (..))
 import Data.Text (Text, intercalate, unpack)
 import Data.Text qualified as Text
 import Data.Time (UTCTime)
-import Database.Persist.Sql.Raw.QQ (sqlQQ)
 import Database.Persist.Sqlite (runMigration, withSqlitePool)
 import Directory (getVideoDirPath, naturalSortBy, niceDirNameT, niceFileNameT, updateData)
 import Foundation (App (..), Handler, Route (..), defaultLayout, embeddedStatic, resourcesApp, static_images_apple_tv_plus_png, static_images_netflix_png, static_images_youtube_png)
@@ -46,7 +45,6 @@ import Path
     Dir,
     File,
     Path,
-    Rel,
     dirname,
     fromRelDir,
     fromRelFile,
@@ -62,7 +60,6 @@ import Util
   ( getImageContentType,
     networkInterfaceWorthiness,
     shuffle,
-    unSingle2,
     widgetFile,
   )
 import Yesod hiding (defaultLayout, replace)
@@ -145,12 +142,7 @@ getDirectoryR :: Path Abs Dir -> Handler Html
 getDirectoryR absPath = do
   (dirs' :: [AggDirInfo], files' :: [VideoFile]) <- logDuration "Get child dirs and files" $ runDB $ do
     ds <- getAggSubDirInfoQ absPath
-    fs <-
-      [sqlQQ|
-        SELECT ??
-        FROM ^{VideoFile}
-        WHERE @{VideoFileParent} = #{absPath}
-      |]
+    fs <- selectList [VideoFileParent ==. DirectoryKey absPath] []
     pure (ds, map entityVal fs)
 
   let dirs = naturalSortBy (fromRelDir . dirname . aggDirPath) dirs'
@@ -173,28 +165,10 @@ getDirectoryR absPath = do
   defaultLayout title $(widgetFile "directory")
 
 getImageR :: Path Abs Dir -> Handler Html
-getImageR absPath = do
-  (image :: [(Path Rel File, BS.ByteString)]) <-
-    logDuration "Get image" $
-      runDB $
-        map unSingle2
-          <$> [sqlQQ|
-                SELECT @{DirectoryImageName}, @{DirectoryImage}
-                FROM ^{Directory}
-                WHERE
-                    @{DirectoryImageName} IS NOT NULL
-                AND @{DirectoryImage} IS NOT NULL
-                AND (
-                  -- Any image that is in the given path, or any of it's parents
-                  #{absPath} GLOB @{DirectoryPath} || '*'
-                  -- Or any image in a child folder
-                  OR @{DirectoryPath} GLOB #{absPath} || '*'
-                )
-                LIMIT 1
-              |]
-  case image of
-    [] -> notFound
-    (imgName, imgBytes) : _ -> sendResponse (getImageContentType imgName, toContent imgBytes)
+getImageR absPath =
+  runDB (getNearestImage absPath) >>= \case
+    Nothing -> notFound
+    Just (imgName, imgBytes) -> sendResponse (getImageContentType imgName, toContent imgBytes)
 
 getRemoteR :: Handler Html
 getRemoteR = do
