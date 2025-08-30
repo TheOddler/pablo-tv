@@ -47,11 +47,11 @@ data AggDirInfo = AggDirInfo
     aggDirPlayedVideoFileCount :: Int
   }
 
-getAggSubDirInfoQ ::
+getAggSubDirsInfoQ ::
   (MonadUnliftIO m) =>
   Path Abs Dir ->
   ReaderT SqlBackend m [AggDirInfo]
-getAggSubDirInfoQ root = do
+getAggSubDirsInfoQ root = do
   let epoch = posixSecondsToUTCTime 0
   raw <-
     [sqlQQ|

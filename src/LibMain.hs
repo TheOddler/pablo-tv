@@ -20,7 +20,7 @@ import Actions
     performActionIO,
   )
 import Control.Monad (when)
-import DB (AggDirInfo (..), EntityField (..), Key (..), VideoFile (..), getAggSubDirInfoQ, getNearestImage, migrateAll, runDBPool)
+import DB (AggDirInfo (..), EntityField (..), Key (..), VideoFile (..), getAggSubDirsInfoQ, getNearestImage, migrateAll, runDBPool)
 import Data.Aeson qualified as Aeson
 import Data.ByteString.Char8 qualified as BS
 import Data.Char (isSpace)
@@ -86,7 +86,7 @@ getHomeR = do
   homeDir <- liftIO getVideoDirPath -- For now we just use the hardcoded path as home, but the plan is to support multiple root folders
   homeData <-
     logDuration "Queried DB for home data" . runDB $
-      getAggSubDirInfoQ homeDir
+      getAggSubDirsInfoQ homeDir
 
   let mkRandom =
         -- When in dev we auto-reload the page every second or so,
@@ -141,7 +141,7 @@ postHomeR =
 getDirectoryR :: Path Abs Dir -> Handler Html
 getDirectoryR absPath = do
   (dirs' :: [AggDirInfo], files' :: [VideoFile]) <- logDuration "Get child dirs and files" $ runDB $ do
-    ds <- getAggSubDirInfoQ absPath
+    ds <- getAggSubDirsInfoQ absPath
     fs <- selectList [VideoFileParent ==. DirectoryKey absPath] []
     pure (ds, map entityVal fs)
 
