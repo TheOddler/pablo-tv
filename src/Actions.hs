@@ -294,7 +294,7 @@ performActionIO app action = do
         tvState <- readTVar tvStateTVar
         writeTVar tvStateTVar $ tvState {tvPage = url}
     ActionRefreshTVState -> liftIO $ do
-      success <- tryPutMVar videoDataRefreshTrigger ()
+      success <- tryPutMVar (appVideoDataRefreshTrigger app) ()
       when (not success) $
         putLog Warning "Already refreshing"
     ActionMedia playerCtlAction ->
@@ -302,7 +302,6 @@ performActionIO app action = do
   where
     inputDevice = app.appInputDevice
     tvStateTVar = app.appTVState
-    videoDataRefreshTrigger = app.appVideoDataRefreshTrigger
 
     clickKeyCombo keys =
       map (`KeyEvent` Pressed) keys

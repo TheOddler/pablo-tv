@@ -95,6 +95,14 @@ a {
   }
 }
 
+button.like-link {
+  all: unset;
+  color: lightblue;
+  font: inherit;
+  cursor: pointer;
+  // text-decoration: underline;
+}
+
 pre {
   text-wrap: wrap;
 }

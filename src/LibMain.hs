@@ -19,7 +19,7 @@ import Actions
     performAction,
     performActionIO,
   )
-import Control.Monad (when)
+import Control.Monad (forever, when)
 import DB (AggDirInfo (..), EntityField (..), Key (..), VideoFile (..), getAggSubDirsInfoQ, getNearestImage, migrateAll, runDBPool)
 import Data.Aeson qualified as Aeson
 import Data.ByteString.Char8 qualified as BS
@@ -34,7 +34,7 @@ import Database.Persist.Sqlite (runMigration, withSqlitePool)
 import Directory (getVideoDirPath, naturalSortBy, niceDirNameT, niceFileNameT, updateData)
 import Foundation (App (..), Handler, Route (..), defaultLayout, embeddedStatic, resourcesApp, static_images_apple_tv_plus_png, static_images_netflix_png, static_images_youtube_png)
 import GHC.Conc (newTVarIO)
-import GHC.MVar (newMVar)
+import GHC.MVar (newEmptyMVar, takeMVar)
 import GHC.Utils.Misc (sortWith)
 import IsDevelopment (isDevelopment)
 import Logging (LogLevel (..), logDuration, putLog, runLoggingT)
@@ -204,7 +204,7 @@ main = do
 
   inputDevice <- mkInputDevice
   tvState <- newTVarIO startingTVState
-  videoDataRefreshTrigger <- newMVar ()
+  videoDataRefreshTrigger <- newEmptyMVar
 
   let port = 8080
   let (homePath, _params) = renderRoute HomeR
@@ -223,11 +223,6 @@ main = do
       -- Migrate DB
       logDuration "Migration" $ runDBPool connPool $ runMigration migrateAll
 
-      let dataThread = do
-            -- Update data, eventually I want to do this on a separate thread
-            videoDirPath <- getVideoDirPath
-            updateData connPool videoDirPath
-
       -- Start the rest of the server
       let app =
             App
@@ -239,6 +234,13 @@ main = do
                 appGetStatic = embeddedStatic,
                 appVideoDataRefreshTrigger = videoDataRefreshTrigger
               }
+
+      let dataThread = forever $ do
+            -- Take the refresh trigger, this waits until it's triggered
+            takeMVar $ appVideoDataRefreshTrigger app
+            -- Update data, eventually I want to do this on a separate thread
+            videoDirPath <- getVideoDirPath
+            updateData connPool videoDirPath
 
       -- The thread for the app
       let appThread = toWaiAppPlain app >>= run port . defaultMiddlewaresNoLogging

@@ -24,3 +24,9 @@
   
   $# <h1 class="center">
   $#   <a href=@{DirectoryR []}>View all
+
+  <div class="divider">
+  <h2>
+    <button class="like-link" onclick="sendAction('#{ActionRefreshTVState}')">
+      <i class="fa-solid fa-arrows-rotate">
+      Refresh library
