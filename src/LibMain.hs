@@ -20,7 +20,17 @@ import Actions
     performActionIO,
   )
 import Control.Monad (forever, when)
-import DB (AggDirInfo (..), EntityField (..), Key (..), VideoFile (..), getAggSubDirsInfoQ, getNearestImage, migrateAll, runDBPool)
+import DB
+  ( AggDirInfo (..),
+    EntityField (..),
+    Key (..),
+    VideoFile (..),
+    getAggSubDirsInfoQ,
+    getNearestImageQ,
+    hasImageQ,
+    migrateAll,
+    runDBPool,
+  )
 import Data.Aeson qualified as Aeson
 import Data.ByteString.Char8 qualified as BS
 import Data.Char (isSpace)
@@ -30,9 +40,30 @@ import Data.Ord (Down (..))
 import Data.Text (Text, intercalate, unpack)
 import Data.Text qualified as Text
 import Data.Time (UTCTime)
-import Database.Persist.Sqlite (extraPragmas, mkSqliteConnectionInfo, runMigration, withSqlitePoolInfo)
-import Directory (getVideoDirPath, naturalSortBy, niceDirNameT, niceFileNameT, updateData)
-import Foundation (App (..), Handler, Route (..), defaultLayout, embeddedStatic, resourcesApp, static_images_apple_tv_plus_png, static_images_netflix_png, static_images_youtube_png)
+import Database.Persist.Sqlite
+  ( extraPragmas,
+    mkSqliteConnectionInfo,
+    runMigration,
+    withSqlitePoolInfo,
+  )
+import Directory
+  ( getVideoDirPath,
+    naturalSortBy,
+    niceDirNameT,
+    niceFileNameT,
+    updateData,
+  )
+import Foundation
+  ( App (..),
+    Handler,
+    Route (..),
+    defaultLayout,
+    embeddedStatic,
+    resourcesApp,
+    static_images_apple_tv_plus_png,
+    static_images_netflix_png,
+    static_images_youtube_png,
+  )
 import GHC.Conc (newTVarIO)
 import GHC.MVar (newEmptyMVar, takeMVar)
 import GHC.Utils.Misc (sortWith)
@@ -141,10 +172,11 @@ postHomeR =
 
 getDirectoryR :: Path Abs Dir -> Handler Html
 getDirectoryR absPath = do
-  (dirs' :: [AggDirInfo], files' :: [VideoFile]) <- logDuration "Get child dirs and files" $ runDB $ do
+  (dirs' :: [AggDirInfo], files' :: [VideoFile], hasImage) <- logDuration "Get child dirs and files" $ runDB $ do
     ds <- getAggSubDirsInfoQ absPath
     fs <- selectList [VideoFileParent ==. DirectoryKey absPath] []
-    pure (ds, map entityVal fs)
+    hasImage <- hasImageQ absPath
+    pure (ds, map entityVal fs, hasImage)
 
   let dirs = naturalSortBy (fromRelDir . dirname . aggDirPath) dirs'
       files = naturalSortBy (fromRelFile . videoFileName) files'
@@ -167,7 +199,7 @@ getDirectoryR absPath = do
 
 getImageR :: Path Abs Dir -> Handler Html
 getImageR absPath =
-  runDB (getNearestImage absPath) >>= \case
+  runDB (getNearestImageQ absPath) >>= \case
     Nothing -> notFound
     Just (imgName, imgBytes) -> sendResponse (getImageContentType imgName, toContent imgBytes)
 
@@ -223,7 +255,7 @@ main = do
         mkSqliteConnectionInfo "pablo-tv-data.db3"
           -- & walEnabled .~ True -- The default
           -- & fkEnabled .~ True -- The default
-          & extraPragmas .~ ["PRAGMA busy_timeout = 5000"]
+          & extraPragmas .~ ["PRAGMA busy_timeout = 30000"]
   runLoggingT $
     withSqlitePoolInfo connectionInfo openConnectionCount $ \connPool -> liftIO $ do
       -- Migrate DB

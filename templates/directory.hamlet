@@ -1,4 +1,5 @@
-<img src=@{ImageR absPath} alt="🖼️ Missing poster ☹️" class="header" onerror="this.style.display = 'none'">
+$if hasImage
+  <img src=@{ImageR absPath} alt="🖼️ Missing poster ☹️" class="header" onerror="this.style.display = 'none'">
 <h1>#{title}
 
 <div class="section">

@@ -78,11 +78,11 @@ getAggSubDirsInfoQ root = do
     |]
   pure $ uncurry5 AggDirInfo . unSingle5 <$> raw
 
-getNearestImage ::
+getNearestImageQ ::
   (MonadUnliftIO m) =>
   Path Abs Dir ->
   ReaderT SqlBackend m (Maybe (Path Rel File, BS.ByteString))
-getNearestImage root = do
+getNearestImageQ root = do
   raw <-
     [sqlQQ|
       SELECT @{DirectoryImageName}, @{DirectoryImage}
@@ -102,3 +102,28 @@ getNearestImage root = do
   pure $ case raw of
     [] -> Nothing
     (Single imgName, Single imgBytes) : _ -> Just (imgName, imgBytes)
+
+hasImageQ ::
+  (MonadUnliftIO m) =>
+  Path Abs Dir ->
+  ReaderT SqlBackend m Bool
+hasImageQ root = do
+  -- Should return wether or not the `getNearestImage` will return an image.
+  raw <-
+    [sqlQQ|
+      SELECT 1
+      FROM ^{Directory}
+      WHERE
+          @{DirectoryImageName} IS NOT NULL
+      AND @{DirectoryImage} IS NOT NULL
+      AND (
+        -- Any image that is in the given path, or any of it's parents
+        #{root} GLOB @{DirectoryPath} || '*'
+        -- Or any image in a child folder
+        OR @{DirectoryPath} GLOB #{root} || '*'
+      )
+      LIMIT 1
+    |]
+  pure $ case raw of
+    [] -> False
+    (Single i) : _ -> i > (0 :: Int)
