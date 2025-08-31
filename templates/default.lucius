@@ -57,6 +57,7 @@ header {
   left: 0;
   width: 100dvw;
   z-index: 1000;
+  height: var(--header-height);
 
   display: flex;
   align-items: stretch;
@@ -67,12 +68,14 @@ header {
   >a:visited,
   >div {
     display: flex;
-    align-items: center;
+    justify-content: center;
     gap: 0.75rem;
     color: white;
     text-decoration: none;
     padding: 0.5rem 1rem;
     font-size: 1.5rem;
+    flex-wrap: wrap;
+    overflow: hidden;
 
     >i {
       font-size: 2rem;
