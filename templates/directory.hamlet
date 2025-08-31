@@ -1,5 +1,5 @@
-$maybe imgPath <- mImagePath
-  <img src=@{ImageR imgPath} alt="🖼️ Missing poster ☹️" class="header" onerror="this.style.display = 'none'">
+$maybe imagePath <- imagePath
+  <img src=@{ImageR imagePath} alt="🖼️ Missing poster ☹️" class="header" onerror="this.style.display = 'none'">
 <h1>#{title}
 
 <div class="section">
@@ -8,21 +8,34 @@ $maybe imgPath <- mImagePath
     
     $if (length files > 1)
       <div class="row white">
-        <a href="#" class="large name" onclick="playAll(event)">
-          <i class="fa-solid fa-play">
-          <span>Play All
-        <a href="#" onclick="markAllAsWatched(event)" title="Mark all as watched">
-          <i class="fa-regular fa-eye">
-        <a href="#" onclick="markAllAsUnwatched(event)" title="Mark all as unwatched">
-          <i class="fa-regular fa-eye-slash">
+        $maybe action <- playAllAction
+          <a href="#" class="large name" onclick="sendActionE(event, '#{action}')">
+            <i class="fa-solid fa-play">
+            <span>Play All
+        $maybe action <- markAllWatchedAction
+          <a href="#" title="Mark all as watched"
+            onclick="sendActionE(event, '#{action}', true)"
+          >
+            <i class="fa-regular fa-eye">
+        $maybe action <- markAllUnwatchedAction
+          <a href="#" title="Mark all as unwatched"
+            onclick="sendActionE(event, '#{action}', true)"
+          >
+            <i class="fa-regular fa-eye-slash">
     $forall videoFile <- files
-      <div class="row #{watchedClassM $ videoFileWatched videoFile}" data-path="#{videoFileAbsPath videoFile}">
-        <a href="#" class="name" onclick="playPath(event)">
+      <div class="row #{watchedClassM $ videoFileWatched videoFile}">
+        <a href="#" class="name" 
+         onclick="sendActionE(event, '#{ActionPlayPath $ File $ videoFileAbsPath videoFile}', true)"
+        >
           <i class="fa-solid fa-play">
           <span>#{niceFileNameT $ videoFileName videoFile}
-        <a href="#" onclick="markAsWatched(event)" title="Mark as watched">
+        <a href="#" title="Mark as watched"
+          onclick="sendActionE(event, '#{ActionMarkAsWatched $ File $ videoFileAbsPath videoFile}', true)"
+        >
           <i class="fa-regular fa-eye">
-        <a href="#" onclick="markAsUnwatched(event)" title="Mark as unwatched">
+        <a href="#" title="Mark as unwatched"
+          onclick="sendActionE(event, '#{ActionMarkAsUnwatched $ File $ videoFileAbsPath videoFile}', true)"
+        >
           <i class="fa-regular fa-eye-slash">
 
 <div class="section">
@@ -41,6 +54,7 @@ $maybe imgPath <- mImagePath
         <span>#{aggDirPlayedVideoFileCount dir}/#{aggDirVideoFileCount dir}
 
 
+$# TODO: Renable this? Or are we keeping it only on the home page?
 $# $if showRefreshButton
 $#   <h2 class="refresh">
 $#     <a href="#" onclick="refreshLibrary(event)">

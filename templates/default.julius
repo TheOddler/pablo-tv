@@ -22,6 +22,14 @@ async function sendAction(action) {
   });
 }
 
+async function sendActionE(event, action, refreshPageAfter = false) {
+  event.preventDefault()
+  await sendAction(action, refreshPageAfter)
+  if (refreshPageAfter) {
+    document.location.reload()
+  }
+}
+
 (() => {
   /**
    * Code for making the tv listen for "open on tv" messages.

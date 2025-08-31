@@ -76,7 +76,7 @@ import Lens.Micro ((&), (.~))
 import Logging (LogLevel (..), logDuration, putLog, runLoggingT)
 import Network.Info (NetworkInterface (..), getNetworkInterfaces)
 import Network.Wai.Handler.Warp (run)
-import Path (Abs, Dir, File, Path, dirname, fromRelDir, fromRelFile, mkAbsDir, mkRelDir, (</>))
+import Path (Abs, Dir, File, Path, dirname, fromRelDir, fromRelFile, mkRelDir, (</>))
 import Path.IO (getHomeDir)
 import Playerctl (Action (..), onFilePlayStarted)
 import Samba (MountResult, SmbServer (..), SmbShare (..), mkMountPath, mount)
@@ -203,24 +203,30 @@ getDirectoryHomeR = do
   let dirs = naturalSortBy (fromRelDir . dirname . aggDirPath) dirs'
       files = naturalSortBy (fromRelFile . videoFileName) files'
 
-  let mImagePath = Nothing -- We share the widget with directory, but there's no image here
-  let absPath = $(mkAbsDir "/folder/that/definitely/does/not/exist/") -- Not sure how to properly share this yet, but home doesn't use this
+  -- We share the widget with directory, so we need these, but they are all hidden on the home dir
+  let imagePath = Nothing
+  let playAllAction = Nothing :: Maybe Actions.Action
+  let markAllWatchedAction = Nothing :: Maybe Actions.Action
+  let markAllUnwatchedAction = Nothing :: Maybe Actions.Action
   let title = "Videos"
   defaultLayout title $(widgetFile "directory")
 
 getDirectoryR :: Path Abs Dir -> Handler Html
-getDirectoryR absPath = do
+getDirectoryR dirPath = do
   (dirs' :: [AggDirInfo], files' :: [VideoFile], hasImage) <- logDuration "Get child dirs and files" $ runDB $ do
-    ds <- getAggSubDirsInfoQ absPath
-    fs <- selectList [VideoFileParent ==. DirectoryKey absPath] []
-    hasImage <- hasImageQ absPath
+    ds <- getAggSubDirsInfoQ dirPath
+    fs <- selectList [VideoFileParent ==. DirectoryKey dirPath] []
+    hasImage <- hasImageQ dirPath
     pure (ds, map entityVal fs, hasImage)
 
   let dirs = naturalSortBy (fromRelDir . dirname . aggDirPath) dirs'
       files = naturalSortBy (fromRelFile . videoFileName) files'
 
-  let mImagePath = if hasImage then Just absPath else Nothing
-  let title = toHtml $ niceDirNameT absPath
+  let imagePath = if hasImage then Just dirPath else Nothing
+  let playAllAction = Just $ ActionPlayPath $ Dir dirPath
+  let markAllWatchedAction = Just $ ActionMarkAsWatched $ Dir dirPath
+  let markAllUnwatchedAction = Just $ ActionMarkAsUnwatched $ Dir dirPath
+  let title = toHtml $ niceDirNameT dirPath
   defaultLayout title $(widgetFile "directory")
 
 getImageR :: Path Abs Dir -> Handler Html
