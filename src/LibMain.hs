@@ -76,7 +76,7 @@ import Lens.Micro ((&), (.~))
 import Logging (LogLevel (..), logDuration, putLog, runLoggingT)
 import Network.Info (NetworkInterface (..), getNetworkInterfaces)
 import Network.Wai.Handler.Warp (run)
-import Path (Abs, Dir, File, Path, dirname, fromRelDir, fromRelFile, mkRelDir, (</>))
+import Path (Abs, Dir, File, Path, dirname, fromRelDir, fromRelFile, mkAbsDir, mkRelDir, (</>))
 import Path.IO (getHomeDir)
 import Playerctl (Action (..), onFilePlayStarted)
 import Samba (MountResult, SmbServer (..), SmbShare (..), mkMountPath, mount)
@@ -167,6 +167,47 @@ postHomeR =
     Aeson.Success action -> do
       performAction action
 
+watchedClass :: Bool -> Html
+watchedClass watched = if watched then "watched" else "unwatched"
+
+watchedClassM :: Maybe UTCTime -> Html
+watchedClassM = watchedClass . isJust
+
+isWatchedDir :: AggDirInfo -> Bool
+isWatchedDir dirInfo = aggDirPlayedVideoFileCount dirInfo >= aggDirVideoFileCount dirInfo
+
+watchedClassDir :: AggDirInfo -> Html
+watchedClassDir dirInfo =
+  watchedClass $ isWatchedDir dirInfo
+
+videoFileAbsPath :: VideoFile -> Path Abs File
+videoFileAbsPath f =
+  let DirectoryKey parentPath = videoFileParent f
+   in parentPath </> videoFileName f
+
+getDirectoryHomeR :: Handler Html
+getDirectoryHomeR = do
+  (dirs' :: [AggDirInfo], files' :: [VideoFile]) <-
+    logDuration "Queried DB for home data" . runDB $ do
+      allRootDirs <- getAllRootDirectories
+      ds <- concat <$> forM allRootDirs getAggSubDirsInfoQ
+      fs <-
+        concat
+          <$> forM
+            allRootDirs
+            ( \rootDir ->
+                selectList [VideoFileParent ==. DirectoryKey rootDir] []
+            )
+      pure (ds, map entityVal fs)
+
+  let dirs = naturalSortBy (fromRelDir . dirname . aggDirPath) dirs'
+      files = naturalSortBy (fromRelFile . videoFileName) files'
+
+  let mImagePath = Nothing -- We share the widget with directory, but there's no image here
+  let absPath = $(mkAbsDir "/folder/that/definitely/does/not/exist/") -- Not sure how to properly share this yet, but home doesn't use this
+  let title = "Videos"
+  defaultLayout title $(widgetFile "directory")
+
 getDirectoryR :: Path Abs Dir -> Handler Html
 getDirectoryR absPath = do
   (dirs' :: [AggDirInfo], files' :: [VideoFile], hasImage) <- logDuration "Get child dirs and files" $ runDB $ do
@@ -178,19 +219,7 @@ getDirectoryR absPath = do
   let dirs = naturalSortBy (fromRelDir . dirname . aggDirPath) dirs'
       files = naturalSortBy (fromRelFile . videoFileName) files'
 
-  let watchedClass :: Bool -> Html
-      watchedClass watched = if watched then "watched" else "unwatched"
-      watchedClassM :: Maybe UTCTime -> Html
-      watchedClassM = watchedClass . isJust
-      isWatchedDir :: AggDirInfo -> Bool
-      isWatchedDir dirInfo = aggDirPlayedVideoFileCount dirInfo >= aggDirVideoFileCount dirInfo
-      watchedClassDir :: AggDirInfo -> Html
-      watchedClassDir dirInfo =
-        watchedClass $ isWatchedDir dirInfo
-
-  let videoFileAbsPath :: VideoFile -> Path Abs File
-      videoFileAbsPath f = absPath </> videoFileName f
-
+  let mImagePath = if hasImage then Just absPath else Nothing
   let title = toHtml $ niceDirNameT absPath
   defaultLayout title $(widgetFile "directory")
 

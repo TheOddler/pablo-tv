@@ -1,5 +1,5 @@
-$if hasImage
-  <img src=@{ImageR absPath} alt="🖼️ Missing poster ☹️" class="header" onerror="this.style.display = 'none'">
+$maybe imgPath <- mImagePath
+  <img src=@{ImageR imgPath} alt="🖼️ Missing poster ☹️" class="header" onerror="this.style.display = 'none'">
 <h1>#{title}
 
 <div class="section">

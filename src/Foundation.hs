@@ -48,6 +48,7 @@ mkYesodData
 /ips AllIPsR GET
 /input InputR GET
 /remote RemoteR GET
+/dir DirectoryHomeR GET
 /dir/#PathAbsDir DirectoryR GET
 
 -- Other
