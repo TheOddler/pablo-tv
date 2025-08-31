@@ -52,6 +52,7 @@ library
         Playerctl
         SafeMaths
         SaferIO
+        Samba
         TVDB
         TVState
         Util

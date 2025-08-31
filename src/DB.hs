@@ -15,12 +15,18 @@ import Database.Persist.Sql.Raw.QQ (sqlQQ)
 import Database.Persist.Sqlite (ConnectionPool, Single (..), SqlBackend, runSqlPool)
 import Orphanage ()
 import Path (Abs, Dir, File, Path, Rel)
+import Samba (SmbServer, SmbShare)
 import Util (unSingle5, uncurry5)
 import Yesod
 
 share
   [mkPersist sqlSettings, mkMigrate "migrateAll"]
   [persistLowerCase|
+SambaShare
+  smbServer SmbServer
+  smbShare SmbShare
+  Primary smbServer smbShare
+  
 Directory
   path (Path Abs Dir)
   -- Image and ImageName should be kept in sync, either both Nothing or Both Just. But we save them separately because if we save them as a tuple together the image bytes get turned into a varchar
@@ -38,6 +44,26 @@ VideoFile
 
 runDBPool :: (MonadUnliftIO m) => ConnectionPool -> ReaderT SqlBackend m a -> m a
 runDBPool connPool action = runSqlPool action connPool
+
+-- | This returns ll directories that are not the child of any other directory in the DB.
+-- Is this a good way? Or should I road the samba shares in the DB?
+-- Though there might be other local folders, so maybe not.
+-- Not sure what is the best source of truth.
+getAllRootDirectories ::
+  (MonadUnliftIO m) =>
+  ReaderT SqlBackend m [Path Abs Dir]
+getAllRootDirectories =
+  map unSingle
+    <$> [sqlQQ|
+      SELECT d.@{DirectoryPath} -- This is unique as the path is the primary key
+      FROM ^{Directory} d
+      WHERE NOT EXISTS (
+        SELECT 1
+        FROM ^{Directory} other
+        WHERE d.@{DirectoryPath} <> other.@{DirectoryPath}
+        AND d.@{DirectoryPath} GLOB other.@{DirectoryPath} || '*'
+      )
+    |]
 
 data AggDirInfo = AggDirInfo
   { aggDirPath :: Path Abs Dir,

@@ -1,5 +1,4 @@
 {-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE TemplateHaskell #-}
 
 module Directory where
 
@@ -23,19 +22,11 @@ import GHC.IO.Exception (IOErrorType (..), IOException (..))
 import GHC.Utils.Exception (displayException, tryIO)
 import Logging (LogLevel (..), logDuration, putLog)
 import Path
-import SaferIO (FSRead (..))
 import System.Directory (listDirectory)
 import System.FilePath (dropTrailingPathSeparator, takeExtension, takeFileName)
 import Text.Read (readMaybe)
 import Text.Regex.TDFA ((=~))
 import Util (safeMinimumOn, withDuration)
-
-getVideoDirPath :: (FSRead m) => m (Path Abs Dir)
-getVideoDirPath = do
-  -- home <- getHomeDir
-  -- let videoDirName = $(mkRelDir "Videos")
-  -- pure $ home </> videoDirName
-  pure $ $(mkAbsDir "/run/user/1000/gvfs/smb-share:server=192.168.0.99,share=videos")
 
 -- | Reading the file info of a path is rather slow, so we want to minimise the ones we read it for.
 -- So instead of reading it for every path, we first do a guess what the path is, and read it for dirs only.

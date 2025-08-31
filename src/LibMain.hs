@@ -19,13 +19,16 @@ import Actions
     performAction,
     performActionIO,
   )
-import Control.Monad (forever, when)
+import Control.Monad (forM, forM_, forever, when)
+import Control.Monad.Extra (mapMaybeM)
 import DB
   ( AggDirInfo (..),
     EntityField (..),
     Key (..),
+    SambaShare (..),
     VideoFile (..),
     getAggSubDirsInfoQ,
+    getAllRootDirectories,
     getNearestImageQ,
     hasImageQ,
     migrateAll,
@@ -34,21 +37,22 @@ import DB
 import Data.Aeson qualified as Aeson
 import Data.ByteString.Char8 qualified as BS
 import Data.Char (isSpace)
+import Data.List (intercalate)
 import Data.List.Extra (notNull)
 import Data.Maybe (isJust, isNothing)
 import Data.Ord (Down (..))
-import Data.Text (Text, intercalate, unpack)
+import Data.Text (Text, unpack)
 import Data.Text qualified as Text
 import Data.Time (UTCTime)
 import Database.Persist.Sqlite
-  ( extraPragmas,
+  ( ConnectionPool,
+    extraPragmas,
     mkSqliteConnectionInfo,
     runMigration,
     withSqlitePoolInfo,
   )
 import Directory
-  ( getVideoDirPath,
-    naturalSortBy,
+  ( naturalSortBy,
     niceDirNameT,
     niceFileNameT,
     updateData,
@@ -72,17 +76,10 @@ import Lens.Micro ((&), (.~))
 import Logging (LogLevel (..), logDuration, putLog, runLoggingT)
 import Network.Info (NetworkInterface (..), getNetworkInterfaces)
 import Network.Wai.Handler.Warp (run)
-import Path
-  ( Abs,
-    Dir,
-    File,
-    Path,
-    dirname,
-    fromRelDir,
-    fromRelFile,
-    (</>),
-  )
+import Path (Abs, Dir, File, Path, dirname, fromRelDir, fromRelFile, mkRelDir, (</>))
+import Path.IO (getHomeDir)
 import Playerctl (Action (..), onFilePlayStarted)
+import Samba (MountResult, SmbServer (..), SmbShare (..), mkMountPath, mount)
 import System.Environment (lookupEnv)
 import System.Process (callProcess)
 import System.Random (initStdGen, mkStdGen)
@@ -115,10 +112,10 @@ getHomeR = do
   tvStateTVar <- getsYesod appTVState
   webSockets $ race_ actionsWebSocket (tvStateWebSocket tvStateTVar)
 
-  homeDir <- liftIO getVideoDirPath -- For now we just use the hardcoded path as home, but the plan is to support multiple root folders
   homeData <-
-    logDuration "Queried DB for home data" . runDB $
-      getAggSubDirsInfoQ homeDir
+    logDuration "Queried DB for home data" . runDB $ do
+      allRootDirs <- getAllRootDirectories
+      concat <$> forM allRootDirs getAggSubDirsInfoQ
 
   let mkRandom =
         -- When in dev we auto-reload the page every second or so,
@@ -224,6 +221,18 @@ getAllIPsR = do
         then ""
         else show a
 
+mountAllSambaShares :: ConnectionPool -> IO ()
+mountAllSambaShares connPool = do
+  sambaShares <- runDBPool connPool $ selectList [] []
+  let doMount (SambaShare svr shr) = mount svr shr
+  results <- forM sambaShares $ doMount . entityVal
+  let showResult :: (SambaShare, MountResult) -> String
+      showResult (SambaShare (SmbServer srv) (SmbShare shr), result) =
+        srv ++ "/" ++ shr ++ ": " ++ show result
+  putLog Info $
+    "Mounted sambas:\n\t"
+      ++ intercalate "\t\n" (showResult <$> zip (entityVal <$> sambaShares) results)
+
 main :: IO ()
 main = do
   -- To get this token for now you can use your apiKey here https://thetvdb.github.io/v4-api/#/Login/post_login
@@ -241,7 +250,7 @@ main = do
 
   let port = 8080
   let (homePath, _params) = renderRoute HomeR
-  let url = "http://localhost:" ++ show port ++ "/" ++ unpack (intercalate "/" homePath)
+  let url = "http://localhost:" ++ show port ++ "/" ++ unpack (Text.intercalate "/" homePath)
   putLog Info $ "Running on port " ++ show port ++ " - " ++ url
   putLog Info $ "Development mode: " ++ show isDevelopment
 
@@ -261,7 +270,30 @@ main = do
       -- Migrate DB
       logDuration "Migration" $ runDBPool connPool $ runMigration migrateAll
 
+      -- Add a testing samba share if it isn't there yet
+      _ <-
+        runDBPool connPool . insertUnique_ $
+          SambaShare
+            (SmbServer "192.168.0.99")
+            (SmbShare "Videos")
+      -- Open samba shares. TODO: Make some way of checking and re-mounting the broken ones at runtime
+      mountAllSambaShares connPool
+
       -- Start the rest of the server
+
+      let dataThread = forever $ do
+            -- Take the refresh trigger, this waits until it's triggered
+            takeMVar videoDataRefreshTrigger
+            -- Update data, eventually I want to do this on a separate thread
+            sambaShares <- runDBPool connPool $ selectList [] []
+            let getMountPath (SambaShare svr shr) = mkMountPath svr shr
+            sambaPaths <- mapMaybeM (getMountPath . entityVal) sambaShares
+            -- Add local videos folder to the paths
+            homeDir <- getHomeDir
+            let paths = (homeDir </> $(mkRelDir "Videos")) : sambaPaths
+            forM_ paths $ updateData connPool
+
+      -- The thread for the app
       let app =
             App
               { appPort = port,
@@ -272,15 +304,6 @@ main = do
                 appGetStatic = embeddedStatic,
                 appVideoDataRefreshTrigger = videoDataRefreshTrigger
               }
-
-      let dataThread = forever $ do
-            -- Take the refresh trigger, this waits until it's triggered
-            takeMVar $ appVideoDataRefreshTrigger app
-            -- Update data, eventually I want to do this on a separate thread
-            videoDirPath <- getVideoDirPath
-            updateData connPool videoDirPath
-
-      -- The thread for the app
       let appThread = toWaiAppPlain app >>= run port . defaultMiddlewaresNoLogging
 
       -- The thread that'll be listening for files being played, and marking them as watched
