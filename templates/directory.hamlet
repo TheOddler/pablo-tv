@@ -25,7 +25,7 @@ $maybe imagePath <- imagePath
     $forall videoFile <- files
       <div class="row #{watchedClassM $ videoFileWatched videoFile}">
         <a href="#" class="name" 
-         onclick="sendActionE(event, '#{ActionPlayPath $ File $ videoFileAbsPath videoFile}', true)"
+         onclick="sendActionE(event, '#{ActionPlayPath $ File $ videoFileAbsPath videoFile}')"
         >
           <i class="fa-solid fa-play">
           <span>#{niceFileNameT $ videoFileName videoFile}
