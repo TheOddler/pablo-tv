@@ -83,7 +83,7 @@ getAggSubDirsInfoQ root = do
     [sqlQQ|
       SELECT
         d.@{DirectoryPath},
-        max(v.@{VideoFileAdded}),
+        COALESCE(max(v.@{VideoFileAdded}), #{epoch}), -- Added can be `NULL` if there are no video files
         COALESCE(max(v.@{VideoFileWatched}), #{epoch}),
         count(*),
         SUM(IIF(v.@{VideoFileWatched} IS NOT NULL, 1, 0))
