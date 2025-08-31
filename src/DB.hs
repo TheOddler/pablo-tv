@@ -85,7 +85,7 @@ getAggSubDirsInfoQ root = do
         d.@{DirectoryPath},
         COALESCE(max(v.@{VideoFileAdded}), #{epoch}), -- Added can be `NULL` if there are no video files
         COALESCE(max(v.@{VideoFileWatched}), #{epoch}),
-        count(*),
+        count(v.@{VideoFileName}),
         SUM(IIF(v.@{VideoFileWatched} IS NOT NULL, 1, 0))
       FROM ^{Directory} d
       LEFT JOIN ^{VideoFile} v
