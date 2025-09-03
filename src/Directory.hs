@@ -159,17 +159,8 @@ discoveryHandlerThread dbConnPool discoveryQueue = forever $ do
     let mBestImg = bestImageFile discoveredImageFiles
     -- Try and do as much in a single transaction, but we might need some followup work that reads from disk and then does a second transaction
     (followupAction :: IO ()) <- runDBPool dbConnPool $ do
-      -- Add dir, and if it already exists leave the image as is (we might update that later in the followup action)
-      existingDir <-
-        upsert
-          (Directory discoveredDir Nothing Nothing)
-          $ case mBestImg of
-            Nothing ->
-              -- When there is no image in the directory, we remove whatever is in the DB as the image is gone
-              [DirectoryImageName =. Nothing, DirectoryImage =. Nothing]
-            Just _ ->
-              -- We'll set the image in the followup as it requires slow IO
-              []
+      -- Add dir, and if it already exists don't do anything.
+      existingDir <- upsert (Directory discoveredDir Nothing Nothing) []
 
       -- Insert/update video files
       forM_ discoveredVideoFiles $ \filePath ->
@@ -206,7 +197,7 @@ discoveryHandlerThread dbConnPool discoveryQueue = forever $ do
                     DirectoryImage =. Just imageData
                   ]
             (Nothing, _) ->
-              -- If there were no images, we already removed it from the DB, so nothing to do in the followup
+              -- If there were no images, nothing more to do. Just leave whatever is already in the DB, as there might be an image I put there manually or through some other means.
               pure ()
       pure followup
 
