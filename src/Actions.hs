@@ -7,6 +7,7 @@ module Actions where
 import Autodocodec (Autodocodec (..), Discriminator, HasCodec (..), HasObjectCodec (..), ObjectCodec, bimapCodec, discriminatedUnionCodec, eitherDecodeJSONViaCodec, encodeJSONViaCodec, mapToDecoder, mapToEncoder, object, pureCodec, requiredField', (.=))
 import Autodocodec.Aeson (toJSONViaCodec)
 import Control.Concurrent.STM (isEmptyTQueue, writeTQueue)
+import Control.Exception (Exception (..))
 import Control.Monad (forM_, forever, when)
 import Control.Monad.Extra (mapMaybeM)
 import DB (SambaShare (..), runDBPool)
@@ -28,6 +29,7 @@ import Evdev.Uinput
 import Foundation (App (..), Handler)
 import GHC.Conc (atomically, readTVar, writeTVar)
 import Logging (LogLevel (..), putLog)
+import Network.WebSockets qualified as WS
 import Path (Abs, Dir, File, Path, filename, fromAbsDir, fromAbsFile, mkRelDir, parent, parseAbsDir, parseAbsFile, (</>))
 import Path.IO (getHomeDir)
 import Playerctl qualified
@@ -37,6 +39,7 @@ import System.Process (callProcess, readProcess)
 import TVState (TVState (..))
 import Text.Blaze qualified as Blaze
 import Text.Julius (ToJavascript (..))
+import UnliftIO.Exception (catch)
 import Util (boundedEnumCodec)
 import Yesod (FromJSON, getYesod, lift, liftIO, (=.))
 import Yesod.WebSockets (WebSocketsT, receiveData)
@@ -213,11 +216,23 @@ keyboardButtonToEvdevKey = \case
   KeyboardVolumeDown -> KeyVolumedown
 
 actionsWebSocket :: WebSocketsT Handler ()
-actionsWebSocket = forever $ do
-  d <- receiveData
-  case eitherDecodeJSONViaCodec d of
-    Left err -> liftIO $ putLog Error $ "Error decoding action: " <> err
-    Right action -> lift $ performAction action
+actionsWebSocket =
+  loop `catch` errorHandler
+  where
+    loop =
+      forever $ do
+        d <- receiveData
+        case eitherDecodeJSONViaCodec d of
+          Left err -> liftIO $ putLog Error $ "Error decoding action: " <> err
+          Right action -> lift $ performAction action
+
+    errorHandler = \case
+      WS.CloseRequest code reason -> do
+        liftIO $ putLog Info $ "Received Websocket Close Request, code: " ++ show code ++ ", reason: " ++ show reason
+      WS.ConnectionClosed -> do
+        liftIO $ putLog Info "Websocket closed"
+      err -> do
+        liftIO $ putLog Error $ "Got some websocket error: " ++ displayException err
 
 performAction :: Action -> Handler ()
 performAction action = do

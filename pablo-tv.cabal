@@ -96,9 +96,11 @@ library
       , time
       , transformers
       , unix
+      , unliftio
       , unordered-containers
       , utf8-string
       , warp
+      , websockets
       , yesod
       , yesod-static
       , yesod-websockets
