@@ -1,13 +1,15 @@
 {-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 module Actions where
 
 import Autodocodec (Autodocodec (..), Discriminator, HasCodec (..), HasObjectCodec (..), ObjectCodec, bimapCodec, discriminatedUnionCodec, eitherDecodeJSONViaCodec, encodeJSONViaCodec, mapToDecoder, mapToEncoder, object, pureCodec, requiredField', (.=))
 import Autodocodec.Aeson (toJSONViaCodec)
-import Control.Concurrent (tryPutMVar)
-import Control.Monad (forever, when)
-import DB (runDBPool)
+import Control.Concurrent.STM (isEmptyTQueue, writeTQueue)
+import Control.Monad (forM_, forever, when)
+import Control.Monad.Extra (mapMaybeM)
+import DB (SambaShare (..), runDBPool)
 import DB qualified
 import Data.Char (isSpace)
 import Data.HashMap.Strict qualified as HashMap
@@ -19,15 +21,18 @@ import Data.Text.Lazy.Encoding qualified as T
 import Data.Time (getCurrentTime)
 import Data.Void (Void)
 import Database.Persist.Sql.Raw.QQ (executeQQ)
-import Database.Persist.Sqlite (PersistStoreWrite (..))
+import Database.Persist.Sqlite (Entity (entityVal), PersistStoreWrite (..), selectList)
+import Directory (DirToExplore (..))
 import Evdev.Codes
 import Evdev.Uinput
 import Foundation (App (..), Handler)
 import GHC.Conc (atomically, readTVar, writeTVar)
 import Logging (LogLevel (..), putLog)
-import Path (Abs, Dir, File, Path, filename, fromAbsDir, fromAbsFile, parent, parseAbsDir, parseAbsFile)
+import Path (Abs, Dir, File, Path, filename, fromAbsDir, fromAbsFile, mkRelDir, parent, parseAbsDir, parseAbsFile, (</>))
+import Path.IO (getHomeDir)
 import Playerctl qualified
 import SafeMaths (int32ToInteger)
+import Samba (mkMountPath)
 import System.Process (callProcess, readProcess)
 import TVState (TVState (..))
 import Text.Blaze qualified as Blaze
@@ -294,8 +299,19 @@ performActionIO app action = do
         tvState <- readTVar tvStateTVar
         writeTVar tvStateTVar $ tvState {tvPage = url}
     ActionRefreshTVState -> liftIO $ do
-      success <- tryPutMVar (appVideoDataRefreshTrigger app) ()
-      when (not success) $
+      -- To prevent spamming this, we only start a new full refresh when the queue is empty
+      sambaShares <- runDBPool app.appSqlPool $ selectList [] []
+      let getMountPath (SambaShare svr shr) = mkMountPath svr shr
+      sambaPaths <- mapMaybeM (getMountPath . entityVal) sambaShares
+      homeDir <- getHomeDir
+      let localVideosPath = homeDir </> $(mkRelDir "Videos")
+      let allPaths = localVideosPath : sambaPaths
+      startedRefresh <- atomically $ do
+        isEmpty <- isEmptyTQueue $ appDirExplorationQueue app
+        when isEmpty . forM_ allPaths $
+          writeTQueue (appDirExplorationQueue app) . DirToExplore
+        pure isEmpty
+      when (not startedRefresh) $
         putLog Warning "Already refreshing"
     ActionMedia playerCtlAction ->
       liftIO $ Playerctl.performAction playerCtlAction

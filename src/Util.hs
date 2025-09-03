@@ -6,7 +6,7 @@ import Control.Monad (when)
 import Data.Binary.Builder (toLazyByteString)
 import Data.ByteString.Lazy qualified as LBS
 import Data.Default (def)
-import Data.List (isPrefixOf)
+import Data.List (foldl', isPrefixOf)
 import Data.List.Extra (lower)
 import Data.List.NonEmpty qualified as NE
 import Data.List.NonEmpty.Extra qualified as NE
@@ -26,6 +26,7 @@ import System.Random (RandomGen)
 import System.Random.Shuffle (shuffle')
 import Yesod
 import Yesod.Default.Util (widgetFileNoReload, widgetFileReload)
+import Yesod.WebSockets (race_)
 
 -- | Load a widget file, automatically reloading it in development.
 widgetFile :: String -> Q Exp
@@ -50,6 +51,11 @@ onChanges tVar f = do
         pure newVal
       f prevVal newVal
       loop newVal
+
+raceAll :: [IO ()] -> IO ()
+raceAll [] = pure ()
+raceAll [a] = a
+raceAll (a : rest) = foldl' race_ a rest
 
 -- | Return how likely this is the network interface people will want to connect to with their phones.
 -- Mean to be used with `sortWith` so returning Down as sortWith sorts lowest first.

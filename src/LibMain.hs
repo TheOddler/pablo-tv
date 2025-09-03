@@ -19,8 +19,8 @@ import Actions
     performAction,
     performActionIO,
   )
-import Control.Monad (forM, forM_, forever, when)
-import Control.Monad.Extra (mapMaybeM)
+import Control.Concurrent.STM (newTQueueIO)
+import Control.Monad (forM, when)
 import DB
   ( AggDirInfo (..),
     EntityField (..),
@@ -52,10 +52,10 @@ import Database.Persist.Sqlite
     withSqlitePoolInfo,
   )
 import Directory
-  ( naturalSortBy,
+  ( dirUpdatorThreads,
+    naturalSortBy,
     niceDirNameT,
     niceFileNameT,
-    updateData,
   )
 import Foundation
   ( App (..),
@@ -69,17 +69,15 @@ import Foundation
     static_images_youtube_png,
   )
 import GHC.Conc (newTVarIO)
-import GHC.MVar (newEmptyMVar, takeMVar)
 import GHC.Utils.Misc (sortWith)
 import IsDevelopment (isDevelopment)
 import Lens.Micro ((&), (.~))
 import Logging (LogLevel (..), logDuration, putLog, runLoggingT)
 import Network.Info (NetworkInterface (..), getNetworkInterfaces)
 import Network.Wai.Handler.Warp (run)
-import Path (Abs, Dir, File, Path, dirname, fromRelDir, fromRelFile, mkRelDir, (</>))
-import Path.IO (getHomeDir)
+import Path (Abs, Dir, File, Path, dirname, fromRelDir, fromRelFile, (</>))
 import Playerctl (Action (..), onFilePlayStarted)
-import Samba (MountResult, SmbServer (..), SmbShare (..), mkMountPath, mount)
+import Samba (MountResult, SmbServer (..), SmbShare (..), mount)
 import System.Environment (lookupEnv)
 import System.Process (callProcess)
 import System.Random (initStdGen, mkStdGen)
@@ -88,11 +86,12 @@ import TVState (startingTVState, tvStateWebSocket)
 import Util
   ( getImageContentType,
     networkInterfaceWorthiness,
+    raceAll,
     shuffle,
     widgetFile,
   )
 import Yesod hiding (defaultLayout, replace)
-import Yesod.WebSockets (concurrently_, race_, webSockets)
+import Yesod.WebSockets (race_, webSockets)
 
 mkYesodDispatch "App" resourcesApp
 
@@ -281,7 +280,8 @@ main = do
 
   inputDevice <- mkInputDevice
   tvState <- newTVarIO startingTVState
-  videoDataRefreshTrigger <- newEmptyMVar
+  dirExplorationQueue <- newTQueueIO
+  dirDiscoveryQueue <- newTQueueIO
 
   let port = 8080
   let (homePath, _params) = renderRoute HomeR
@@ -310,23 +310,10 @@ main = do
         runDBPool connPool . insertUnique_ $
           SambaShare
             (SmbServer "192.168.0.99")
-            (SmbShare "Videos")
+            (SmbShare "videos")
+
       -- Open samba shares. TODO: Make some way of checking and re-mounting the broken ones at runtime
       mountAllSambaShares connPool
-
-      -- Start the rest of the server
-
-      let dataThread = forever $ do
-            -- Take the refresh trigger, this waits until it's triggered
-            takeMVar videoDataRefreshTrigger
-            -- Update data, eventually I want to do this on a separate thread
-            sambaShares <- runDBPool connPool $ selectList [] []
-            let getMountPath (SambaShare svr shr) = mkMountPath svr shr
-            sambaPaths <- mapMaybeM (getMountPath . entityVal) sambaShares
-            -- Add local videos folder to the paths
-            homeDir <- getHomeDir
-            let paths = (homeDir </> $(mkRelDir "Videos")) : sambaPaths
-            forM_ paths $ updateData connPool
 
       -- The thread for the app
       let app =
@@ -337,7 +324,7 @@ main = do
                 appTVState = tvState,
                 appSqlPool = connPool,
                 appGetStatic = embeddedStatic,
-                appVideoDataRefreshTrigger = videoDataRefreshTrigger
+                appDirExplorationQueue = dirExplorationQueue
               }
       let appThread = toWaiAppPlain app >>= run port . defaultMiddlewaresNoLogging
 
@@ -350,7 +337,10 @@ main = do
                 performActionIO app $ ActionMarkAsWatched $ File path
 
       putLog Info "Starting server..."
-      concurrently_ dataThread $
-        race_ appThread watchedThread
+      raceAll
+        [ appThread,
+          watchedThread,
+          dirUpdatorThreads connPool dirExplorationQueue dirDiscoveryQueue
+        ]
 
   putLog Debug "Server quit."

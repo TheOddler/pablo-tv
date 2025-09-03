@@ -8,12 +8,13 @@
 
 module Foundation where
 
-import Control.Concurrent (MVar)
+import Control.Concurrent.STM (TQueue)
 import Control.Monad (when)
 import DB (runDBPool)
 import Data.ByteString.Char8 qualified as BS
 import Data.Maybe (isNothing, listToMaybe)
 import Database.Persist.Sqlite (ConnectionPool, SqlBackend)
+import Directory (DirToExplore)
 import Evdev.Uinput (Device)
 import GHC.Conc (TVar)
 import GHC.Utils.Misc (sortWith)
@@ -36,7 +37,7 @@ data App = App
     appGetStatic :: EmbeddedStatic,
     appTVState :: TVar TVState,
     appSqlPool :: ConnectionPool,
-    appVideoDataRefreshTrigger :: MVar ()
+    appDirExplorationQueue :: TQueue DirToExplore
   }
 
 type PathAbsDir = Path Abs Dir
@@ -83,7 +84,7 @@ instance Yesod App where
     -- value passed to hamletToRepHtml cannot be a widget, this allows
     -- you to use normal widget features in default-layout.
     pc <- widgetToPageContent $ do
-      when isDevelopment $ addScriptRemote "https://pabloproductions.be/LiveJS/live.js"
+      -- when isDevelopment $ addScriptRemote "https://pabloproductions.be/LiveJS/live.js"
 
       when (isDevelopment && not isTv) $ do
         addScriptRemote "//cdn.jsdelivr.net/npm/eruda" -- Console for mobile

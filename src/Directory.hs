@@ -4,7 +4,9 @@ module Directory where
 
 import Algorithms.NaturalSort qualified as Natural
 import Control.Applicative ((<|>))
-import Control.Monad (forM_, void)
+import Control.Concurrent.STM (atomically, readTQueue, writeTQueue)
+import Control.Concurrent.STM.TQueue (TQueue)
+import Control.Monad (forM_, forever, void)
 import DB
 import Data.ByteString qualified as BS
 import Data.HashSet qualified as Set
@@ -14,19 +16,20 @@ import Data.List.NonEmpty qualified as NE
 import Data.Maybe (isJust, listToMaybe, mapMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
-import Data.Time (NominalDiffTime, getCurrentTime)
+import Data.Time (getCurrentTime)
 import Database.Persist.Sqlite (ConnectionPool, Entity (..), PersistStoreWrite (..), PersistUniqueWrite (..), upsert, (=.))
 import GHC.Data.Maybe (firstJusts, orElse)
 import GHC.Exts (sortWith)
 import GHC.IO.Exception (IOErrorType (..), IOException (..))
 import GHC.Utils.Exception (displayException, tryIO)
-import Logging (LogLevel (..), logDuration, putLog)
+import Logging (LogLevel (..), putLog)
 import Path
 import System.Directory (listDirectory)
-import System.FilePath (dropTrailingPathSeparator, takeExtension, takeFileName)
+import System.FilePath (dropTrailingPathSeparator, takeExtension)
 import Text.Read (readMaybe)
 import Text.Regex.TDFA ((=~))
 import Util (safeMinimumOn, withDuration)
+import Yesod.WebSockets (race_)
 
 -- | Reading the file info of a path is rather slow, so we want to minimise the ones we read it for.
 -- So instead of reading it for every path, we first do a guess what the path is, and read it for dirs only.
@@ -67,190 +70,184 @@ partitionPathTypes =
     )
     ([], [], [], [])
 
-data StepInfo = StepInfo
-  { stepDir :: Path Abs Dir,
-    stepDuration :: NominalDiffTime,
-    stepVideoFiles :: [Path Abs File],
-    stepImageFiles :: [Path Abs File]
-  }
-
-walkDir ::
-  Path Abs Dir ->
-  (StepInfo -> IO ()) ->
-  IO ([Path Abs Dir], [Path Abs File], [Path Abs File], [FilePath])
-walkDir rootDir onStep = do
-  fst <$> step [rootDir] ([], [], [], [])
-  where
-    listDir' :: Path Abs Dir -> IO ([Path Abs Dir], [Path Abs File], [Path Abs File], [FilePath])
-    listDir' dir = do
-      let absDirPath = fromAbsDir dir
-      tryIO (withDuration $ listDirectory absDirPath) >>= \case
-        Left err -> do
-          case ioe_type err of
-            InappropriateType ->
-              -- This dir is actually a file. It didn't have the right extension, as we guessed wrong, so return it as an ignored path.
-              -- TODO Should I do something more with this information?
-              putLog Warning $ "Guessed directory but turns out to be a file: " ++ show dir
-            _ ->
-              putLog Error $ "Error while trying to list directory: " ++ displayException err
-          pure ([], [], [], [fromAbsDir dir])
-        Right (relPaths, duration) -> do
-          let pathGuesses = map (guessPathType dir) relPaths
-          let dirInfo = partitionPathTypes pathGuesses
-          let (_dirs, videoFiles, imageFiles, _ignoredPaths) = dirInfo
-          onStep
-            StepInfo
-              { stepDir = dir,
-                stepDuration = duration,
-                stepVideoFiles = videoFiles,
-                stepImageFiles = imageFiles
-              }
-          pure dirInfo
-
-    step ::
-      [Path Abs Dir] ->
-      ([Path Abs Dir], [Path Abs File], [Path Abs File], [FilePath]) ->
-      IO (([Path Abs Dir], [Path Abs File], [Path Abs File], [FilePath]), [Path Abs Dir])
-    step [] agg = pure (agg, [])
-    step (dirTodo : nextDirs) agg = do
-      dirInfo@(subDirs, _, _, _) <- listDir' dirTodo
-      -- let newDirsToCheck = nextDirs <> subDirs -- Depth-first walk
-      let newDirsToCheck = nextDirs <> subDirs -- Breadth-first walk
-      let newAgg = agg <> dirInfo
-      step newDirsToCheck newAgg
-
 bestImageFile :: [Path Abs File] -> Maybe (Path Abs File)
 bestImageFile = safeMinimumOn $ \path ->
   case lower . fromRelFile . fst <$> splitExtension (filename path) of
     Just "poster" -> 0 :: Int
     _ -> 100
 
--- | Here we don't use the typed listDir as it's slow.
--- My hunch is that it actually does IO to check if something is a file or not, which is slow.
--- Instead, I use the untyped FilePath API here, and then make guesses on what is a file or dir.
-updateData ::
-  ConnectionPool ->
-  Path Abs Dir ->
+data DirDiscovery = DirDiscovery
+  { discoveredDir :: Path Abs Dir,
+    discoveredVideoFiles :: [Path Abs File],
+    discoveredImageFiles :: [Path Abs File]
+  }
+
+newtype DirToExplore = DirToExplore {unDirToExplore :: Path Abs Dir}
+
+-- | This explores forever, so run async.
+explorerThread ::
+  -- Unbounded queue because this function reads one and then possible pushes multiple.
+  -- I'm planning on only having a single thread do this, as the bottleneck is reading disk.
+  -- We use a TQueue because I want to be able to send new stuff to discover from other threads too.
+  -- Note: Since we're using a TQueue this means we'll be doing a breadth first search. I think that's good, but is not like a hard requirement.
+  TQueue DirToExplore ->
+  -- Here I'm not sure yet what is best, maybe a bounded queue is better, or maybe a TChan so potentially multiple threads can do stuff on discovery? Idk, we'll see what I need.
+  TQueue DirDiscovery ->
   IO ()
-updateData dbConnPool root = logDuration "Updated data" $ do
-  now <- getCurrentTime
+explorerThread explorationQueue discoveryQueue = forever $ do
+  DirToExplore nextDirToExplore <- atomically $ readTQueue explorationQueue
+  -- Here we use `listDirectory` of the FilePath API, **NOT** `listDir` of the Path API. This is because `listDir` does a lot more IO to figure out what
+  let dirPath = fromAbsDir nextDirToExplore
+  withDuration (tryIO $ listDirectory dirPath) >>= \case
+    (Right relPaths, duration) -> do
+      let pathGuesses = map (guessPathType nextDirToExplore) relPaths
+      let (subDirs, videoFiles, imageFiles, ignoredPaths) = partitionPathTypes pathGuesses
+      -- TODO: Remember the ignored paths somewhere. Maybe keep a set of ignored paths somewhere and then show them in the interface? Could be helpful while debugging. For now just include some info about them in the log.
+      putLog Info $
+        concat
+          [ "Explored directory ",
+            dirPath,
+            " (",
+            show duration,
+            "). Ignored files with these extensions: ",
+            let nonIgnored = filter (not . isHiddenPath) ignoredPaths
+             in showUnique (map takeExtension nonIgnored)
+          ]
+      atomically $ do
+        forM_ subDirs $ writeTQueue explorationQueue . DirToExplore
+        writeTQueue discoveryQueue $
+          DirDiscovery
+            { discoveredDir = nextDirToExplore,
+              discoveredVideoFiles = videoFiles,
+              discoveredImageFiles = imageFiles
+            }
+    (Left err, duration) -> do
+      case ioe_type err of
+        InappropriateType ->
+          -- This dir is actually a file.
+          -- It's likely a wrong guess from a previous loop, so we can ignore it.
+          -- Other option is that some other thread added it, and in both cases we probably want to know, so log.
+          putLog Warning $
+            concat
+              [ "Tried exploring a directory that turned out to be a file ",
+                dirPath,
+                " (",
+                show duration,
+                ")"
+              ]
+        _ ->
+          putLog Error $
+            concat
+              [ "Error while trying to explore a directory",
+                dirPath,
+                " (",
+                show duration,
+                "): ",
+                displayException err
+              ]
 
+discoveryHandlerThread :: ConnectionPool -> TQueue DirDiscovery -> IO ()
+discoveryHandlerThread dbConnPool discoveryQueue = forever $ do
   -- We're likely to be using a network share for the data, so walking this dir is slow.
-  -- That means, we have plenty of time on each step to write to the locally stored DB.
+  -- That means, discoveries comes slow, and we have plenty of time on each discovery to write to the locally stored DB.
   -- It also means that the locally stored DB might be partially updated during a full update of the data. But that's fine, we're not doing brain surgery here, it's fine to have imperfect data at times, we just want it quickly.
-  (allDirs, allVideoFiles, allImageFiles, ignoredPaths) <- walkDir root $ \StepInfo {..} -> do
-    ((), dbUpdateDur) <- withDuration $ do
-      -- Find best image
-      let mBestImg = bestImageFile stepImageFiles
-      -- Try and do as much in a single transaction, but we might need some followup work that reads from disk and then does a second transaction
-      (followupAction :: IO ()) <- runDBPool dbConnPool $ do
-        -- Add dir, and if it already exists leave the image as is (we might update that later in the followup action)
-        existingDir <-
-          upsert
-            (Directory stepDir Nothing Nothing)
-            $ (DirectoryPath =. stepDir)
-              : case mBestImg of
-                Nothing ->
-                  -- When there is no image in the directory, we remove whatever is in the DB as the image is gone
-                  [ DirectoryImageName =. Nothing,
-                    DirectoryImage =. Nothing
+  DirDiscovery {..} <- atomically $ readTQueue discoveryQueue
+  -- Time the work being done. Both the DB stuff and the potential followup action.
+  ((), updateDur) <- withDuration $ do
+    now <- getCurrentTime
+    -- Find best image
+    let mBestImg = bestImageFile discoveredImageFiles
+    -- Try and do as much in a single transaction, but we might need some followup work that reads from disk and then does a second transaction
+    (followupAction :: IO ()) <- runDBPool dbConnPool $ do
+      -- Add dir, and if it already exists leave the image as is (we might update that later in the followup action)
+      existingDir <-
+        upsert
+          (Directory discoveredDir Nothing Nothing)
+          $ case mBestImg of
+            Nothing ->
+              -- When there is no image in the directory, we remove whatever is in the DB as the image is gone
+              [DirectoryImageName =. Nothing, DirectoryImage =. Nothing]
+            Just _ ->
+              -- We'll set the image in the followup as it requires slow IO
+              []
+
+      -- Insert/update video files
+      forM_ discoveredVideoFiles $ \filePath ->
+        insertUnique_
+          VideoFile
+            { videoFileParent = entityKey existingDir,
+              videoFileName = filename filePath,
+              videoFileAdded = now,
+              videoFileWatched = Nothing
+            }
+
+      -- TODO: Should we delete files that are no longe there?
+
+      -- Figure out if we should do another update after.
+      -- We do this in two steps because this followup action can then do slow IO, like reading the image from disk
+      let mExistingImgName = directoryImageName $ entityVal existingDir
+      let followup :: IO ()
+          followup = case (mBestImg, mExistingImgName) of
+            (Just foundImg, Just existingImgName)
+              | filename foundImg == existingImgName ->
+                  -- The best image we found is already in the db, nothing more to do
+                  -- TODO: Maybe we should just update it always? This would require reading every time, but then we can replace the poster with an image with the same name
+                  pure ()
+            (Just foundImg, _) -> do
+              -- We found an image, but it's not the one in the DB yet (might be none in the db)
+              -- So we update the directory in the db.
+              -- Since this requires slow IO, we do this in the followup.
+              -- It's an update, in case between this and the followup the directory got removed, it should then probably remain removed.
+              imageData <- BS.readFile $ fromAbsFile foundImg
+              void . runDBPool dbConnPool $
+                update
+                  (entityKey existingDir)
+                  [ DirectoryImageName =. Just (filename foundImg),
+                    DirectoryImage =. Just imageData
                   ]
-                Just _ ->
-                  -- We'll set the image in the followup as it requires slow IO
-                  []
+            (Nothing, _) ->
+              -- If there were no images, we already removed it from the DB, so nothing to do in the followup
+              pure ()
+      pure followup
 
-        -- Insert/update video files
-        forM_ stepVideoFiles $ \filePath ->
-          insertUnique_
-            VideoFile
-              { videoFileParent = entityKey existingDir,
-                videoFileName = filename filePath,
-                videoFileAdded = now,
-                videoFileWatched = Nothing
-              }
+    -- Run this followup action outside the transaction so we don't block too long with slow IO
+    followupAction
 
-        -- Should we delete files that are no longe there?
-
-        -- Figure out if we should do another update after.
-        -- We do this in two steps because this followup action can then do slow IO, like reading the image from disk
-        let mExistingImgName = directoryImageName (entityVal existingDir)
-        let followup :: IO ()
-            followup = case (mBestImg, mExistingImgName) of
-              (Just foundImg, Just existingImgName)
-                | filename foundImg == existingImgName ->
-                    -- The best image we found is already in the db, nothing more to do
-                    -- TODO: Maybe we should just update it always? This would require reading every time, but then we can replace the poster with an image with the same name
-                    pure ()
-              (Just foundImg, _) -> do
-                -- We found an image, but it's not the one in the DB yet (might be none in the db)
-                -- So we update the directory in the db.
-                -- Since this requires slow IO, we do this in the followup.
-                -- It's an update, in case between this and the followup the directory got removed, it should then probably remain removed.
-                imageData <- BS.readFile $ fromAbsFile foundImg
-                void . runDBPool dbConnPool $
-                  update
-                    (entityKey existingDir)
-                    [ DirectoryImageName =. Just (filename foundImg),
-                      DirectoryImage =. Just imageData
-                    ]
-              (Nothing, _) ->
-                -- If there were no images, we already removed it from the DB, so nothing to do in the followup
-                pure ()
-        pure followup
-
-      -- Run this followup action outside the transaction so we don't block too long with slow IO
-      followupAction
-
-    -- TODO Idea:
-    -- Read all known data (commented out above), and do a `getFileStatus` for any new directories to get when they were last modified.
-    -- Then we'd have the modified timestamp on the directory, rather than an added timestamp on files.
-    -- We could then update the modified timestamp with a good guess (good enough for what we need), by checking if there were any new files added (again, we can read all files we already know about).
-    -- That way we do a bit more work for completely new directories (usually there will only be a few, only when creating the DB for the first time will there be many),
-    -- and we'll have better timestamps for when new files are added (and we only really care about that on a per-directory level).
-    -- Though, one problem with adding this timestamp to directories is that we'd either have to update all parent directories as well, or when reading check if there are any child directories to get a fully accurate timestamp.
-    putLog Info $
-      concat
-        [ "Walked ",
-          show stepDir,
-          " (",
-          show stepDuration,
-          ") and updated (",
-          show dbUpdateDur,
-          ")"
-        ]
-
-  let safeDropPrefix :: Path Abs a -> String
-      safeDropPrefix p = case stripProperPrefix root p of
-        Nothing -> toFilePath p
-        Just withoutPrefix -> toFilePath withoutPrefix
-  putLog Info $ "Found dirs: " ++ show (map safeDropPrefix allDirs)
-  putLog Info $ "Found video files: " ++ show (map safeDropPrefix allVideoFiles)
-  putLog Info $ "Found image files: " ++ show (map safeDropPrefix allImageFiles)
-  putLog Info $ "Ignored paths: " ++ show (map takeFileName ignoredPaths)
-
-  let showUnique :: [String] -> String
-      showUnique els = intercalate ", " $ Set.toList $ Set.fromList els
+  -- TODO Idea:
+  -- Read all known data (commented out above), and do a `getFileStatus` for any new directories to get when they were last modified.
+  -- Then we'd have the modified timestamp on the directory, rather than an added timestamp on files.
+  -- We could then update the modified timestamp with a good guess (good enough for what we need), by checking if there were any new files added (again, we can read all files we already know about).
+  -- That way we do a bit more work for completely new directories (usually there will only be a few, only when creating the DB for the first time will there be many),
+  -- and we'll have better timestamps for when new files are added (and we only really care about that on a per-directory level).
+  -- Though, one problem with adding this timestamp to directories is that we'd either have to update all parent directories as well, or when reading check if there are any child directories to get a fully accurate timestamp.
   putLog Info $
-    "Found video files extensions: "
-      ++ showUnique (mapMaybe fileExtension allVideoFiles)
-  putLog Info $
-    "Found image files extensions: "
-      ++ showUnique (mapMaybe fileExtension allImageFiles)
-  let isHiddenPath = \case
-        '.' : _ -> True
-        _ -> False
-      ignoredNonHidden = filter (not . isHiddenPath) ignoredPaths
-      ignoredHidden = filter isHiddenPath ignoredPaths
-  putLog Info $
-    "Ignored paths extensions: "
-      ++ showUnique (map takeExtension ignoredNonHidden)
-  putLog Info $
-    "Ignored hidden paths extensions: "
-      ++ showUnique (map takeExtension ignoredHidden)
+    concat
+      [ "Got discovery and updated ",
+        fromAbsDir discoveredDir,
+        " (",
+        show updateDur,
+        ")"
+      ]
 
-  pure ()
+-- | This creates multiple threads
+dirUpdatorThreads ::
+  ConnectionPool ->
+  TQueue DirToExplore ->
+  TQueue DirDiscovery ->
+  IO ()
+dirUpdatorThreads dbConnPool explorationQueue discoveryQueue = do
+  race_
+    (explorerThread explorationQueue discoveryQueue)
+    (discoveryHandlerThread dbConnPool discoveryQueue)
 
 -- Some helpers
+showUnique :: [String] -> String
+showUnique els = intercalate ", " $ Set.toList $ Set.fromList els
+
+isHiddenPath :: FilePath -> Bool
+isHiddenPath = \case
+  '.' : _ -> True
+  _ -> False
 
 readInt :: String -> Maybe Int
 readInt = readMaybe
