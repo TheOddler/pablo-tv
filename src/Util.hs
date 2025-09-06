@@ -21,7 +21,7 @@ import GHC.List (uncons)
 import IsDevelopment (isDevelopment)
 import Language.Haskell.TH.Syntax (Exp, Q)
 import Network.Info (IPv4 (..), NetworkInterface (..))
-import Path (File, Path, Rel, fileExtension)
+import Path (File, Path, fileExtension)
 import System.Random (RandomGen)
 import System.Random.Shuffle (shuffle')
 import Yesod
@@ -191,7 +191,7 @@ unSingle5
     Single e
     ) = (a, b, c, d, e)
 
-getImageContentType :: Path Rel File -> ContentType
+getImageContentType :: Path a File -> ContentType
 getImageContentType filePath = case fileExtension filePath of
   Nothing -> typeOctet -- What would be the best fallback?
   Just ext ->

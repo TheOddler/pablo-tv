@@ -29,7 +29,7 @@ import DB
     VideoFile (..),
     getAggSubDirsInfoQ,
     getAllRootDirectories,
-    getNearestImageQ,
+    getImageQ,
     hasImageQ,
     migrateAll,
     runDBPool,
@@ -83,8 +83,7 @@ import System.Random (initStdGen, mkStdGen)
 import TVDB (TVDBApiKey (..), getToken)
 import TVState (startingTVState, tvStateWebSocket)
 import Util
-  ( getImageContentType,
-    networkInterfaceWorthiness,
+  ( networkInterfaceWorthiness,
     raceAll,
     shuffle,
     widgetFile,
@@ -229,9 +228,9 @@ getDirectoryR dirPath = do
 
 getImageR :: Path Abs Dir -> Handler Html
 getImageR absPath =
-  runDB (getNearestImageQ absPath) >>= \case
+  runDB (getImageQ absPath) >>= \case
     Nothing -> notFound
-    Just (imgName, imgBytes) -> sendResponse (getImageContentType imgName, toContent imgBytes)
+    Just (imgContentType, imgBytes) -> sendResponse (imgContentType, toContent imgBytes)
 
 getRemoteR :: Handler Html
 getRemoteR = do
@@ -342,7 +341,7 @@ main = do
       raceAll
         [ appThread,
           watchedThread,
-          dirUpdatorThreads connPool dirExplorationQueue dirDiscoveryQueue
+          dirUpdatorThreads connPool tvdbToken dirExplorationQueue dirDiscoveryQueue
         ]
 
   putLog Debug "Server quit."

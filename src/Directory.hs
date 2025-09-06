@@ -26,9 +26,10 @@ import Logging (LogLevel (..), putLog)
 import Path
 import System.Directory (listDirectory)
 import System.FilePath (dropTrailingPathSeparator, takeExtension)
+import TVDB (TVDBData (..), TVDBToken, TVDBType (..), getInfoFromTVDB)
 import Text.Read (readMaybe)
 import Text.Regex.TDFA ((=~))
-import Util (safeMinimumOn, withDuration)
+import Util (getImageContentType, safeMinimumOn, withDuration)
 import Yesod.WebSockets (race_)
 
 -- | Reading the file info of a path is rather slow, so we want to minimise the ones we read it for.
@@ -78,9 +79,40 @@ bestImageFile = safeMinimumOn $ \path ->
 
 data DirDiscovery = DirDiscovery
   { discoveredDir :: Path Abs Dir,
+    discoveredSubDirs :: [Path Abs Dir],
     discoveredVideoFiles :: [Path Abs File],
     discoveredImageFiles :: [Path Abs File]
   }
+
+data DirectoryKindGuess
+  = DirectoryKindMovie Text -- Best guess for the movie title
+  | DirectoryKindSeries Text -- Best guess for the series' name
+  | DirectoryKindSeriesSeason -- For now we don't need any extra info about seasons
+  | DirectoryKindUnknown
+
+guessDirectoryKind :: DirDiscovery -> DirectoryKindGuess
+guessDirectoryKind DirDiscovery {..} =
+  let dirName = titleFromDir $ dirname discoveredDir
+      dirSeasonIndicator = isJust $ seasonFromDir discoveredDir
+      subDirsSeasonIndicators = any (isJust . seasonFromDir) discoveredSubDirs
+      hasSubDirs = not $ null discoveredSubDirs
+      filesSeasonIndicator = isJust $ seasonFromFiles discoveredVideoFiles
+      hasMovieFiles = not $ null discoveredVideoFiles
+   in firstJusts
+        [ if dirSeasonIndicator
+            then Just DirectoryKindSeriesSeason
+            else Nothing,
+          if subDirsSeasonIndicators && not hasMovieFiles
+            then Just $ DirectoryKindSeries dirName
+            else Nothing,
+          if filesSeasonIndicator && not hasSubDirs
+            then Just $ DirectoryKindSeries dirName
+            else Nothing,
+          if not filesSeasonIndicator && not hasSubDirs
+            then Just $ DirectoryKindMovie dirName
+            else Nothing
+        ]
+        `orElse` DirectoryKindUnknown
 
 newtype DirToExplore = DirToExplore {unDirToExplore :: Path Abs Dir}
 
@@ -118,6 +150,7 @@ explorerThread explorationQueue discoveryQueue = forever $ do
         writeTQueue discoveryQueue $
           DirDiscovery
             { discoveredDir = nextDirToExplore,
+              discoveredSubDirs = subDirs,
               discoveredVideoFiles = videoFiles,
               discoveredImageFiles = imageFiles
             }
@@ -146,17 +179,15 @@ explorerThread explorationQueue discoveryQueue = forever $ do
                 displayException err
               ]
 
-discoveryHandlerThread :: ConnectionPool -> TQueue DirDiscovery -> IO ()
-discoveryHandlerThread dbConnPool discoveryQueue = forever $ do
+discoveryHandlerThread :: ConnectionPool -> Maybe TVDBToken -> TQueue DirDiscovery -> IO ()
+discoveryHandlerThread dbConnPool tvdbToken discoveryQueue = forever $ do
   -- We're likely to be using a network share for the data, so walking this dir is slow.
   -- That means, discoveries comes slow, and we have plenty of time on each discovery to write to the locally stored DB.
   -- It also means that the locally stored DB might be partially updated during a full update of the data. But that's fine, we're not doing brain surgery here, it's fine to have imperfect data at times, we just want it quickly.
-  DirDiscovery {..} <- atomically $ readTQueue discoveryQueue
+  dirDiscovery@DirDiscovery {..} <- atomically $ readTQueue discoveryQueue
   -- Time the work being done. Both the DB stuff and the potential followup action.
   ((), updateDur) <- withDuration $ do
     now <- getCurrentTime
-    -- Find best image
-    let mBestImg = bestImageFile discoveredImageFiles
     -- Try and do as much in a single transaction, but we might need some followup work that reads from disk and then does a second transaction
     (followupAction :: IO ()) <- runDBPool dbConnPool $ do
       -- Add dir, and if it already exists don't do anything.
@@ -176,29 +207,52 @@ discoveryHandlerThread dbConnPool discoveryQueue = forever $ do
 
       -- Figure out if we should do another update after.
       -- We do this in two steps because this followup action can then do slow IO, like reading the image from disk
-      let mExistingImgName = directoryImageName $ entityVal existingDir
+      hasExistingImg <- hasImageQ discoveredDir
+      -- Find best image on disc
+      let mBestImg = bestImageFile discoveredImageFiles
       let followup :: IO ()
-          followup = case (mBestImg, mExistingImgName) of
-            (Just foundImg, Just existingImgName)
-              | filename foundImg == existingImgName ->
-                  -- The best image we found is already in the db, nothing more to do
-                  -- TODO: Maybe we should just update it always? This would require reading every time, but then we can replace the poster with an image with the same name
-                  pure ()
-            (Just foundImg, _) -> do
-              -- We found an image, but it's not the one in the DB yet (might be none in the db)
-              -- So we update the directory in the db.
+          followup = case (hasExistingImg, mBestImg) of
+            (_, Just foundImg) -> do
+              -- We found an image, so we update the directory in the db.
               -- Since this requires slow IO, we do this in the followup.
               -- It's an update, in case between this and the followup the directory got removed, it should then probably remain removed.
               imageData <- BS.readFile $ fromAbsFile foundImg
               void . runDBPool dbConnPool $
                 update
                   (entityKey existingDir)
-                  [ DirectoryImageName =. Just (filename foundImg),
+                  [ DirectoryImageContentType
+                      =. Just (getImageContentType foundImg),
                     DirectoryImage =. Just imageData
                   ]
-            (Nothing, _) ->
-              -- If there were no images, nothing more to do. Just leave whatever is already in the DB, as there might be an image I put there manually or through some other means.
+            (False, Nothing) -> do
+              case tvdbToken of
+                Nothing -> pure ()
+                Just token -> do
+                  -- There's no existing image in the DB, nor is there one on disk:
+                  -- So we try and get one from the TVDB.
+                  let mInfo = case guessDirectoryKind dirDiscovery of
+                        DirectoryKindMovie title -> Just (title, TVDBTypeMovie)
+                        DirectoryKindSeries title -> Just (title, TVDBTypeSeries)
+                        DirectoryKindSeriesSeason -> Nothing
+                        DirectoryKindUnknown -> Nothing
+                  case mInfo of
+                    Nothing -> pure ()
+                    Just (name, type') -> do
+                      -- If there were no images in disk, so we try and find one online.
+                      mTVDBInfo <- getInfoFromTVDB token name type' Nothing Nothing
+                      case mTVDBInfo >>= tvdbDataImage of
+                        Nothing -> pure ()
+                        Just (contentType, imageData) ->
+                          void . runDBPool dbConnPool $
+                            update
+                              (entityKey existingDir)
+                              [ DirectoryImageContentType =. Just contentType,
+                                DirectoryImage =. Just imageData
+                              ]
+            (True, Nothing) ->
+              -- We already have an image in the DB, just keep that one.
               pure ()
+
       pure followup
 
     -- Run this followup action outside the transaction so we don't block too long with slow IO
@@ -223,13 +277,14 @@ discoveryHandlerThread dbConnPool discoveryQueue = forever $ do
 -- | This creates multiple threads
 dirUpdatorThreads ::
   ConnectionPool ->
+  Maybe TVDBToken ->
   TQueue DirToExplore ->
   TQueue DirDiscovery ->
   IO ()
-dirUpdatorThreads dbConnPool explorationQueue discoveryQueue = do
+dirUpdatorThreads dbConnPool tvdbToken explorationQueue discoveryQueue = do
   race_
     (explorerThread explorationQueue discoveryQueue)
-    (discoveryHandlerThread dbConnPool discoveryQueue)
+    (discoveryHandlerThread dbConnPool tvdbToken discoveryQueue)
 
 -- Some helpers
 showUnique :: [String] -> String

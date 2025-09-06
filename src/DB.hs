@@ -29,8 +29,8 @@ SambaShare
   
 Directory
   path (Path Abs Dir)
-  -- Image and ImageName should be kept in sync, either both Nothing or Both Just. But we save them separately because if we save them as a tuple together the image bytes get turned into a varchar
-  imageName (Path Rel File) Maybe
+  -- Image and ImageContentType should be kept in sync, either both Nothing or Both Just. But we save them separately because if we save them as a tuple together the image bytes get turned into a varchar
+  imageContentType ContentType Maybe
   image BS.ByteString Maybe
   Primary path
 
@@ -104,24 +104,19 @@ getAggSubDirsInfoQ root = do
     |]
   pure $ uncurry5 AggDirInfo . unSingle5 <$> raw
 
-getNearestImageQ ::
+getImageQ ::
   (MonadUnliftIO m) =>
   Path Abs Dir ->
-  ReaderT SqlBackend m (Maybe (Path Rel File, BS.ByteString))
-getNearestImageQ root = do
+  ReaderT SqlBackend m (Maybe (ContentType, BS.ByteString))
+getImageQ root = do
   raw <-
     [sqlQQ|
-      SELECT @{DirectoryImageName}, @{DirectoryImage}
+      SELECT @{DirectoryImageContentType}, @{DirectoryImage}
       FROM ^{Directory}
-      WHERE
-          @{DirectoryImageName} IS NOT NULL
+      WHERE @{DirectoryImageContentType} IS NOT NULL
       AND @{DirectoryImage} IS NOT NULL
-      AND (
-        -- Any image that is in the given path, or any of it's parents
-        #{root} GLOB @{DirectoryPath} || '*'
-        -- Or any image in a child folder
-        OR @{DirectoryPath} GLOB #{root} || '*'
-      )
+      -- Any image that is in the given path, or any of it's parents
+      AND #{root} GLOB @{DirectoryPath} || '*'
       ORDER BY abs(length(@{DirectoryPath}) - length(#{root}))
       LIMIT 1
     |]
@@ -139,15 +134,10 @@ hasImageQ root = do
     [sqlQQ|
       SELECT 1
       FROM ^{Directory}
-      WHERE
-          @{DirectoryImageName} IS NOT NULL
+      WHERE @{DirectoryImageContentType} IS NOT NULL
       AND @{DirectoryImage} IS NOT NULL
-      AND (
-        -- Any image that is in the given path, or any of it's parents
-        #{root} GLOB @{DirectoryPath} || '*'
-        -- Or any image in a child folder
-        OR @{DirectoryPath} GLOB #{root} || '*'
-      )
+      -- Any image that is in the given path, or any of it's parents
+      AND #{root} GLOB @{DirectoryPath} || '*'
       LIMIT 1
     |]
   pure $ case raw of
