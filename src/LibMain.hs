@@ -316,13 +316,6 @@ main = do
       -- Migrate DB
       logDuration "Migration" $ runDBPool connPool $ runMigration migrateAll
 
-      -- Add a testing samba share if it isn't there yet
-      _ <-
-        runDBPool connPool . insertUnique_ $
-          SambaShare
-            (SmbServer "192.168.0.99")
-            (SmbShare "videos")
-
       -- Open samba shares. TODO: Make some way of checking and re-mounting the broken ones at runtime
       mountAllSambaShares connPool
 
