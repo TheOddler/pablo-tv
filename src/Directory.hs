@@ -481,9 +481,3 @@ naturalCompareBy f a b = Natural.compare (lower $ f a) (lower $ f b)
 -- | Sorts taking into account numbers properly
 naturalSortBy :: (a -> String) -> [a] -> [a]
 naturalSortBy f = sortBy $ naturalCompareBy f
-
-naturalSortFiles :: [Path b File] -> [Path b File]
-naturalSortFiles = naturalSortBy (fromRelFile . filename)
-
-naturalSortDirs :: [Path b Dir] -> [Path b Dir]
-naturalSortDirs = naturalSortBy (fromRelDir . dirname)

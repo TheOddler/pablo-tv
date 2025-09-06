@@ -61,7 +61,6 @@ library
     build-depends:
         aeson
       , autodocodec
-      , binary
       , blaze-markup
       , bytestring
       , data-default
