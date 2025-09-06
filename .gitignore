@@ -1,7 +1,8 @@
 .direnv/
+.env
 .pre-commit-config.yaml
-result
-dist-newstyle/
-client_session_key.aes
 .vscode
+client_session_key.aes
+dist-newstyle/
 pablo-tv-data.db3*
+result

@@ -3,28 +3,97 @@
 module TVDB
   ( TVDBData (..),
     TVDBType (..),
-    TVDBToken (..),
+    TVDBApiKey (..),
+    TVDBToken,
+    getToken,
     getInfoFromTVDB,
   )
 where
 
 import Autodocodec
 import Control.Applicative ((<|>))
-import Data.Aeson (FromJSON)
+import Data.Aeson (FromJSON, ToJSON)
 import Data.Aeson.KeyMap (KeyMap)
 import Data.Aeson.KeyMap qualified as KeyMap
 import Data.ByteString qualified as BS
 import Data.Maybe (listToMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
+import Data.Text.Encoding (decodeUtf8Lenient, encodeUtf8)
 import Logging (LogLevel (..), Logger (..))
 import Network.HTTP.Client (responseHeaders)
-import Network.HTTP.Req (GET (GET), HttpResponse (toVanillaResponse), NoReqBody (..), Option, Url, bsResponse, defaultHttpConfig, https, jsonResponse, oAuth2Bearer, req, responseBody, useURI, (/:), (=:))
+import Network.HTTP.Req
+  ( GET (GET),
+    HttpResponse (toVanillaResponse),
+    NoReqBody (..),
+    Option,
+    POST (..),
+    ReqBodyJson (..),
+    Url,
+    bsResponse,
+    defaultHttpConfig,
+    https,
+    jsonResponse,
+    oAuth2Bearer,
+    req,
+    responseBody,
+    useURI,
+    (/:),
+    (=:),
+  )
 import SaferIO (NetworkRead (..))
 import Text.Read (readMaybe)
 import Text.URI (mkURI)
 import Util (mapLeft)
 import Yesod (ContentType)
+
+newtype TVDBApiKey = TVDBApiKey {unTVDBApiKey :: String}
+  deriving (ToJSON) via Autodocodec TVDBApiKey
+
+instance HasCodec TVDBApiKey where
+  codec =
+    object "LoginData" $
+      TVDBApiKey
+        <$> requiredField "apikey" "The API Key" .= unTVDBApiKey
+
+newtype TVDBToken = TVDBToken {unTVDBToken :: BS.ByteString}
+
+instance HasCodec TVDBToken where
+  codec = object "LoginData" $ TVDBToken <$> tokenCodec
+    where
+      tokenCodec :: ObjectCodec TVDBToken BS.ByteString
+      tokenCodec = dimapCodec encodeUtf8 (decodeUtf8Lenient . unTVDBToken) $ requiredField "token" "The API Key"
+
+data RawResponse a = RawResponse
+  { rawResponseStatus :: String,
+    rawResponseData :: a
+  }
+  deriving (Show, Eq)
+  deriving (FromJSON) via Autodocodec (RawResponse a)
+
+instance (HasCodec a) => HasCodec (RawResponse a) where
+  codec =
+    object "RawResponse" $
+      RawResponse
+        <$> requiredField "status" "Did this succeed?" .= rawResponseStatus
+        <*> requiredField "data" "A list of results" .= rawResponseData
+
+getToken :: (NetworkRead m, Logger m) => TVDBApiKey -> m (Maybe TVDBToken)
+getToken apiKey = do
+  responseOrErr <-
+    runReqSafe defaultHttpConfig $
+      responseBody
+        <$> req POST (https "api4.thetvdb.com" /: "v4" /: "login") (ReqBodyJson apiKey) jsonResponse mempty
+  case responseOrErr of
+    Left err -> do
+      putLog Error $ "Error while getting TVDB Token: " ++ show err
+      pure Nothing
+    Right response ->
+      case rawResponseStatus response of
+        "success" -> pure $ Just $ rawResponseData response
+        status -> do
+          putLog Error $ "Failed getting TVDB Token: " ++ show status
+          pure Nothing
 
 data TVDBType = TVDBTypeSeries | TVDBTypeMovie
   deriving (Show, Eq)
@@ -39,21 +108,7 @@ data TVDBData = TVDBData
   }
   deriving (Show, Eq)
 
-data RawResponse = RawResponse
-  { rawResponseStatus :: Text,
-    rawResponseData :: [RawResponseData]
-  }
-  deriving (Show, Eq)
-  deriving (FromJSON) via Autodocodec RawResponse
-
-instance HasCodec RawResponse where
-  codec =
-    object "RawResponse" $
-      RawResponse
-        <$> requiredField "status" "Did this succeed?" .= rawResponseStatus
-        <*> requiredField "data" "A list of results" .= rawResponseData
-
-data RawResponseData = RawResponseData
+data SearchResponseData = SearchResponseData
   { rawResponseDataId :: Text,
     rawResponseDataOverview :: Maybe Text,
     rawResponseDataOverviews :: KeyMap Text,
@@ -63,10 +118,10 @@ data RawResponseData = RawResponseData
   }
   deriving (Show, Eq)
 
-instance HasCodec RawResponseData where
+instance HasCodec SearchResponseData where
   codec =
-    object "RawResponseData" $
-      RawResponseData
+    object "SearchResponseData" $
+      SearchResponseData
         <$> requiredField "id" "Unique identifier" .= rawResponseDataId
         <*> optionalField "overview" "The description" .= rawResponseDataOverview
         <*> optionalFieldWithDefault "overviews" mempty "A mapping from language to descriptions" .= rawResponseDataOverviews
@@ -86,8 +141,6 @@ instance HasCodec RawResponseRemoteId where
       RawResponseRemoteId
         <$> requiredField "id" "The remote id" .= rawResponseRemoteId
         <*> requiredField "sourceName" "Either `IMDB` or `TheMovieDB.com`, among other irrelevant ones for us" .= rawResponseRemoteSourceName
-
-newtype TVDBToken = TVDBToken BS.ByteString
 
 getInfoFromTVDB :: (NetworkRead m, Logger m) => TVDBToken -> Text -> TVDBType -> Maybe Text -> Maybe Int -> m (Maybe TVDBData)
 getInfoFromTVDB (TVDBToken tvdbToken) title type' mRemoteId mYear = do

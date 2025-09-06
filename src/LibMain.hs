@@ -35,7 +35,6 @@ import DB
     runDBPool,
   )
 import Data.Aeson qualified as Aeson
-import Data.ByteString.Char8 qualified as BS
 import Data.Char (isSpace)
 import Data.List (intercalate)
 import Data.List.Extra (notNull)
@@ -81,7 +80,7 @@ import Samba (MountResult, SmbServer (..), SmbShare (..), mount)
 import System.Environment (lookupEnv)
 import System.Process (callProcess)
 import System.Random (initStdGen, mkStdGen)
-import TVDB (TVDBToken (..))
+import TVDB (TVDBApiKey (..), getToken)
 import TVState (startingTVState, tvStateWebSocket)
 import Util
   ( getImageContentType,
@@ -270,11 +269,14 @@ mountAllSambaShares connPool = do
 main :: IO ()
 main = do
   -- To get this token for now you can use your apiKey here https://thetvdb.github.io/v4-api/#/Login/post_login
-  tvdbTokenRaw <- lookupEnv "TVDB_TOKEN"
-  let tvdbToken = case tvdbTokenRaw of
+  tvdbApiKeyRaw <- lookupEnv "TVDB_API_KEY"
+  let tvdbApiKey = case tvdbApiKeyRaw of
         Nothing -> Nothing
-        Just t | all isSpace t -> Nothing
-        Just t -> Just $ TVDBToken $ BS.pack t
+        Just str | all isSpace str -> Nothing
+        Just str -> Just $ TVDBApiKey str
+  tvdbToken <- case tvdbApiKey of
+    Nothing -> pure Nothing
+    Just key -> getToken key
   when (isNothing tvdbToken) $
     putLog Info "No tvdb token found, so running in read-only mode."
 
