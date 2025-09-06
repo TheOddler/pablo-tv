@@ -54,7 +54,7 @@ $maybe imagePath <- imagePath
         <span>#{aggDirPlayedVideoFileCount dir}/#{aggDirVideoFileCount dir}
 
 $maybe (label, action) <- refreshDirectoryLabelAndAction
-  <h2 class="refresh">
+  <h3 class="refresh">
     <a href="#"
       onclick="sendActionE(event, '#{action}')"
     >
