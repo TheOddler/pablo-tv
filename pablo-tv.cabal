@@ -119,10 +119,8 @@ test-suite pablo-tv-test
     type:             exitcode-stdio-1.0
     other-modules:
         ActionsSpec
-        DirectorySpec
         Orphanage
         TestUtils
-        WatchedSpec
     build-depends:
         autodocodec
       , autodocodec-yaml
