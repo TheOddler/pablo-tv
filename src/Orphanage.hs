@@ -3,7 +3,9 @@
 
 module Orphanage () where
 
+import Autodocodec (HasCodec (..), bimapCodec)
 import Control.Exception (Exception (displayException), SomeException)
+import Data.Either.Extra (mapLeft)
 import Data.Text qualified as T
 import Database.Persist.Sqlite (PersistFieldSql (..))
 import Foreign.C (CTime (..))
@@ -126,6 +128,9 @@ instance PathPiece (Path Abs File) where
 
 instance Blaze.ToMarkup (Path Abs File) where
   toMarkup = toMarkup . fromAbsFile
+
+instance HasCodec (Path Abs Dir) where
+  codec = bimapCodec (mapLeft displayException . parseAbsDir) fromAbsDir codec
 
 deriving newtype instance PersistField EpochTime
 

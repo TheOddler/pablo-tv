@@ -53,10 +53,10 @@ $maybe imagePath <- imagePath
           <div>
         <span>#{aggDirPlayedVideoFileCount dir}/#{aggDirVideoFileCount dir}
 
-
-$# TODO: Renable this? Or are we keeping it only on the home page?
-$# $if showRefreshButton
-$#   <h2 class="refresh">
-$#     <a href="#" onclick="refreshLibrary(event)">
-$#       <i class="fa-solid fa-arrows-rotate">
-$#       Refresh library
+$maybe (label, action) <- refreshDirectoryLabelAndAction
+  <h2 class="refresh">
+    <a href="#"
+      onclick="sendActionE(event, '#{action}')"
+    >
+      <i class="fa-solid fa-arrows-rotate">
+      #{label}

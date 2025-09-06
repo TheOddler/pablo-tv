@@ -22,11 +22,11 @@
             <a class="el logo" href="#" onclick="sendAction('#{ActionOpenUrlOnTV l.linkUrl}')">
               <img src="@{l.linkImage}" alt="#{l.linkName}" loading="lazy">
   
-  $# <h1 class="center">
-  $#   <a href=@{DirectoryR []}>View all
+  <h1 class="center">
+    <a href=@{DirectoryHomeR}>View all
 
   <div class="divider">
   <h2>
-    <button class="like-link" onclick="sendAction('#{ActionRefreshTVState}')">
+    <button class="like-link" onclick="sendAction('#{ActionRefreshAllDirectoryData}')">
       <i class="fa-solid fa-arrows-rotate">
       Refresh library

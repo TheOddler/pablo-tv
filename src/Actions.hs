@@ -30,6 +30,7 @@ import Foundation (App (..), Handler)
 import GHC.Conc (atomically, readTVar, writeTVar)
 import Logging (LogLevel (..), putLog)
 import Network.WebSockets qualified as WS
+import Orphanage ()
 import Path (Abs, Dir, File, Path, filename, fromAbsDir, fromAbsFile, mkRelDir, parent, parseAbsDir, parseAbsFile, (</>))
 import Path.IO (getHomeDir)
 import Playerctl qualified
@@ -68,7 +69,8 @@ data Action
   | ActionMarkAsUnwatched DirOrFile
   | ActionCloseWindow
   | ActionOpenUrlOnTV Text
-  | ActionRefreshTVState
+  | ActionRefreshAllDirectoryData
+  | ActionRefreshDirectoryData (Path Abs Dir)
   | ActionMedia Playerctl.Action
   deriving (Show, Eq)
   deriving (FromJSON) via (Autodocodec Action)
@@ -119,7 +121,8 @@ instance HasObjectCodec Action where
         ActionMarkAsUnwatched path -> ("MarkAsUnwatched", oneFieldEncoder "path" $ dirOrFileToStr path)
         ActionCloseWindow -> ("CloseWindow", noFieldEncoder)
         ActionOpenUrlOnTV url -> ("OpenUrlOnTV", oneFieldEncoder "url" url)
-        ActionRefreshTVState -> ("RefreshTVState", noFieldEncoder)
+        ActionRefreshAllDirectoryData -> ("RefreshAllDirectoryData", noFieldEncoder)
+        ActionRefreshDirectoryData path -> ("RefreshDirectoryData", oneFieldEncoder "path" path)
         ActionMedia url -> ("Media", oneFieldEncoder "action" url)
       dec :: HashMap.HashMap Discriminator (Text, ObjectCodec Void Action)
       dec =
@@ -153,7 +156,8 @@ instance HasObjectCodec Action where
             ),
             ("CloseWindow", ("ActionCloseWindow", noFieldDecoder ActionCloseWindow)),
             ("OpenUrlOnTV", ("ActionOpenUrlOnTV", oneFieldDecoder ActionOpenUrlOnTV "url")),
-            ("RefreshTVState", ("ActionRefreshTVState", noFieldDecoder ActionRefreshTVState)),
+            ("RefreshAllDirectoryData", ("ActionRefreshAllDirectoryData", noFieldDecoder ActionRefreshAllDirectoryData)),
+            ("RefreshDirectoryData", ("ActionRefreshDirectoryData", oneFieldDecoder ActionRefreshDirectoryData "path")),
             ("Media", ("ActionMedia", oneFieldDecoder ActionMedia "action"))
           ]
 
@@ -313,7 +317,7 @@ performActionIO app action = do
       liftIO $ atomically $ do
         tvState <- readTVar tvStateTVar
         writeTVar tvStateTVar $ tvState {tvPage = url}
-    ActionRefreshTVState -> liftIO $ do
+    ActionRefreshAllDirectoryData -> liftIO $ do
       -- To prevent spamming this, we only start a new full refresh when the queue is empty
       sambaShares <- runDBPool app.appSqlPool $ selectList [] []
       let getMountPath (SambaShare svr shr) = mkMountPath svr shr
@@ -325,6 +329,16 @@ performActionIO app action = do
         isEmpty <- isEmptyTQueue $ appDirExplorationQueue app
         when isEmpty . forM_ allPaths $
           writeTQueue (appDirExplorationQueue app) . DirToExplore
+        pure isEmpty
+      when (not startedRefresh) $
+        putLog Warning "Already refreshing"
+    ActionRefreshDirectoryData path -> liftIO $ do
+      -- To prevent spamming this, we only start a new full refresh when the queue is empty
+      startedRefresh <- atomically $ do
+        isEmpty <- isEmptyTQueue $ appDirExplorationQueue app
+        when isEmpty $
+          writeTQueue (appDirExplorationQueue app) $
+            DirToExplore path
         pure isEmpty
       when (not startedRefresh) $
         putLog Warning "Already refreshing"

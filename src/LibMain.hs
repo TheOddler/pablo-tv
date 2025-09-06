@@ -205,6 +205,11 @@ getDirectoryHomeR = do
   let playAllAction = Nothing :: Maybe Actions.Action
   let markAllWatchedAction = Nothing :: Maybe Actions.Action
   let markAllUnwatchedAction = Nothing :: Maybe Actions.Action
+  let refreshDirectoryLabelAndAction =
+        Just
+          ( "Refresh Library" :: String,
+            ActionRefreshAllDirectoryData
+          )
   let title = "Videos"
   defaultLayout title $(widgetFile "directory")
 
@@ -223,6 +228,11 @@ getDirectoryR dirPath = do
   let playAllAction = Just $ ActionPlayPath $ Dir dirPath
   let markAllWatchedAction = Just $ ActionMarkAsWatched $ Dir dirPath
   let markAllUnwatchedAction = Just $ ActionMarkAsUnwatched $ Dir dirPath
+  let refreshDirectoryLabelAndAction =
+        Just
+          ( "Refresh this directory" :: String,
+            ActionRefreshDirectoryData dirPath
+          )
   let title = toHtml $ niceDirNameT dirPath
   defaultLayout title $(widgetFile "directory")
 
