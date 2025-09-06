@@ -3,7 +3,7 @@
 @elWidth: 27.2vh;
 @elFocusScale: 1.2;
 
-.container {
+#container {
   display: flex;
   flex-direction: column;
   padding-bottom: 5rem;

@@ -1,0 +1,45 @@
+const rows = document.querySelectorAll(".row");
+
+rows.forEach(function (row) {
+  let isDown = false;
+  let startX;
+  let scrollLeft;
+
+  function getCurrentX(e) {
+    return e.pageX - row.offsetLeft;
+  }
+
+  row.addEventListener('click', (e) => {
+    const x = getCurrentX(e);
+    if (Math.abs(startX - x) > 10) e.preventDefault();
+  });
+
+  row.addEventListener('mousedown', (e) => {
+    isDown = true;
+    startX = getCurrentX(e);
+    scrollLeft = row.scrollLeft;
+    row.style.cursor = 'grabbing';
+    e.preventDefault();
+  });
+
+  row.addEventListener('mouseleave', (e) => {
+    isDown = false;
+    row.style.cursor = 'grab';
+    e.preventDefault();
+  });
+
+  row.addEventListener('mouseup', (e) => {
+    isDown = false;
+    row.style.cursor = 'grab';
+    e.preventDefault();
+  });
+
+  document.addEventListener('mousemove', (e) => {
+    if (!isDown) return;
+    e.preventDefault();
+    const x = getCurrentX(e);
+    const walkX = (x - startX) * 1; // Change this number to adjust the scroll speed
+    row.scrollLeft = scrollLeft - walkX;
+  });
+});
+
