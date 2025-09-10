@@ -33,30 +33,14 @@ import Data.Text qualified as Text
 import Data.Text.Encoding (decodeUtf8Lenient)
 import Data.Time (diffUTCTime, getCurrentTime)
 import Data.Time.Clock.POSIX (posixSecondsToUTCTime)
+import Directory (Directory (..))
+import Directory.Info (DirectoryKind (..))
 import Directory.Watched
   ( MarkAsWatchedResult (..),
-    WatchedInfoAgg (..),
     hasBeenWatched,
     markFileAsWatched,
-    readWatchedInfo,
-    readWatchedInfoAgg,
   )
-import DirectoryOld
-  ( DirectoryInfo (..),
-    DirectoryKind (..),
-    DirectoryRaw (..),
-    TopLevelDir,
-    getTopLevelDirs,
-    getVideoDirPath,
-    niceDirNameT,
-    niceFileNameT,
-    readAllDirectoryInfos,
-    readDirectoryInfoRec,
-    readDirectoryRaw,
-    topLevelToAbsDir,
-    updateAllDirectoryInfos,
-    updateAllDirectoryInfosGuessOnly,
-  )
+import Directory.Watched.Agg (WatchedInfoAgg (..))
 import Evdev.Uinput (Device)
 import Foreign.C (CTime (..))
 import GHC.Conc (TVar, atomically, newTVarIO, readTVar, readTVarIO, writeTVar)
@@ -110,7 +94,7 @@ data App = App
   { appPort :: Int,
     appTVDBToken :: Maybe TVDBToken,
     appInputDevice :: Device,
-    appTVState :: TVar TVState,
+    appTVState :: MVar TVState,
     appGetStatic :: EmbeddedStatic,
     appVideoDataRefreshTrigger :: MVar ()
   }
@@ -230,7 +214,7 @@ getHomeR = do
   tvState <- liftIO $ readTVarIO tvStateTVar
   videoDirPath <- liftIO getVideoDirPath
   topLevelDirs <- liftIO $ getTopLevelDirs videoDirPath
-  let getDirData :: TopLevelDir -> DirData
+  let getDirData :: Directory -> DirData
       getDirData dir =
         let path = topLevelToAbsDir dir
             dirName = dirname path
@@ -348,8 +332,8 @@ getDirectoryR segments = do
       tvState <- getsYesod appTVState >>= liftIO . readTVarIO
       videoDirPath <- liftIO getVideoDirPath
       topLevelDirs <- liftIO $ getTopLevelDirs videoDirPath
-      let getDir :: TopLevelDir -> (Path Rel Dir, Text, Maybe (Int, Int))
-          getDir dir =
+      let getDirData :: Directory -> (Path Rel Dir, Text, Maybe (Int, Int))
+          getDirData dir =
             let dirName = dirname $ topLevelToAbsDir dir
                 dirInfo = Map.lookup dir tvState.tvVideoData
              in ( dirName,
@@ -362,10 +346,10 @@ getDirectoryR segments = do
                           w.watchedInfoVideoFileCount
                         )
                 )
-      pure $ getDir <$> topLevelDirs
+      pure $ getDirData <$> topLevelDirs
     _ -> do
-      let getDir :: Path Rel Dir -> Handler (Path Rel Dir, Text, Maybe (Int, Int))
-          getDir dirName = do
+      let getDirData :: Path Rel Dir -> Handler (Path Rel Dir, Text, Maybe (Int, Int))
+          getDirData dirName = do
             watched <- liftIO $ readWatchedInfoAgg $ absPath </> dirName
             pure
               ( dirName,
@@ -375,7 +359,7 @@ getDirectoryR segments = do
                     watched.watchedInfoVideoFileCount
                   )
               )
-      mapM getDir dirRaw.directoryDirectories
+      mapM getDirData dirRaw.directoryDirectories
 
   let mkSegments :: Path Rel x -> [Text]
       mkSegments d = segments ++ [T.pack $ dropTrailingPathSeparator $ toFilePath d]
@@ -500,13 +484,16 @@ main = do
         endTime <- getCurrentTime
         putStrLn $ "Refreshed video data in " ++ show (diffUTCTime endTime startTime)
 
-  -- Do an update once at startup, but only with already available data so we don't do any writes
-  dataUpdate readAllDirectoryInfos
-
   -- In a thread do the data updating async
-  let dataThread =
-        asyncOnTrigger videoDataRefreshTrigger $
-          dataUpdate $ case tvdbToken of
+  let dataThread = do
+        -- Read existing data at startup
+        videoDir <- getVideosDir
+        dataUpdate $ readRootDirectory videoDir
+        -- Then when triggered refresh it
+        asyncOnTrigger
+          videoDataRefreshTrigger
+          $ dataUpdate
+          $ case tvdbToken of
             Nothing -> updateAllDirectoryInfosGuessOnly
             Just t -> updateAllDirectoryInfos t
 

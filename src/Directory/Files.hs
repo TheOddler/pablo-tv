@@ -6,7 +6,6 @@ import Autodocodec (HasCodec)
 import Autodocodec.Yaml (eitherDecodeYamlViaCodec)
 import Control.Exception (IOException)
 import Data.ByteString qualified as BS
-import Data.ByteString.Char8 qualified as BS8
 import Data.Yaml qualified as Yaml
 import Path (Abs, File, Path, Rel, fileExtension, filename, mkRelFile)
 import SaferIO (FSRead (..))
@@ -40,31 +39,25 @@ newtype OtherFile = OtherFile
   { otherFilePath :: Path Abs File
   }
 
--- | Extra info needed to manage the info.yaml and watched.yaml files.
--- This keeps info that we can use to know whether we need to save updated info to disk.
-data SpecialFile a
-  = FileDoesNotExist
-  | FileRead a
-  | -- | If we update the file in memory mark it as dirty so we know we need to write it to disk.
-    FileDirty a
-  | -- | If a file existed but parsing failed
-    FileReadFail BS8.ByteString Yaml.ParseException
-  | -- | If we got an error while trying to read the file
-    FileReadError IOException
+data FileReadByCodecError
+  = FileReadError IOException
+  | FileParseError BS.ByteString Yaml.ParseException
 
-readSpecialFile :: (FSRead m, HasCodec a) => Path Abs File -> m (SpecialFile a)
-readSpecialFile path = do
+readFileByCodec :: (FSRead m, HasCodec a) => Path Abs File -> m (Either FileReadByCodecError a)
+readFileByCodec path = do
   contentOrErr <- readFileBSSafe path
   pure $ case contentOrErr of
-    Left err -> FileReadError err
+    Left err -> Left $ FileReadError err
     Right content ->
       case eitherDecodeYamlViaCodec content of
-        Right info -> FileRead info
-        Left err -> FileReadFail content err
+        Right info -> Right info
+        Left err -> Left $ FileParseError content err
 
-data Image
-  = ImageOnDisk (Path Abs File)
-  | ImageInMemory ContentType BS.ByteString
+newtype ImageFile = ImageFile
+  { imageFilePath :: Path Abs File
+  }
+
+data ImageInMemory = ImageInMemory ContentType BS.ByteString
 
 -- Helpers
 
@@ -79,3 +72,9 @@ extensionIsOneOf exts path =
   case fileExtension path of
     Nothing -> False
     Just ext -> ext `elem` exts
+
+isVideoFile :: Path a File -> Bool
+isVideoFile = extensionIsOneOf videoExtensions
+
+isImageFile :: Path a File -> Bool
+isImageFile = extensionIsOneOf imageExtensions

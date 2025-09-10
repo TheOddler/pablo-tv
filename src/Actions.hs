@@ -13,7 +13,10 @@ import Data.List (dropWhileEnd, nub)
 import Data.Scientific (Scientific, scientific)
 import Data.Text (Text)
 import Data.Text.Lazy.Encoding qualified as T
+import Data.Time (getCurrentTime)
 import Data.Void (Void)
+import Directory (Directory (..), updateDirectory)
+import Directory.Files (SpecialFile (..), actualSpecialFile)
 import Directory.Watched (MarkAsUnwatchedResult (..), MarkAsWatchedResult (..), markAllAsUnwatched, markAllAsWatched, markFileAsUnwatched, markFileAsWatched)
 import Evdev.Codes
 import Evdev.Uinput
@@ -21,8 +24,9 @@ import GHC.Conc (TVar, atomically, readTVar, writeTVar)
 import Path (Abs, Dir, File, Path, fromAbsDir, fromAbsFile, parent, parseAbsDir, parseAbsFile)
 import Playerctl qualified
 import SafeMaths (int32ToInteger)
+import SaferIO (Logger (..))
 import System.Process (callProcess, readProcess)
-import TVState (TVState (..), addToAggWatched)
+import TVState (TVState (..))
 import Text.Blaze qualified as Blaze
 import Text.Julius (ToJavascript (..))
 import Util (boundedEnumCodec)
@@ -204,12 +208,12 @@ actionsWebSocket :: (MonadHandler m) => Device -> TVar TVState -> MVar () -> Web
 actionsWebSocket inputDevice tvStateTVar videoDataRefreshTrigger = forever $ do
   d <- receiveData
   liftIO $ case eitherDecodeJSONViaCodec d of
-    Left err -> putStrLn $ "Error decoding action: " <> err
+    Left err -> logStr $ "Error decoding action: " <> err
     Right action -> performAction inputDevice tvStateTVar videoDataRefreshTrigger action
 
 performAction :: Device -> TVar TVState -> MVar () -> Action -> IO ()
 performAction inputDevice tvStateTVar videoDataRefreshTrigger action = do
-  putStrLn $ "Performing action: " <> show action
+  logStr $ "Performing action: " <> show action
   case action of
     ActionClickMouse btn' ->
       let btn = mouseButtonToEvdevKey btn'
@@ -279,7 +283,7 @@ performAction inputDevice tvStateTVar videoDataRefreshTrigger action = do
     ActionRefreshTVState -> do
       success <- tryPutMVar videoDataRefreshTrigger ()
       when (not success) $
-        putStrLn "Already refreshing"
+        logStr "Already refreshing"
     ActionMedia playerCtlAction ->
       Playerctl.performAction playerCtlAction
   where
@@ -289,25 +293,44 @@ performAction inputDevice tvStateTVar videoDataRefreshTrigger action = do
         ++ map (`KeyEvent` Released) (reverse keys)
         ++ [SyncEvent SynReport]
 
-    markDirOrFileAsWatched dirOrFile =
-      case dirOrFile of
-        Dir path -> do
-          count <- markAllAsWatched path
-          addToAggWatched tvStateTVar path count
-        File path ->
-          markFileAsWatched path >>= \case
-            AlreadyWatched -> pure ()
-            MarkedAsWatched -> addToAggWatched tvStateTVar (parent path) 1
+    markDirOrFileAsWatched dirOrFile = do
+      let (path, updateFunc) = case dirOrFile of
+            Dir dirPath -> (dirPath, markAllAsWatched)
+            File filePath -> (parent filePath, markFileAsWatched filePath)
+      currentTime <- getCurrentTime
+      atomically $ do
+        curState <- readTVar tvStateTVar
+        writeTVar tvStateTVar $
+          curState
+            { tvVideoDirectory = updateDirectory curState.tvVideoDirectory path $ \d ->
+                case actualSpecialFile d.directoryWatched of
+                  Nothing -> d
+                  Just dirWatched ->
+                    case updateFunc currentTime d.directoryVideoFiles dirWatched of
+                      AlreadyWatched -> d
+                      MarkedAsWatched _count newWatched -> d {directoryWatched = FileDirty newWatched}
+                      -- TODO: Should we handle this better? What if we try to mark a file that does not exist as watched?
+                      MarkAsWatchedFileDoesNotExist -> d
+            }
 
-    markDirOrFileAsUnwatched dirOrFile =
-      case dirOrFile of
-        Dir path -> do
-          count <- markAllAsUnwatched path
-          addToAggWatched tvStateTVar path (-count)
-        File path ->
-          markFileAsUnwatched path >>= \case
-            AlreadyUnwatched -> pure ()
-            MarkedAsUnwatched -> addToAggWatched tvStateTVar (parent path) (-1)
+    markDirOrFileAsUnwatched dirOrFile = do
+      let (path, updateFunc) = case dirOrFile of
+            Dir dirPath -> (dirPath, const markAllAsUnwatched)
+            File filePath -> (parent filePath, markFileAsUnwatched filePath)
+      atomically $ do
+        curState <- readTVar tvStateTVar
+        writeTVar tvStateTVar $
+          curState
+            { tvVideoDirectory = updateDirectory curState.tvVideoDirectory path $ \d ->
+                case actualSpecialFile d.directoryWatched of
+                  Nothing -> d
+                  Just dirWatched ->
+                    case updateFunc d.directoryVideoFiles dirWatched of
+                      AlreadyUnwatched -> d
+                      MarkedAsUnwatched _count newWatched -> d {directoryWatched = FileDirty newWatched}
+                      -- TODO: Should we handle this better? What if we try to mark a file that does not exist as watched?
+                      MarkAsUnwatchedFileDoesNotExist -> d
+            }
 
 charToKey :: Char -> [Key]
 charToKey = \case

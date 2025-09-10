@@ -46,7 +46,7 @@ library
         Directory.Files
         Directory.Info
         Directory.Watched
-        DirectoryOld
+        Directory.Watched.Agg
         IsDevelopment
         LibMain
         Playerctl
@@ -115,7 +115,7 @@ test-suite pablo-tv-test
     other-modules:
         ActionsSpec
         DirectorySpec
-        DirectoryOldSpec
+        Directory.InfoSpec
         Orphanage
         TestUtils
         WatchedSpec

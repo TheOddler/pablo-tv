@@ -2,7 +2,7 @@ module DirectorySpec (spec) where
 
 import Directory
 import Directory.Files
-import DirectoryOld (DirectoryInfo (..), DirectoryKind (..))
+import Directory.Info (DirectoryInfo (..), DirectoryKind (..))
 import Orphanage ()
 import Path ((</>))
 import Path.IO (getCurrentDir)

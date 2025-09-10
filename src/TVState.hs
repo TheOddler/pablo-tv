@@ -1,55 +1,70 @@
 {-# LANGUAGE MultiWayIf #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 module TVState where
 
 import Data.HashMap.Strict as Map
 import Data.Text qualified as T
-import Directory.Watched (WatchedInfoAgg (..))
-import DirectoryOld (DirectoryInfo, TopLevelDir, topLevelToAbsDir)
+import Directory (Directory (..))
+import Directory.Files (SpecialFile (..))
+import Directory.Watched.Agg (WatchedInfoAgg (..))
 import GHC.Conc (TVar, atomically, readTVar, writeTVar)
-import Path (Abs, Dir, Path, isProperPrefixOf)
+import Path (Abs, Dir, Path, isProperPrefixOf, mkAbsDir)
 import Util (onChanges)
 import Yesod (MonadHandler)
 import Yesod.WebSockets (WebSocketsT, sendTextData)
 
 data TVState = TVState
   { tvPage :: T.Text,
-    tvVideoData :: Map.HashMap TopLevelDir (DirectoryInfo, WatchedInfoAgg)
+    tvVideoDirectory :: Directory
   }
-  deriving (Eq)
+
+-- deriving (Eq)
 
 startingTVState :: TVState
-startingTVState = TVState "" Map.empty
+startingTVState =
+  TVState "" $
+    Directory
+      { directoryPath = $(mkAbsDir "/"),
+        directoryInfo = FileDoesNotExist,
+        directoryImage = Nothing,
+        directoryWatched = FileDoesNotExist,
+        directoryVideoFiles = [],
+        directoryOtherFiles = [],
+        directorySubDirs = []
+      }
 
 tvStateWebSocket :: (MonadHandler m) => TVar TVState -> WebSocketsT m ()
 tvStateWebSocket tvStateTVar =
-  onChanges tvStateTVar $ \oldSate newState ->
-    if
-      | oldSate.tvPage /= newState.tvPage ->
-          sendTextData newState.tvPage
-      | ignoreWatchedInfo oldSate /= ignoreWatchedInfo newState ->
-          sendTextData $ T.pack "refresh"
-      | otherwise -> pure ()
-  where
-    ignoreWatchedInfo tvSate = drop2nd <$> tvSate.tvVideoData
-    drop2nd (a, _) = a
+  -- onChanges tvStateTVar $ \oldSate newState ->
+  --   if
+  --     | oldSate.tvPage /= newState.tvPage ->
+  --         sendTextData newState.tvPage
+  --     | ignoreWatchedInfo oldSate /= ignoreWatchedInfo newState ->
+  --         sendTextData $ T.pack "refresh"
+  --     | otherwise -> pure ()
+  -- where
+  --   ignoreWatchedInfo tvSate = drop2nd <$> tvSate.tvVideoData
+  --   drop2nd (a, _) = a
+  pure () -- TODO Implement tv state websocket that monitors changes
 
 addToAggWatched :: TVar TVState -> Path Abs Dir -> Int -> IO ()
-addToAggWatched _ _ 0 = pure ()
-addToAggWatched tvStateTVar path amount = atomically $ do
-  tvState <- readTVar tvStateTVar
-  let updatedState = tvState {tvVideoData = Map.mapWithKey doUpdate tvState.tvVideoData}
-  writeTVar tvStateTVar updatedState
-  where
-    doUpdate :: TopLevelDir -> (DirectoryInfo, WatchedInfoAgg) -> (DirectoryInfo, WatchedInfoAgg)
-    doUpdate p (dirIfo, watchedInfo)
-      | p' == path || p' `isProperPrefixOf` path =
-          ( dirIfo,
-            watchedInfo
-              { watchedInfoPlayedVideoFileCount =
-                  watchedInfo.watchedInfoPlayedVideoFileCount + amount
-              }
-          )
-      where
-        p' = topLevelToAbsDir p
-    doUpdate _ x = x
+-- addToAggWatched _ _ 0 = pure ()
+-- addToAggWatched tvStateTVar path amount = atomically $ do
+--   tvState <- readTVar tvStateTVar
+--   let updatedState = tvState {tvVideoData = Map.mapWithKey doUpdate tvState.tvVideoData}
+--   writeTVar tvStateTVar updatedState
+--   where
+--     doUpdate :: TopLevelDir -> (DirectoryInfo, WatchedInfoAgg) -> (DirectoryInfo, WatchedInfoAgg)
+--     doUpdate p (dirIfo, watchedInfo)
+--       | p' == path || p' `isProperPrefixOf` path =
+--           ( dirIfo,
+--             watchedInfo
+--               { watchedInfoPlayedVideoFileCount =
+--                   watchedInfo.watchedInfoPlayedVideoFileCount + amount
+--               }
+--           )
+--       where
+--         p' = topLevelToAbsDir p
+--     doUpdate _ x = x
+addToAggWatched _ _ _ = pure () -- TODO rework agg watched data, probably want to make it part of the Directory data

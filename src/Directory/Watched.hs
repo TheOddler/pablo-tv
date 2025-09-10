@@ -1,23 +1,16 @@
-{-# LANGUAGE TemplateHaskell #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 
 module Directory.Watched where
 
 import Autodocodec (HasCodec (..), bimapCodec, dimapCodec)
-import Autodocodec.Yaml (eitherDecodeYamlViaCodec, encodeYamlViaCodec)
-import Control.Exception (SomeException)
-import Control.Monad (foldM)
-import Control.Monad.Catch (MonadCatch (..))
+import Data.List (find, foldl')
 import Data.List.Extra (trimStart)
-import Data.List.NonEmpty.Extra qualified as NE
 import Data.Map qualified as Map
 import Data.Time (UTCTime (..))
-import Data.Time.Clock.POSIX (posixSecondsToUTCTime)
-import DirectoryOld (DirectoryRaw (..), isVideoFile, readDirectoryRaw)
-import Foreign.C (CTime (..))
-import GHC.Data.Maybe (catMaybes, firstJusts, fromMaybe)
-import Path (Abs, Dir, File, Path, Rel, filename, mkRelFile, parent, (</>))
-import SaferIO (FSRead (..), FSWrite (..), Logger (..), TimeRead (..))
+import Data.Tuple (swap)
+import Directory.Files (VideoFile (..))
+import GHC.Data.Maybe (firstJusts, fromMaybe, mapMaybe)
+import Path (Abs, File, Path, Rel, filename)
 import System.Posix qualified as Posix
 import Text.Read (readMaybe)
 
@@ -61,202 +54,126 @@ instance HasCodec (UTCTime, Posix.FileID) where
                   "File ID part was: " ++ idStr
                 ]
 
-watchedInfoName :: Path Rel File
-watchedInfoName = $(mkRelFile "watched.yaml")
-
-mkWatchedInfoPath :: Path Abs Dir -> Path Abs File
-mkWatchedInfoPath root = root </> watchedInfoName
-
-readWatchedInfo :: (FSRead m, Logger m) => Path Abs Dir -> m WatchedFiles
-readWatchedInfo dir = do
-  mInfoFile <- readFileBSSafe $ mkWatchedInfoPath dir
-  case mInfoFile of
-    Left _ -> pure $ WatchedFiles mempty
-    Right infoFile -> do
-      case eitherDecodeYamlViaCodec infoFile of
-        Right info -> pure info
-        Left err -> do
-          logStr $ "Failed to decode watched file: " ++ show err
-          pure $ WatchedFiles mempty
-
-hasBeenWatched :: WatchedFiles -> Path a File -> Bool
+hasBeenWatched :: WatchedFiles -> Path Abs File -> Bool
 hasBeenWatched (WatchedFiles watchedFiles) file =
   filename file `Map.member` watchedFiles
 
-writeWatchedInfo :: (FSWrite m) => Path Abs Dir -> WatchedFiles -> m ()
-writeWatchedInfo dir info = do
-  writeFileBS (mkWatchedInfoPath dir) (encodeYamlViaCodec info)
-
-data MarkAsWatchedResult = AlreadyWatched | MarkedAsWatched
+data MarkAsWatchedResult
+  = AlreadyWatched
+  | MarkedAsWatched Int WatchedFiles
+  | MarkAsWatchedFileDoesNotExist
 
 markFileAsWatched ::
-  (FSWrite m, FSRead m, TimeRead m, Logger m, MonadCatch m) =>
   Path Abs File ->
-  m MarkAsWatchedResult
-markFileAsWatched file = do
-  let dir = parent file
-  currentState <- readWatchedInfo dir
-  updatedSate <- markFileAsWatched' currentState file
-  cleanedState <- cleanWatchedInfo dir updatedSate
-  writeWatchedInfo dir cleanedState
-  pure $
-    if hasBeenWatched currentState file
-      then AlreadyWatched
-      else MarkedAsWatched
+  UTCTime ->
+  [VideoFile] ->
+  WatchedFiles ->
+  MarkAsWatchedResult
+markFileAsWatched filePath time videoFiles currentState =
+  case find ((== filePath) . videoFilePath) videoFiles of
+    Nothing -> MarkAsWatchedFileDoesNotExist
+    Just file ->
+      let updatedSate = markFileAsWatched' time currentState file
+          cleanedState = cleanWatchedInfo videoFiles updatedSate
+       in if hasBeenWatched currentState file.videoFilePath
+            then AlreadyWatched
+            else MarkedAsWatched 1 cleanedState
 
 -- | This is a version of markFileAsWatched that doesn't read nor write the
 -- file to disk.
 markFileAsWatched' ::
-  (FSRead m, TimeRead m) =>
+  UTCTime ->
   WatchedFiles ->
-  Path Abs File ->
-  m WatchedFiles
-markFileAsWatched' (WatchedFiles startState) file = do
-  stats <- getFileStatus file
-  time <- getCurrentTime
-  let newState = Map.insert (filename file) (time, Posix.fileID stats) startState
-  pure $ WatchedFiles newState
+  VideoFile ->
+  WatchedFiles
+markFileAsWatched' time (WatchedFiles startState) file = do
+  let status = file.videoFileStatus
+  let newState = Map.insert (filename file.videoFilePath) (time, Posix.fileID status) startState
+  WatchedFiles newState
 
 -- | Returns how many files were marked as watched. This could be lower than
 -- the number of files in the directory if some files were already marked as
 -- watched.
 markAllAsWatched ::
-  (FSWrite m, FSRead m, TimeRead m, Logger m, MonadCatch m) =>
-  Path Abs Dir ->
-  m Int
-markAllAsWatched dir = do
-  currentState <- readWatchedInfo dir
-  dirRaw <- readDirectoryRaw dir
-  let files = dirRaw.directoryVideoFiles
-      filesAbs = (dir </>) <$> files
-  updatedSate <- foldM markFileAsWatched' currentState filesAbs
-  cleanedState <- cleanWatchedInfo dir updatedSate
-  writeWatchedInfo dir cleanedState
+  UTCTime ->
+  [VideoFile] ->
+  WatchedFiles ->
+  MarkAsWatchedResult
+markAllAsWatched time videoFiles currentState = do
+  let updatedSate = foldl' (markFileAsWatched' time) currentState videoFiles
+  let cleanedState = cleanWatchedInfo videoFiles updatedSate
 
   let watchedOld = Map.size $ unWatchedFiles currentState
       watchedNew = Map.size $ unWatchedFiles cleanedState
-  pure $ watchedNew - watchedOld
+      diffCount = watchedNew - watchedOld
+  if currentState == cleanedState
+    then AlreadyWatched
+    else MarkedAsWatched diffCount cleanedState
 
-data MarkAsUnwatchedResult = AlreadyUnwatched | MarkedAsUnwatched
+data MarkAsUnwatchedResult
+  = AlreadyUnwatched
+  | MarkedAsUnwatched Int WatchedFiles
+  | MarkAsUnwatchedFileDoesNotExist
 
 markFileAsUnwatched ::
-  (FSWrite m, FSRead m, Logger m, MonadCatch m) =>
   Path Abs File ->
-  m MarkAsUnwatchedResult
-markFileAsUnwatched file = do
-  let dir = parent file
-  currentState <- readWatchedInfo dir
-  WatchedFiles cleanedState <- cleanWatchedInfo dir currentState
-  let newState = Map.delete (filename file) cleanedState
-  writeWatchedInfo dir $ WatchedFiles newState
-  pure $
-    if hasBeenWatched currentState file
-      then MarkedAsUnwatched
-      else AlreadyUnwatched
+  [VideoFile] ->
+  WatchedFiles ->
+  MarkAsUnwatchedResult
+markFileAsUnwatched filePath videoFiles currentState =
+  case find ((== filePath) . videoFilePath) videoFiles of
+    Nothing -> MarkAsUnwatchedFileDoesNotExist
+    Just file ->
+      let WatchedFiles cleanedState = cleanWatchedInfo videoFiles currentState
+          newState = Map.delete (filename file.videoFilePath) cleanedState
+       in if hasBeenWatched currentState file.videoFilePath
+            then MarkedAsUnwatched 1 $ WatchedFiles newState
+            else AlreadyUnwatched
 
--- | Returns how many files were marked as unwatched.
+-- | This essentially just return an empty state while counting the existing state
 markAllAsUnwatched ::
-  (FSWrite m, FSRead m, Logger m) =>
-  Path Abs Dir ->
-  m Int
-markAllAsUnwatched dir = do
-  currentState <- readWatchedInfo dir
-  writeWatchedInfo dir $ WatchedFiles Map.empty
+  WatchedFiles ->
+  MarkAsUnwatchedResult
+markAllAsUnwatched currentState = do
   let countOld = Map.size $ unWatchedFiles currentState
-  pure countOld
+  if countOld == 0
+    then AlreadyUnwatched
+    else MarkedAsUnwatched countOld $ WatchedFiles Map.empty
 
 cleanWatchedInfo ::
-  (MonadCatch m, FSRead m) =>
-  Path Abs Dir ->
+  [VideoFile] ->
   WatchedFiles ->
-  m WatchedFiles
-cleanWatchedInfo dir (WatchedFiles currentState) = do
-  DirectoryRaw _path videoFiles _dirs <- readDirectoryRaw dir
-  let addIdToFile ::
-        (MonadCatch m, FSRead m) =>
-        Path Rel File ->
-        m (Maybe (Posix.FileID, Path Rel File))
-      addIdToFile file = do
-        fileId <-
-          catch
-            (Just . Posix.fileID <$> getFileStatus (dir </> file))
-            (\(_ :: SomeException) -> pure Nothing)
-        pure $ case fileId of
-          Nothing -> Nothing
-          Just i -> Just (i, file)
-  filesWithIds <- traverse addIdToFile videoFiles
-  let idToFile :: Map.Map Posix.FileID (Path Rel File)
-      idToFile = Map.fromList $ catMaybes filesWithIds
+  WatchedFiles
+cleanWatchedInfo videoFiles (WatchedFiles currentState) = do
+  let toIdAndPath :: VideoFile -> (Posix.FileID, Path Abs File)
+      toIdAndPath videoFile =
+        (Posix.fileID videoFile.videoFileStatus, videoFile.videoFilePath)
+  let filesWithIds = toIdAndPath <$> videoFiles
+  let idToFile :: Map.Map Posix.FileID (Path Abs File)
+      idToFile = Map.fromList filesWithIds
+  let fileToId :: Map.Map (Path Abs File) Posix.FileID
+      fileToId = Map.fromList (swap <$> filesWithIds)
 
   let clean ::
-        (FSRead m) =>
         (Path Rel File, (UTCTime, Posix.FileID)) ->
-        m (Maybe (Path Rel File, (UTCTime, Posix.FileID)))
+        Maybe (Path Rel File, (UTCTime, Posix.FileID))
       clean (fileName, (watchedTime, fileId)) = do
-        -- Find the real file name, if the file exists, that's the real one
-        -- otherwise, see if we have a file with the same ID, if so we probably
-        -- renamed the file, so take that one
-        let mRealFileName =
-              if fileName `elem` videoFiles
-                then Just fileName
-                else Map.lookup fileId idToFile
+        -- Find the real file name, if a file exists with the same name, that's the real one, otherwise, see if we have a file with the same ID, if so we probably renamed the file, so take that one
+        let mRealFilePath :: Maybe (Path Abs File)
+            mRealFilePath =
+              case find ((== fileName) . filename) (videoFilePath <$> videoFiles) of
+                Just pathWithSameName -> Just pathWithSameName
+                Nothing -> Map.lookup fileId idToFile
 
-        case mRealFileName of
+        case mRealFilePath of
           -- If the file doesn't exist anywhere, we should drop it
-          Nothing -> pure Nothing
-          Just realFileName -> do
+          Nothing -> Nothing
+          Just realFilePath -> do
             -- Find real file ID, we just always read them from the file system
             -- as the given one might be outdated
-            realFileId <- Posix.fileID <$> getFileStatus (dir </> realFileName)
-            pure $ Just (realFileName, (watchedTime, realFileId))
+            realFileId <- Map.lookup realFilePath fileToId
+            Just (filename realFilePath, (watchedTime, realFileId))
 
   let stateAsList = Map.toList currentState
-  cleanedStateAsList <- catMaybes <$> traverse clean stateAsList
-  pure $ WatchedFiles $ Map.fromList cleanedStateAsList
-
--- | Aggregated data about a whole directory, including recursive subdirectories and files.
-data WatchedInfoAgg = WatchedInfoAgg
-  { -- | The last time this directory, or any of it's files/subdir (recursively) was modified.
-    watchedInfoLastModified :: Posix.EpochTime,
-    watchedInfoLastAccessed :: Posix.EpochTime,
-    watchedInfoLastWatched :: UTCTime,
-    -- | Total number of video files in this directory or any subdirs (recursively)
-    watchedInfoVideoFileCount :: Int,
-    -- | Count of files that were watched.
-    -- Here we take the watched files as gospel, and don't check if the files still exist.
-    watchedInfoPlayedVideoFileCount :: Int
-  }
-  deriving (Eq)
-
--- | Gather data about the directory and all subdirectories recursively and return the aggregated value.
-readWatchedInfoAgg :: (FSRead m, Logger m) => Path Abs Dir -> m WatchedInfoAgg
-readWatchedInfoAgg dir = do
-  (dirs', files') <- listDirRecur dir
-  let dirs = dir : dirs'
-  let files = filter isVideoFile files'
-
-  fileStatuses <- traverse getFileStatus files
-  let fileStatusesNE = NE.nonEmpty fileStatuses
-  let accessTimes = fmap Posix.accessTime <$> fileStatusesNE
-  let modificationTimes = fmap Posix.modificationTime <$> fileStatusesNE
-
-  watchedInfos <- traverse readWatchedInfo dirs
-  let watchedInfosNE = NE.nonEmpty watchedInfos
-  let watchedCount = sum $ Map.size . unWatchedFiles <$> watchedInfos
-  let epoch = posixSecondsToUTCTime 0
-      lastWatchedFrom :: WatchedFiles -> UTCTime
-      lastWatchedFrom (WatchedFiles wfs) =
-        maybe epoch NE.maximum1
-          . NE.nonEmpty
-          $ fst <$> Map.elems wfs
-      lastWatched =
-        maybe epoch (NE.maximum1 . fmap lastWatchedFrom) watchedInfosNE
-
-  pure
-    WatchedInfoAgg
-      { watchedInfoLastModified = maybe (CTime minBound) NE.maximum1 modificationTimes,
-        watchedInfoLastAccessed = maybe (CTime minBound) NE.maximum1 accessTimes,
-        watchedInfoLastWatched = lastWatched,
-        watchedInfoVideoFileCount = length files,
-        watchedInfoPlayedVideoFileCount = watchedCount
-      }
+  let cleanedStateAsList = mapMaybe clean stateAsList
+  WatchedFiles $ Map.fromList cleanedStateAsList

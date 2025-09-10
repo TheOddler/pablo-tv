@@ -83,7 +83,7 @@ instance (Eq a) => Eq (SpecialFile a) where
   FileDoesNotExist == FileDoesNotExist = True
   FileRead a == FileRead b = a == b
   FileDirty a == FileDirty b = a == b
-  FileReadFail bsA eA == FileReadFail bsB eB = bsA == bsB && show eA == show eB
+  FileReadParseError bsA eA == FileReadParseError bsB eB = bsA == bsB && show eA == show eB
   FileReadError a == FileReadError b = show a == show b
   _ == _ = False
 
