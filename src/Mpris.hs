@@ -7,7 +7,6 @@ import DBus
     IsVariant (..),
     MemberName,
     MethodCall (..),
-    MethodError,
     MethodReturn (..),
     ObjectPath,
     Variant,
@@ -15,7 +14,7 @@ import DBus
     methodCall,
   )
 import DBus.Client (Client, call, connectSession)
-import Data.Int (Int32)
+import Data.Int (Int64)
 import Data.List (isPrefixOf)
 import Data.Maybe (listToMaybe)
 import Data.String (IsString (..))
@@ -104,43 +103,41 @@ performAction action = do
     Nothing -> putLog Warning "No media player found."
     Just mp -> do
       let baseCallNoParam method =
-            call client $ mprisMethodCall mp baseInterface method []
+            mprisMethodCall mp baseInterface method []
           playerCallNoParam method =
-            call client $ mprisMethodCall mp playerInterface method []
+            mprisMethodCall mp playerInterface method []
           playerCall method param =
-            call client $ mprisMethodCall mp playerInterface method [toVariant param]
-          baseSetProp :: (IsVariant a) => String -> a -> IO (Either MethodError MethodReturn)
+            mprisMethodCall mp playerInterface method [toVariant param]
+          baseSetProp :: (IsVariant a) => String -> a -> MethodCall
           baseSetProp prop val =
-            call client $
-              mprisMethodCall
-                mp
-                propertiesInterface
-                "Set"
-                [ -- First parameter is the interface name
-                  toVariant baseInterface,
-                  -- Second the property we want to set
-                  toVariant prop,
-                  -- Third the value (as a `Variant`, so we need `toVariant` twice, as the first is unwrapped by `call`)
-                  toVariant $ toVariant val
-                ]
-          sToMs :: Int32 -> Int32
-          sToMs s = s * 1000
+            mprisMethodCall
+              mp
+              propertiesInterface
+              "Set"
+              [ -- First parameter is the interface name
+                toVariant baseInterface,
+                -- Second the property we want to set
+                toVariant prop,
+                -- Third the value (as a `Variant`, so we need `toVariant` twice, as the first is unwrapped by `call`)
+                toVariant $ toVariant val
+              ]
+          sToMicroS :: Int64 -> Int64
+          sToMicroS s = s * 1000000
 
-          doAction :: IO (Either MethodError MethodReturn)
-          doAction = case action of
+          methodCall' = case action of
             MprisQuit -> baseCallNoParam "Quit"
             MprisPlayPause -> playerCallNoParam "PlayPause"
             MprisStop -> playerCallNoParam "Stop"
             MprisNext -> playerCallNoParam "Next"
             MprisPrevious -> playerCallNoParam "Previous"
-            MprisForwardStep -> playerCall "Seek" $ sToMs 10
-            MprisBackwardStep -> playerCall "Seek" $ -sToMs 10
-            MprisForwardJump -> playerCall "Seek" $ sToMs 60
-            MprisBackwardJump -> playerCall "Seek" $ -sToMs 60
+            MprisForwardStep -> playerCall "Seek" $ sToMicroS 10
+            MprisBackwardStep -> playerCall "Seek" $ -sToMicroS 10
+            MprisForwardJump -> playerCall "Seek" $ sToMicroS 60
+            MprisBackwardJump -> playerCall "Seek" $ -sToMicroS 60
             MprisGoFullscreen -> baseSetProp "Fullscreen" True
             MprisGoWindowed -> baseSetProp "Fullscreen" False
 
-      errOrResult <- doAction
+      errOrResult <- call client methodCall'
       case errOrResult of
         Right result ->
           putLog Info $
