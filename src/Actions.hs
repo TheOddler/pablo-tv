@@ -29,11 +29,11 @@ import Evdev.Uinput
 import Foundation (App (..), Handler)
 import GHC.Conc (atomically, readTVar, writeTVar)
 import Logging (LogLevel (..), putLog)
+import Mpris qualified
 import Network.WebSockets qualified as WS
 import Orphanage ()
 import Path (Abs, Dir, File, Path, filename, fromAbsDir, fromAbsFile, mkRelDir, parent, parseAbsDir, parseAbsFile, (</>))
 import Path.IO (getHomeDir)
-import Playerctl qualified
 import SafeMaths (int32ToInteger)
 import Samba (mkMountPath)
 import System.Process (callProcess, readProcess)
@@ -71,7 +71,7 @@ data Action
   | ActionOpenUrlOnTV Text
   | ActionRefreshAllDirectoryData
   | ActionRefreshDirectoryData (Path Abs Dir)
-  | ActionMedia Playerctl.Action
+  | ActionMedia Mpris.MprisAction
   deriving (Show, Eq)
   deriving (FromJSON) via (Autodocodec Action)
 
@@ -342,8 +342,8 @@ performActionIO app action = do
         pure isEmpty
       when (not startedRefresh) $
         putLog Warning "Already refreshing"
-    ActionMedia playerCtlAction ->
-      liftIO $ Playerctl.performAction playerCtlAction
+    ActionMedia a ->
+      liftIO $ Mpris.performAction a
   where
     inputDevice = app.appInputDevice
     tvStateTVar = app.appTVState

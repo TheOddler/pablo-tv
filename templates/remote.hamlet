@@ -10,11 +10,11 @@
 
   <div class="row">
     <div>
-    <button onclick="sendAction('#{ActionMedia ActionPrevious}')">
+    <button onclick="sendAction('#{ActionMedia MprisPrevious}')">
       <i class="fa-solid fa-angles-left">
     <div class="large">
       Play<wbr>list
-    <button onclick="sendAction('#{ActionMedia ActionNext}')">
+    <button onclick="sendAction('#{ActionMedia MprisNext}')">
       <i class="fa-solid fa-angles-right">
     <div>
 
@@ -22,7 +22,7 @@
 
   <div class="row">
     <div>
-    <button class="large" onclick="sendAction('#{ActionMedia ActionPlayPause}')">
+    <button class="large" onclick="sendAction('#{ActionMedia MprisPlayPause}')">
       $# The extra div makes the scaling look better when button is pressed
       <div>
         <i class="fa-solid fa-play">
@@ -35,11 +35,11 @@
         <i class="fa-solid fa-minus">
 
   <div class="row">
-    <button onclick="sendAction('#{ActionMedia ActionBackwardJump}')">
+    <button onclick="sendAction('#{ActionMedia MprisBackwardJump}')">
       <i class="fa-solid fa-backward-fast">
-    <button onclick="sendAction('#{ActionMedia ActionBackwardStep}')">
+    <button onclick="sendAction('#{ActionMedia MprisBackwardStep}')">
       <i class="fa-solid fa-backward-step">
-    <button onclick="sendAction('#{ActionMedia ActionForwardStep}')">
+    <button onclick="sendAction('#{ActionMedia MprisForwardStep}')">
       <i class="fa-solid fa-forward-step">
-    <button onclick="sendAction('#{ActionMedia ActionForwardJump}')">
+    <button onclick="sendAction('#{ActionMedia MprisForwardJump}')">
       <i class="fa-solid fa-forward-fast">

@@ -9,55 +9,16 @@
 -- directly myself, but this is a nice abstraction for now.
 module Playerctl where
 
-import Autodocodec (HasCodec (..))
 import Control.Concurrent (threadDelay)
 import Control.Monad (when)
 import Data.Char (isSpace)
 import Data.List (dropWhileEnd)
 import Network.HTTP (urlDecode)
 import Path (Abs, File, Path, parseAbsFile)
-import System.Process (callProcess, readProcessWithExitCode)
-import Util (boundedEnumCodec)
-
-data Action
-  = ActionPlayPause
-  | ActionStop
-  | ActionNext
-  | ActionPrevious
-  | ActionForwardStep
-  | ActionBackwardStep
-  | ActionForwardJump
-  | ActionBackwardJump
-  deriving (Show, Eq, Bounded, Enum)
-
-instance HasCodec Action where
-  codec =
-    boundedEnumCodec $ \case
-      ActionPlayPause -> "playPause"
-      ActionStop -> "stop"
-      ActionNext -> "next"
-      ActionPrevious -> "previous"
-      ActionForwardStep -> "forwardStep"
-      ActionBackwardStep -> "backwardStep"
-      ActionForwardJump -> "forwardJump"
-      ActionBackwardJump -> "backwardJump"
+import System.Process (readProcessWithExitCode)
 
 playerctlProcessName :: FilePath
 playerctlProcessName = "playerctl"
-
-performAction :: Action -> IO ()
-performAction = callPlayerctl . actionToParams
-  where
-    callPlayerctl = callProcess playerctlProcessName
-    actionToParams = \case
-      ActionPlayPause -> ["play-pause"]
-      ActionStop -> ["stop"]
-      ActionNext -> ["next"]
-      ActionPrevious -> ["previous"]
-      ActionForwardStep -> ["position", "10+"]
-      ActionBackwardStep -> ["position", "10-"]
-      ActionForwardJump -> ["position", "60+"]
-      ActionBackwardJump -> ["position", "60-"]
 
 onFilePlayStarted :: (Maybe (Path Abs File) -> IO ()) -> IO ()
 onFilePlayStarted callback = loop Nothing

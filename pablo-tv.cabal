@@ -48,6 +48,7 @@ library
         IsDevelopment
         LibMain
         Logging
+        Mpris
         Orphanage
         Playerctl
         SafeMaths
@@ -64,6 +65,7 @@ library
       , blaze-markup
       , bytestring
       , data-default
+      , dbus
       , directory
       , evdev
       , extra
