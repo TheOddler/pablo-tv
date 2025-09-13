@@ -1,12 +1,13 @@
 <div class="buttons-grid">
   <div class="row">
-    <div>
-    <div>
-    <a class="button" href=@{HomeR}>
-      <i class="fa-solid fa-file-video">
-    <div>
     <button class="red" onclick="sendAction('#{ActionMedia MprisQuit}')">
       <i class="fa-solid fa-power-off">
+    <div>
+    <div>
+    <button onclick="sendAction('#{ActionMedia MprisGoWindowed}')">
+      <i class="fa-solid fa-compress">
+    <button onclick="sendAction('#{ActionMedia MprisGoFullscreen}')">
+      <i class="fa-solid fa-expand">
 
   <div class="row">
     <div>
