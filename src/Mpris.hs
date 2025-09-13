@@ -184,6 +184,10 @@ performAction action = do
           sToMicroS s = s * 1000000
 
           methodCall' = case action of
+            -- Relevant docs:
+            -- https://specifications.freedesktop.org/mpris-spec/latest/index.html
+            -- https://specifications.freedesktop.org/mpris-spec/latest/Media_Player.html
+            -- https://specifications.freedesktop.org/mpris-spec/latest/Player_Interface.html
             MprisQuit -> baseCallNoParam "Quit"
             MprisPlayPause -> playerCallNoParam "PlayPause"
             MprisStop -> playerCallNoParam "Stop"
