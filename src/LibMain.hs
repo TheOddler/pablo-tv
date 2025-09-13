@@ -72,11 +72,10 @@ import GHC.Utils.Misc (sortWith)
 import IsDevelopment (isDevelopment)
 import Lens.Micro ((&), (.~))
 import Logging (LogLevel (..), logDuration, putLog, runLoggingT)
-import Mpris (MprisAction (..))
+import Mpris (MprisAction (..), mediaListener)
 import Network.Info (NetworkInterface (..), getNetworkInterfaces)
 import Network.Wai.Handler.Warp (run)
 import Path (Abs, Dir, File, Path, dirname, fromRelDir, fromRelFile, (</>))
-import Playerctl (onFilePlayStarted)
 import Samba (MountResult, SmbServer (..), SmbShare (..), mount)
 import System.Environment (lookupEnv)
 import System.Process (callProcess)
@@ -334,17 +333,14 @@ main = do
       let appThread = toWaiAppPlain app >>= run port . defaultMiddlewaresNoLogging
 
       -- The thread that'll be listening for files being played, and marking them as watched
-      let watchedThread =
-            onFilePlayStarted $ \case
-              Nothing -> pure ()
-              Just path -> do
-                putLog Info $ "Heard file playing: " ++ show path
-                performActionIO app $ ActionMarkAsWatched $ File path
+      -- This is function returns instantly, but in the background it's still running, so no need to race
+      _ <- mediaListener $ \path -> do
+        putLog Info $ "Heard file playing: " ++ show path
+        performActionIO app $ ActionMarkAsWatched $ File path
 
       putLog Info "Starting server..."
       raceAll
         [ appThread,
-          watchedThread,
           dirUpdatorThreads connPool tvdbToken dirExplorationQueue dirDiscoveryQueue
         ]
 

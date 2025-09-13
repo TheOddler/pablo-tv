@@ -50,7 +50,6 @@ library
         Logging
         Mpris
         Orphanage
-        Playerctl
         SafeMaths
         SaferIO
         Samba
@@ -64,6 +63,7 @@ library
       , autodocodec
       , blaze-markup
       , bytestring
+      , containers
       , data-default
       , dbus
       , directory
@@ -77,8 +77,10 @@ library
       , microlens
       , modern-uri
       , monad-logger
+      , mtl
       , natural-sort
       , network-info
+      , network-uri
       , path
       , path-io
       , persistent-qq

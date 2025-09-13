@@ -1,6 +1,7 @@
 module Mpris where
 
 import Autodocodec (HasCodec (..))
+import Control.Monad.Trans.Except (Except, ExceptT (..), runExcept)
 import DBus
   ( BusName,
     InterfaceName,
@@ -9,16 +10,20 @@ import DBus
     MethodCall (..),
     MethodReturn (..),
     ObjectPath,
+    Signal (..),
     Variant,
     formatBusName,
     methodCall,
   )
-import DBus.Client (Client, call, connectSession)
+import DBus.Client (Client, MatchRule (..), SignalHandler, addMatch, call, connectSession, matchAny)
 import Data.Int (Int64)
 import Data.List (isPrefixOf)
+import Data.Map qualified as Map
 import Data.Maybe (listToMaybe)
 import Data.String (IsString (..))
 import Logging (LogLevel (..), Logger (..))
+import Network.URI (unEscapeString)
+import Path (Abs, File, Path, parseAbsFile)
 import Util (boundedEnumCodec)
 
 data MprisAction
@@ -94,6 +99,60 @@ mprisMethodCall destination interface member body =
       methodCallBody = body
     }
 
+-- | This instantly returns, and shouldn't be run in a race.
+-- This is essentially a wrapper around `addMatch` so can be stopped by using the returned SignalHandler.
+mediaListener :: (Path Abs File -> IO ()) -> IO SignalHandler
+mediaListener onFilePlayed = do
+  client <- connectSession
+
+  -- Add a match rule for PropertiesChanged signals on the Player interface
+  let match =
+        matchAny
+          { matchPath = Just mprisObject,
+            matchInterface = Just propertiesInterface,
+            matchMember = Just "PropertiesChanged"
+          }
+
+  -- Register signal handler
+  addMatch client match $ \signal -> do
+    let justOrErr :: String -> Maybe a -> Except String a
+        justOrErr err =
+          ExceptT . \case
+            Just a -> pure $ Right a
+            Nothing -> pure $ Left err
+        guard :: Bool -> String -> Except String ()
+        guard b err =
+          ExceptT $
+            if b
+              then pure $ Right ()
+              else pure $ Left err
+    let body = signalBody signal
+    case body of
+      [interface', changedProps', _] ->
+        let errOrPath :: Either String (Path Abs File)
+            errOrPath = runExcept $ do
+              interface <- justOrErr "interface failed parsing" $ fromVariant interface'
+              guard (interface == playerInterface) $ "interface is not " ++ show playerInterface
+              (changedProps :: Map.Map String Variant) <- justOrErr "changed props failed parsing" $ fromVariant changedProps'
+              (metaData :: Map.Map String Variant) <-
+                justOrErr "Metadata field not found in changed properties" $
+                  Map.lookup ("Metadata" :: String) changedProps >>= fromVariant
+              (videoLength :: Int64) <- justOrErr "length not found" $ Map.lookup "mpris:length" metaData >>= fromVariant
+              -- I observed that opening a video sends 3 signals, each time with a bit more information. The last one is the only one with a proper length, so only listen for that one
+              guard (videoLength > 0) "length reported as 0, so likely some in-between signal"
+              (xesamUrl :: String) <- justOrErr "video path" $ Map.lookup "xesam:url" metaData >>= fromVariant
+              let mFile :: Maybe (Path Abs File)
+                  mFile = case unEscapeString xesamUrl of
+                    'f' : 'i' : 'l' : 'e' : ':' : '/' : '/' : path ->
+                      parseAbsFile path
+                    _ -> Nothing
+              justOrErr "file path failed parsing" mFile
+         in case errOrPath of
+              Left err -> putLog Debug $ "Ignoring property changes because " ++ err ++ "; " ++ show body
+              Right path -> onFilePlayed path
+      _ ->
+        putLog Error $ "Incorrect body shape for PropertiesChanged signal: " ++ show body
+
 performAction :: MprisAction -> IO ()
 performAction action = do
   client <- connectSession
@@ -168,3 +227,6 @@ expectSingleValue = \case
     Nothing -> fail "Failed parsing single variant"
     Just a -> pure a
   _ -> fail "Expected single value, but got multiple"
+
+fromVariant2 :: (IsVariant a) => Variant -> Maybe a
+fromVariant2 v = fromVariant v >>= fromVariant
