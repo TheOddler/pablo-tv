@@ -67,7 +67,6 @@ data Action
   | ActionPlayPath DirOrFile
   | ActionMarkAsWatched DirOrFile
   | ActionMarkAsUnwatched DirOrFile
-  | ActionCloseWindow
   | ActionOpenUrlOnTV Text
   | ActionRefreshAllDirectoryData
   | ActionRefreshDirectoryData (Path Abs Dir)
@@ -119,7 +118,6 @@ instance HasObjectCodec Action where
         ActionPlayPath path -> ("PlayPath", oneFieldEncoder "path" $ dirOrFileToStr path)
         ActionMarkAsWatched path -> ("MarkAsWatched", oneFieldEncoder "path" $ dirOrFileToStr path)
         ActionMarkAsUnwatched path -> ("MarkAsUnwatched", oneFieldEncoder "path" $ dirOrFileToStr path)
-        ActionCloseWindow -> ("CloseWindow", noFieldEncoder)
         ActionOpenUrlOnTV url -> ("OpenUrlOnTV", oneFieldEncoder "url" url)
         ActionRefreshAllDirectoryData -> ("RefreshAllDirectoryData", noFieldEncoder)
         ActionRefreshDirectoryData path -> ("RefreshDirectoryData", oneFieldEncoder "path" path)
@@ -154,7 +152,6 @@ instance HasObjectCodec Action where
                     requiredField' "path"
               )
             ),
-            ("CloseWindow", ("ActionCloseWindow", noFieldDecoder ActionCloseWindow)),
             ("OpenUrlOnTV", ("ActionOpenUrlOnTV", oneFieldDecoder ActionOpenUrlOnTV "url")),
             ("RefreshAllDirectoryData", ("ActionRefreshAllDirectoryData", noFieldDecoder ActionRefreshAllDirectoryData)),
             ("RefreshDirectoryData", ("ActionRefreshDirectoryData", oneFieldDecoder ActionRefreshDirectoryData "path")),
@@ -311,8 +308,6 @@ performActionIO app action = do
       markDirOrFileAsWatched dirOrFile
     ActionMarkAsUnwatched dirOrFile ->
       markDirOrFileAsUnwatched dirOrFile
-    ActionCloseWindow ->
-      liftIO $ writeBatch inputDevice $ clickKeyCombo [KeyLeftctrl, KeyQ]
     ActionOpenUrlOnTV url ->
       liftIO $ atomically $ do
         tvState <- readTVar tvStateTVar

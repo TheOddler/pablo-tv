@@ -5,7 +5,7 @@
     <a class="button" href=@{HomeR}>
       <i class="fa-solid fa-file-video">
     <div>
-    <button class="red" onclick="sendAction('#{ActionCloseWindow}')">
+    <button class="red" onclick="sendAction('#{ActionMedia MprisQuit}')">
       <i class="fa-solid fa-power-off">
 
   <div class="row">

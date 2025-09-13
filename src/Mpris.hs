@@ -23,7 +23,8 @@ import Logging (LogLevel (..), Logger (..))
 import Util (boundedEnumCodec)
 
 data MprisAction
-  = MprisPlayPause
+  = MprisQuit
+  | MprisPlayPause
   | MprisStop
   | MprisNext
   | MprisPrevious
@@ -38,6 +39,7 @@ data MprisAction
 instance HasCodec MprisAction where
   codec =
     boundedEnumCodec $ \case
+      MprisQuit -> "quit"
       MprisPlayPause -> "playPause"
       MprisStop -> "stop"
       MprisNext -> "next"
@@ -77,8 +79,8 @@ firstMediaPlayer client = listToMaybe <$> allMediaPlayers client
 mprisObject :: ObjectPath
 mprisObject = "/org/mpris/MediaPlayer2"
 
-mprisInterface :: InterfaceName
-mprisInterface = "org.mpris.MediaPlayer2"
+baseInterface :: InterfaceName
+baseInterface = "org.mpris.MediaPlayer2"
 
 playerInterface :: InterfaceName
 playerInterface = "org.mpris.MediaPlayer2.Player"
@@ -101,7 +103,9 @@ performAction action = do
   case mPlayer of
     Nothing -> putLog Warning "No media player found."
     Just mp -> do
-      let playerCallNoParam method =
+      let baseCallNoParam method =
+            call client $ mprisMethodCall mp baseInterface method []
+          playerCallNoParam method =
             call client $ mprisMethodCall mp playerInterface method []
           playerCall method param =
             call client $ mprisMethodCall mp playerInterface method [toVariant param]
@@ -113,7 +117,7 @@ performAction action = do
                 propertiesInterface
                 "Set"
                 [ -- First parameter is the interface name
-                  toVariant mprisInterface,
+                  toVariant baseInterface,
                   -- Second the property we want to set
                   toVariant prop,
                   -- Third the value (as a `Variant`, so we need `toVariant` twice, as the first is unwrapped by `call`)
@@ -124,6 +128,7 @@ performAction action = do
 
           doAction :: IO (Either MethodError MethodReturn)
           doAction = case action of
+            MprisQuit -> baseCallNoParam "Quit"
             MprisPlayPause -> playerCallNoParam "PlayPause"
             MprisStop -> playerCallNoParam "Stop"
             MprisNext -> playerCallNoParam "Next"
