@@ -5,8 +5,8 @@ module Orphanage where
 import Actions (Action (..), DirOrFile (..), KeyboardButton (..), MouseButton (..))
 import GHC.Generics (Generic)
 import Generic.Random (genericArbitrary, uniform)
+import Mpris qualified
 import Path qualified
-import Playerctl qualified
 import Test.QuickCheck (Arbitrary (..), elements, listOf)
 import Test.QuickCheck.Instances ()
 import TestUtils (forcePath, genDirName, genDirRoot, genFileName)
@@ -19,7 +19,7 @@ deriving instance Generic MouseButton
 
 deriving instance Generic KeyboardButton
 
-deriving instance Generic Playerctl.Action
+deriving instance Generic Mpris.MprisAction
 
 instance Arbitrary (Path.Path Path.Abs Path.Dir) where
   arbitrary = do
@@ -53,5 +53,5 @@ instance Arbitrary MouseButton where
 instance Arbitrary KeyboardButton where
   arbitrary = genericArbitrary uniform
 
-instance Arbitrary Playerctl.Action where
+instance Arbitrary Mpris.MprisAction where
   arbitrary = genericArbitrary uniform

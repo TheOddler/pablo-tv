@@ -71,13 +71,11 @@ library
       , extra
       , filepath
       , ghc
-      , HTTP
       , http-api-data
       , http-client
       , microlens
       , modern-uri
       , monad-logger
-      , mtl
       , natural-sort
       , network-info
       , network-uri
@@ -127,9 +125,7 @@ test-suite pablo-tv-test
         TestUtils
     build-depends:
         autodocodec
-      , autodocodec-yaml
       , bytestring
-      , containers
       , generic-random
       , pablo-tv
       , path
@@ -137,5 +133,3 @@ test-suite pablo-tv-test
       , quickcheck-instances
       , sydtest
       , sydtest-discover
-      , text
-      , time
