@@ -221,6 +221,9 @@ getDirectoryR dirPath = do
     hasImage <- hasImageQ dirPath
     pure (ds, map entityVal fs, hasImage)
 
+  when (null dirs' && null files') $
+    redirect DirectoryHomeR
+
   let dirs = naturalSortBy (fromRelDir . dirname . aggDirPath) dirs'
       files = naturalSortBy (fromRelFile . videoFileName) files'
 
