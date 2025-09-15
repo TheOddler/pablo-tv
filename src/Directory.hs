@@ -1,3 +1,4 @@
+{-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE RecordWildCards #-}
 
 module Directory where
@@ -7,7 +8,7 @@ import Control.Applicative ((<|>))
 import Control.Concurrent.STM (atomically, readTQueue, writeTQueue)
 import Control.Concurrent.STM.TQueue (TQueue)
 import Control.Monad (forM_, forever, void)
-import DB
+import DB qualified
 import Data.ByteString qualified as BS
 import Data.HashSet qualified as Set
 import Data.List (intercalate, sortBy)
@@ -17,7 +18,19 @@ import Data.Maybe (isJust, listToMaybe, mapMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Time (getCurrentTime)
-import Database.Persist.Sqlite (ConnectionPool, Entity (..), PersistStoreWrite (..), PersistUniqueWrite (..), upsert, (=.))
+import Database.Persist.Sql.Raw.QQ (executeQQ)
+import Database.Persist.Sqlite
+  ( ConnectionPool,
+    Entity (..),
+    Single (..),
+    deleteWhere,
+    insertUnique_,
+    update,
+    upsert,
+    (/<-.),
+    (=.),
+    (==.),
+  )
 import GHC.Data.Maybe (firstJusts, orElse)
 import GHC.Exts (sortWith)
 import GHC.IO.Exception (IOErrorType (..), IOException (..))
@@ -189,25 +202,58 @@ discoveryHandlerThread dbConnPool tvdbToken discoveryQueue = forever $ do
   ((), updateDur) <- withDuration $ do
     now <- getCurrentTime
     -- Try and do as much in a single transaction, but we might need some followup work that reads from disk and then does a second transaction
-    (followupAction :: IO ()) <- runDBPool dbConnPool $ do
+    (followupAction :: IO ()) <- DB.runDBPool dbConnPool $ do
       -- Add dir, and if it already exists don't do anything.
-      existingDir <- upsert (Directory discoveredDir Nothing Nothing) []
+      existingDir <- upsert (DB.Directory discoveredDir Nothing Nothing) []
 
       -- Insert/update video files
       forM_ discoveredVideoFiles $ \filePath ->
         insertUnique_
-          VideoFile
+          DB.VideoFile
             { videoFileParent = entityKey existingDir,
               videoFileName = filename filePath,
               videoFileAdded = now,
               videoFileWatched = Nothing
             }
+      -- Delete files that no longer exist
+      deleteWhere
+        [ DB.VideoFileParent ==. entityKey existingDir,
+          -- `/<-.` is `NOT IN`
+          DB.VideoFileName /<-. map filename discoveredVideoFiles
+        ]
 
-      -- TODO: Should we delete files that are no longe there?
+      -- Delete all sub-directories that no-longer exist
+      case NE.nonEmpty discoveredSubDirs of
+        Nothing ->
+          -- Delete all sub-dirs
+          [executeQQ|
+            DELETE FROM ^{DB.Directory} AS d
+            WHERE 
+              -- Not the dir itself
+              d.@{DB.DirectoryPath} <> #{discoveredDir}
+              -- All sub-dirs of this dir
+            AND d.@{DB.DirectoryPath} GLOB #{discoveredDir} || '*'
+          |]
+        Just subDirs -> do
+          [executeQQ|
+            DELETE FROM ^{DB.Directory} AS d
+            WHERE 
+              -- Not the dir itself
+              d.@{DB.DirectoryPath} <> #{discoveredDir}
+              -- It is a sub-directory of this dir
+            AND d.@{DB.DirectoryPath} GLOB #{discoveredDir} || '*'
+              -- It is not one of the sub-dirs we found, nor a sub-dir of them
+            AND NOT EXISTS (
+              WITH subDirs(path) AS (VALUES *{Single <$> subDirs})
+              SELECT *
+              FROM subDirs
+              WHERE d.@{DB.DirectoryPath} GLOB subDirs.path || '*'
+            )
+          |]
 
       -- Figure out if we should do another update after.
       -- We do this in two steps because this followup action can then do slow IO, like reading the image from disk
-      hasExistingImg <- hasImageQ discoveredDir
+      hasExistingImg <- DB.hasImageQ discoveredDir
       -- Find best image on disc
       let mBestImg = bestImageFile discoveredImageFiles
       let followup :: IO ()
@@ -217,12 +263,12 @@ discoveryHandlerThread dbConnPool tvdbToken discoveryQueue = forever $ do
               -- Since this requires slow IO, we do this in the followup.
               -- It's an update, in case between this and the followup the directory got removed, it should then probably remain removed.
               imageData <- BS.readFile $ fromAbsFile foundImg
-              void . runDBPool dbConnPool $
+              void . DB.runDBPool dbConnPool $
                 update
                   (entityKey existingDir)
-                  [ DirectoryImageContentType
+                  [ DB.DirectoryImageContentType
                       =. Just (getImageContentType foundImg),
-                    DirectoryImage =. Just imageData
+                    DB.DirectoryImage =. Just imageData
                   ]
             (False, Nothing) -> do
               case tvdbToken of
@@ -243,11 +289,11 @@ discoveryHandlerThread dbConnPool tvdbToken discoveryQueue = forever $ do
                       case mTVDBInfo >>= tvdbDataImage of
                         Nothing -> pure ()
                         Just (contentType, imageData) ->
-                          void . runDBPool dbConnPool $
+                          void . DB.runDBPool dbConnPool $
                             update
                               (entityKey existingDir)
-                              [ DirectoryImageContentType =. Just contentType,
-                                DirectoryImage =. Just imageData
+                              [ DB.DirectoryImageContentType =. Just contentType,
+                                DB.DirectoryImage =. Just imageData
                               ]
             (True, Nothing) ->
               -- We already have an image in the DB, just keep that one.

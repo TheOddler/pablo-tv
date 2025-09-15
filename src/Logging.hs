@@ -39,7 +39,7 @@ defaultColour = "\ESC[0m"
 -- | Use putStr from the bytestring module as that seems to be concurrency safe?
 -- Don't use putStrLn as that isn't. Instead append the newline, even though that requires more memory.
 putLogIO :: (MonadIO m) => LogLevel -> BS.ByteString -> m ()
-putLogIO Debug _ = pure ()
+-- putLogIO Debug _ = pure ()
 putLogIO level msg =
   liftIO . BS.putStr $
     mconcat

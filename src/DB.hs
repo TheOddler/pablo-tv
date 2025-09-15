@@ -35,7 +35,7 @@ Directory
   Primary path
 
 VideoFile
-  parent DirectoryId
+  parent DirectoryId OnDeleteCascade OnUpdateCascade
   name (Path Rel File)
   added UTCTime
   watched UTCTime Maybe

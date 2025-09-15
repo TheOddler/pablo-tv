@@ -22,9 +22,8 @@
     $# <a href="#" onclick="sendAction('#{ActionOpenUrlOnTV currentUrl}')">
     $#   <i class="fa-solid fa-arrow-up-from-bracket">
 
-  $# TODO Does it still make sense to have a link to the videos path? You could just use home. But maybe we do want to supper `Nothing` here at some point. Or we make a Directory route without a second parameter, kinda like a second home page but that shows all the root folders combined in a single page. For now however, we'll figure it out later.
-  $# <a href=@{DirectoryR []}>
-  $#   <i class="fa-solid fa-file-video">
+  <a href=@{DirectoryHomeR}>
+    <i class="fa-solid fa-file-video">
   <a href=@{HomeR}>
     <i class="fa-solid fa-house">
 
