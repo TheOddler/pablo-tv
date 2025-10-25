@@ -239,11 +239,13 @@ getDirectoryR dirPath = do
   let title = toHtml $ niceDirNameT dirPath
   defaultLayout title $(widgetFile "directory")
 
-getImageR :: Path Abs Dir -> Handler Html
+getImageR :: Path Abs Dir -> Handler TypedContent
 getImageR absPath =
   runDB (getImageQ absPath) >>= \case
     Nothing -> notFound
-    Just (imgContentType, imgBytes) -> sendResponse (imgContentType, toContent imgBytes)
+    Just (imgContentType, imgBytes) -> do
+      addHeader "Cache-Control" "max-age=604800, public" -- Cache 1 week
+      sendResponse (imgContentType, toContent imgBytes)
 
 getRemoteR :: Handler Html
 getRemoteR = do
