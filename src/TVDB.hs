@@ -12,6 +12,7 @@ where
 
 import Autodocodec
 import Control.Applicative ((<|>))
+import Control.Exception (try)
 import Data.Aeson (FromJSON, ToJSON)
 import Data.Aeson.KeyMap (KeyMap)
 import Data.Aeson.KeyMap qualified as KeyMap
@@ -41,11 +42,11 @@ import Network.HTTP.Req
     (/:),
     (=:),
   )
-import SaferIO (NetworkRead (..))
+import Network.HTTP.Req qualified as HTTP
 import Text.Read (readMaybe)
 import Text.URI (mkURI)
 import Util (mapLeft)
-import Yesod (ContentType)
+import Yesod (ContentType, MonadIO (..))
 
 newtype TVDBApiKey = TVDBApiKey {unTVDBApiKey :: String}
   deriving (ToJSON) via Autodocodec TVDBApiKey
@@ -78,7 +79,7 @@ instance (HasCodec a) => HasCodec (RawResponse a) where
         <$> requiredField "status" "Did this succeed?" .= rawResponseStatus
         <*> requiredField "data" "A list of results" .= rawResponseData
 
-getToken :: (NetworkRead m, Logger m) => TVDBApiKey -> m (Maybe TVDBToken)
+getToken :: (MonadIO m, Logger m) => TVDBApiKey -> m (Maybe TVDBToken)
 getToken apiKey = do
   responseOrErr <-
     runReqSafe defaultHttpConfig $
@@ -142,7 +143,7 @@ instance HasCodec RawResponseRemoteId where
         <$> requiredField "id" "The remote id" .= rawResponseRemoteId
         <*> requiredField "sourceName" "Either `IMDB` or `TheMovieDB.com`, among other irrelevant ones for us" .= rawResponseRemoteSourceName
 
-getInfoFromTVDB :: (NetworkRead m, Logger m) => TVDBToken -> Text -> TVDBType -> Maybe Text -> Maybe Int -> m (Maybe TVDBData)
+getInfoFromTVDB :: (MonadIO m, Logger m) => TVDBToken -> Text -> TVDBType -> Maybe Text -> Maybe Int -> m (Maybe TVDBData)
 getInfoFromTVDB (TVDBToken tvdbToken) title type' mRemoteId mYear = do
   response <- runReqSafe defaultHttpConfig $ do
     response <-
@@ -197,14 +198,14 @@ getInfoFromTVDB (TVDBToken tvdbToken) title type' mRemoteId mYear = do
               tvdbDataTmdb = lookupRemoteId "TheMovieDB.com"
             }
 
-downloadImage :: (NetworkRead m) => Text -> m (Either String (ContentType, BS.ByteString))
+downloadImage :: (MonadIO m) => Text -> m (Either String (ContentType, BS.ByteString))
 downloadImage urlT = do
   case useURI =<< mkURI urlT of
     Nothing -> pure $ Left $ "Invalid URL: " <> T.unpack urlT
     Just (Left httpUrl) -> downloadFrom httpUrl
     Just (Right httpsUrl) -> downloadFrom httpsUrl
   where
-    downloadFrom :: (NetworkRead m) => (Url scheme, Option scheme) -> m (Either String (ContentType, BS.ByteString))
+    downloadFrom :: (MonadIO m) => (Url scheme, Option scheme) -> m (Either String (ContentType, BS.ByteString))
     downloadFrom (url, options) = do
       imgResponse <-
         runReqSafe defaultHttpConfig $
@@ -219,3 +220,6 @@ downloadImage urlT = do
     lookupHeader x xs = case lookup x xs of
       Just y -> Right y
       Nothing -> Left $ "Failed to find " <> show x <> " in headers: " <> show xs
+
+runReqSafe :: (MonadIO m) => HTTP.HttpConfig -> HTTP.Req a -> m (Either HTTP.HttpException a)
+runReqSafe c = liftIO . try . HTTP.runReq c

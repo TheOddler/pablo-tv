@@ -51,7 +51,6 @@ library
         Mpris
         Orphanage
         SafeMaths
-        SaferIO
         Samba
         TVDB
         TVState
