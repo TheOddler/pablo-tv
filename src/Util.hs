@@ -1,6 +1,5 @@
 module Util where
 
-import Autodocodec (JSONCodec, stringConstCodec)
 import Control.Concurrent (MVar, takeMVar)
 import Control.Monad (when)
 import Data.Default (def)
@@ -10,14 +9,12 @@ import Data.List.NonEmpty qualified as NE
 import Data.List.NonEmpty.Extra qualified as NE
 import Data.Ord (Down)
 import Data.String (fromString)
-import Data.Text qualified as T
 import Data.Time (NominalDiffTime, diffUTCTime, getCurrentTime)
-import Database.Persist.Sqlite (Single (..))
 import GHC.Conc (TVar, atomically, readTVar, readTVarIO, retry)
 import IsDevelopment (isDevelopment)
 import Language.Haskell.TH.Syntax (Exp, Q)
 import Network.Info (IPv4 (..), NetworkInterface (..))
-import Path (File, Path, fileExtension)
+import System.FilePath (takeExtension)
 import System.Random (RandomGen)
 import System.Random.Shuffle (shuffle')
 import Yesod
@@ -87,17 +84,6 @@ mapLeft :: (t -> a) -> Either t b -> Either a b
 mapLeft f (Left x) = Left $ f x
 mapLeft _ (Right x) = Right x
 
-boundedEnumCodec ::
-  forall enum.
-  (Eq enum, Enum enum, Bounded enum) =>
-  (enum -> T.Text) ->
-  JSONCodec enum
-boundedEnumCodec showFunc =
-  let ls = [minBound .. maxBound]
-   in case NE.nonEmpty ls of
-        Nothing -> error "0 enum values ?!"
-        Just ne -> stringConstCodec (NE.map (\v -> (v, showFunc v)) ne)
-
 -- | This will loop and take the `()` from the trigger, and rerun the action
 -- every time the trigger is set.
 -- If the trigger is set while the action is already running, it will wait until
@@ -130,26 +116,10 @@ safeMinimumOn scale as = case NE.nonEmpty as of
 uncurry5 :: (a -> b -> c -> d -> e -> f) -> (a, b, c, d, e) -> f
 uncurry5 f (a, b, c, d, e) = f a b c d e
 
-unSingle5 ::
-  ( Single a,
-    Single b,
-    Single c,
-    Single d,
-    Single e
-  ) ->
-  (a, b, c, d, e)
-unSingle5
-  ( Single a,
-    Single b,
-    Single c,
-    Single d,
-    Single e
-    ) = (a, b, c, d, e)
-
-getImageContentType :: Path a File -> ContentType
-getImageContentType filePath = case fileExtension filePath of
-  Nothing -> typeOctet -- What would be the best fallback?
-  Just ext ->
+getImageContentType :: String -> ContentType
+getImageContentType filePath = case takeExtension filePath of
+  "" -> typeOctet -- What would be the best fallback?
+  ext ->
     let cleanedExt = lower $
           case ext of
             '.' : e -> e

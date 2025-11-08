@@ -1,14 +1,12 @@
 module Samba where
 
 import Data.List (isInfixOf)
-import Database.Persist.Sqlite (PersistFieldSql)
 import GHC.IO.Exception (ExitCode (..))
-import Path (Abs, Dir, Path, parseAbsDir)
 import System.Posix (getEffectiveUserID)
 import System.Process (readProcessWithExitCode)
-import Yesod (FromJSON, MonadIO (liftIO), PathPiece, PersistField, ToJSON)
+import Yesod (FromJSON, MonadIO (liftIO), PathPiece, ToJSON)
 
-newtype SmbServer = SmbServer String
+newtype SmbServer = SmbServer {unSmbServer :: String}
   deriving
     ( Eq,
       Ord,
@@ -16,12 +14,10 @@ newtype SmbServer = SmbServer String
       Read,
       FromJSON,
       ToJSON,
-      PersistField,
-      PersistFieldSql,
       PathPiece
     )
 
-newtype SmbShare = SmbShare String
+newtype SmbShare = SmbShare {unSmbShare :: String}
   deriving
     ( Eq,
       Ord,
@@ -29,8 +25,6 @@ newtype SmbShare = SmbShare String
       Read,
       FromJSON,
       ToJSON,
-      PersistField,
-      PersistFieldSql,
       PathPiece
     )
 
@@ -57,10 +51,10 @@ mount (SmbServer svr) (SmbShare shr) = do
 
 -- | Requires IO as it needs to find the user id
 -- This assumes the location where Gnome's gio mounts stuff
-mkMountPath :: (MonadIO m) => SmbServer -> SmbShare -> m (Maybe (Path Abs Dir))
+mkMountPath :: (MonadIO m) => SmbServer -> SmbShare -> m FilePath
 mkMountPath (SmbServer svr) (SmbShare shr) = do
   uid <- liftIO getEffectiveUserID
-  pure $ parseAbsDir $ "/run/user/" ++ show uid ++ "/gvfs/smb-share:server=" ++ svr ++ ",share=" ++ shr
+  pure $ "/run/user/" ++ show uid ++ "/gvfs/smb-share:server=" ++ svr ++ ",share=" ++ shr
 
 -- uid <- getEffectiveUserID
 -- let server = "192.168.0.91"

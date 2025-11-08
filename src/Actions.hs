@@ -1,53 +1,49 @@
-{-# LANGUAGE DerivingVia #-}
-{-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE TemplateHaskell #-}
 
 module Actions where
 
-import Autodocodec (Autodocodec (..), Discriminator, HasCodec (..), HasObjectCodec (..), ObjectCodec, bimapCodec, discriminatedUnionCodec, eitherDecodeJSONViaCodec, encodeJSONViaCodec, mapToDecoder, mapToEncoder, object, pureCodec, requiredField', (.=))
-import Autodocodec.Aeson (toJSONViaCodec)
-import Control.Concurrent.STM (isEmptyTQueue, writeTQueue)
+import Control.Concurrent (modifyMVar_)
 import Control.Exception (Exception (..))
-import Control.Monad (forM_, forever, when)
-import Control.Monad.Extra (mapMaybeM)
-import DB (SambaShare (..), runDBPool)
-import DB qualified
+import Control.Monad (forever)
+import Data.Aeson (ToJSON (..), eitherDecode, encode)
+import Data.Aeson.TH (defaultOptions, deriveJSON)
 import Data.Char (isSpace)
-import Data.HashMap.Strict qualified as HashMap
 import Data.Int (Int32)
 import Data.List (dropWhileEnd, nub)
+import Data.Map qualified as Map
 import Data.Scientific (Scientific, scientific)
 import Data.Text (Text)
 import Data.Text.Lazy.Encoding qualified as T
 import Data.Time (getCurrentTime)
-import Data.Void (Void)
-import Database.Persist.Sql.Raw.QQ (executeQQ)
-import Database.Persist.Sqlite (Entity (entityVal), PersistStoreWrite (..), selectList)
-import Directory (DirToExplore (..))
+import Directory
+  ( DirectoryData (..),
+    DirectoryPath (..),
+    VideoFileData (..),
+    VideoFilePath (..),
+    directoryPathToAbsPath,
+    updateDirectory,
+    videoFilePathToAbsPath,
+  )
 import Evdev.Codes
 import Evdev.Uinput
 import Foundation (App (..), Handler)
 import GHC.Conc (atomically, readTVar, writeTVar)
+import GHC.Generics (Generic)
 import Logging (LogLevel (..), putLog)
 import Mpris qualified
 import Network.WebSockets qualified as WS
-import Orphanage ()
-import Path (Abs, Dir, File, Path, filename, fromAbsDir, fromAbsFile, mkRelDir, parent, parseAbsDir, parseAbsFile, (</>))
-import Path.IO (getHomeDir)
 import SafeMaths (int32ToInteger)
-import Samba (mkMountPath)
 import System.Process (callProcess, readProcess)
 import TVState (TVState (..))
 import Text.Blaze qualified as Blaze
 import Text.Julius (ToJavascript (..))
 import UnliftIO.Exception (catch)
-import Util (boundedEnumCodec)
-import Yesod (FromJSON, getYesod, lift, liftIO, (=.))
+import Yesod (getYesod, lift, liftIO)
 import Yesod.WebSockets (WebSocketsT, receiveData)
 
 data DirOrFile
-  = Dir (Path Abs Dir)
-  | File (Path Abs File)
+  = Dir DirectoryPath
+  | File VideoFilePath
   deriving (Show, Eq)
 
 data Action
@@ -69,115 +65,12 @@ data Action
   | ActionMarkAsUnwatched DirOrFile
   | ActionOpenUrlOnTV Text
   | ActionRefreshAllDirectoryData
-  | ActionRefreshDirectoryData (Path Abs Dir)
-  | ActionMedia Mpris.MprisAction
-  deriving (Show, Eq)
-  deriving (FromJSON) via (Autodocodec Action)
-
-instance HasCodec Action where
-  codec = object "Action" objectCodec
-
-instance HasObjectCodec Action where
-  objectCodec = discriminatedUnionCodec "tag" enc dec
-    where
-      nothingCodec = pureCodec ()
-      twoFieldCodec first second = (,) <$> requiredField' first .= fst <*> requiredField' second .= snd
-
-      noFieldEncoder = mapToEncoder () nothingCodec
-      oneFieldEncoder name value = mapToEncoder value (requiredField' name)
-      twoFieldEncoder firstName first secondName second =
-        mapToEncoder (first, second) (twoFieldCodec firstName secondName)
-
-      noFieldDecoder constructor = mapToDecoder (const constructor) nothingCodec
-      oneFieldDecoder constructor name = mapToDecoder constructor (requiredField' name)
-      twoFieldDecoder constructor firstName secondName =
-        mapToDecoder (uncurry constructor) (twoFieldCodec firstName secondName)
-
-      dirOrFileToStr :: DirOrFile -> String
-      dirOrFileToStr = \case
-        Dir dir -> fromAbsDir dir
-        File file -> fromAbsFile file
-
-      strToDirOrFile :: String -> Either String DirOrFile
-      strToDirOrFile str =
-        let mFile = parseAbsFile str
-            mDir = parseAbsDir str
-         in case (mFile, mDir) of
-              (Nothing, Nothing) -> Left $ "Failed parsing dir or file: " ++ show str
-              (Just file, _) -> Right $ File file
-              (_, Just dir) -> Right $ Dir dir
-
-      enc :: Action -> (Discriminator, ObjectCodec a ())
-      enc = \case
-        ActionClickMouse btn -> ("ClickMouse", oneFieldEncoder "button" btn)
-        ActionPressKeyboard key -> ("PressKeyboard", oneFieldEncoder "key" key)
-        ActionMoveMouse x y -> ("MoveMouse", twoFieldEncoder "x" x "y" y)
-        ActionPointMouse lr ud -> ("PointMouse", twoFieldEncoder "leftRight" lr "upDown" ud)
-        ActionMouseScroll amount -> ("MouseScroll", oneFieldEncoder "amount" amount)
-        ActionWrite t -> ("Write", oneFieldEncoder "text" t)
-        ActionPlayPath path -> ("PlayPath", oneFieldEncoder "path" $ dirOrFileToStr path)
-        ActionMarkAsWatched path -> ("MarkAsWatched", oneFieldEncoder "path" $ dirOrFileToStr path)
-        ActionMarkAsUnwatched path -> ("MarkAsUnwatched", oneFieldEncoder "path" $ dirOrFileToStr path)
-        ActionOpenUrlOnTV url -> ("OpenUrlOnTV", oneFieldEncoder "url" url)
-        ActionRefreshAllDirectoryData -> ("RefreshAllDirectoryData", noFieldEncoder)
-        ActionRefreshDirectoryData path -> ("RefreshDirectoryData", oneFieldEncoder "path" path)
-        ActionMedia url -> ("Media", oneFieldEncoder "action" url)
-      dec :: HashMap.HashMap Discriminator (Text, ObjectCodec Void Action)
-      dec =
-        HashMap.fromList
-          [ ("ClickMouse", ("ActionClickMouse", oneFieldDecoder ActionClickMouse "button")),
-            ("PressKeyboard", ("ActionPressKeyboard", oneFieldDecoder ActionPressKeyboard "key")),
-            ("MoveMouse", ("ActionMoveMouse", twoFieldDecoder ActionMoveMouse "x" "y")),
-            ("PointMouse", ("ActionPointMouse", twoFieldDecoder ActionPointMouse "leftRight" "upDown")),
-            ("MouseScroll", ("ActionMouseScroll", oneFieldDecoder ActionMouseScroll "amount")),
-            ("Write", ("ActionWrite", oneFieldDecoder ActionWrite "text")),
-            ( "PlayPath",
-              ( "ActionPlayPath",
-                mapToDecoder ActionPlayPath $
-                  bimapCodec strToDirOrFile id $
-                    requiredField' "path"
-              )
-            ),
-            ( "MarkAsWatched",
-              ( "ActionMarkAsWatched",
-                mapToDecoder ActionMarkAsWatched $
-                  bimapCodec strToDirOrFile id $
-                    requiredField' "path"
-              )
-            ),
-            ( "MarkAsUnwatched",
-              ( "ActionMarkAsUnwatched",
-                mapToDecoder ActionMarkAsUnwatched $
-                  bimapCodec strToDirOrFile id $
-                    requiredField' "path"
-              )
-            ),
-            ("OpenUrlOnTV", ("ActionOpenUrlOnTV", oneFieldDecoder ActionOpenUrlOnTV "url")),
-            ("RefreshAllDirectoryData", ("ActionRefreshAllDirectoryData", noFieldDecoder ActionRefreshAllDirectoryData)),
-            ("RefreshDirectoryData", ("ActionRefreshDirectoryData", oneFieldDecoder ActionRefreshDirectoryData "path")),
-            ("Media", ("ActionMedia", oneFieldDecoder ActionMedia "action"))
-          ]
-
-instance ToJavascript Action where
-  toJavascript = toJavascript . toJSONViaCodec
-
-instance Blaze.ToMarkup Action where
-  toMarkup = Blaze.lazyText . T.decodeUtf8 . encodeJSONViaCodec
+  | -- | ActionRefreshDirectoryData DirectoryPath
+    ActionMedia Mpris.MprisAction
+  deriving (Show, Eq, Generic)
 
 data MouseButton = MouseButtonLeft | MouseButtonRight
   deriving (Show, Eq, Bounded, Enum)
-  deriving (FromJSON) via (Autodocodec MouseButton)
-
-instance HasCodec MouseButton where
-  codec =
-    boundedEnumCodec $ \case
-      MouseButtonLeft -> "left"
-      MouseButtonRight -> "right"
-
-mouseButtonToEvdevKey :: MouseButton -> Key
-mouseButtonToEvdevKey = \case
-  MouseButtonLeft -> BtnLeft
-  MouseButtonRight -> BtnRight
 
 data KeyboardButton
   = KeyboardBackspace
@@ -191,18 +84,21 @@ data KeyboardButton
   | KeyboardVolumeDown
   deriving (Show, Eq, Bounded, Enum)
 
-instance HasCodec KeyboardButton where
-  codec =
-    boundedEnumCodec $ \case
-      KeyboardBackspace -> "backspace"
-      KeyboardDelete -> "delete"
-      KeyboardEnter -> "enter"
-      KeyboardLeftArrow -> "left"
-      KeyboardRightArrow -> "right"
-      KeyboardUpArrow -> "up"
-      KeyboardDownArrow -> "down"
-      KeyboardVolumeUp -> "volumeUp"
-      KeyboardVolumeDown -> "volumeDown"
+$(deriveJSON defaultOptions ''DirOrFile)
+$(deriveJSON defaultOptions ''KeyboardButton)
+$(deriveJSON defaultOptions ''MouseButton)
+$(deriveJSON defaultOptions ''Action)
+
+instance ToJavascript Action where
+  toJavascript = toJavascript . toJSON
+
+instance Blaze.ToMarkup Action where
+  toMarkup = Blaze.lazyText . T.decodeUtf8 . encode
+
+mouseButtonToEvdevKey :: MouseButton -> Key
+mouseButtonToEvdevKey = \case
+  MouseButtonLeft -> BtnLeft
+  MouseButtonRight -> BtnRight
 
 keyboardButtonToEvdevKey :: KeyboardButton -> Key
 keyboardButtonToEvdevKey = \case
@@ -223,7 +119,7 @@ actionsWebSocket =
     loop =
       forever $ do
         d <- receiveData
-        case eitherDecodeJSONViaCodec d of
+        case eitherDecode d of
           Left err -> liftIO $ putLog Error $ "Error decoding action: " <> err
           Right action -> lift $ performAction action
 
@@ -297,12 +193,11 @@ performActionIO app action = do
     ActionPlayPath dirOrFile -> liftIO $ do
       defaultVideoPlayer' <- readProcess "xdg-mime" ["query", "default", "video/x-msvideo"] ""
       let defaultVideoPlayer = dropWhileEnd isSpace defaultVideoPlayer'
+      absPath <- dirOrFileToAbsPath dirOrFile
       callProcess
         "gtk-launch"
         [ defaultVideoPlayer,
-          case dirOrFile of
-            File path -> fromAbsFile path
-            Dir path -> fromAbsDir path
+          absPath
         ]
     ActionMarkAsWatched dirOrFile ->
       markDirOrFileAsWatched dirOrFile
@@ -313,30 +208,32 @@ performActionIO app action = do
         tvState <- readTVar tvStateTVar
         writeTVar tvStateTVar $ tvState {tvPage = url}
     ActionRefreshAllDirectoryData -> liftIO $ do
-      -- To prevent spamming this, we only start a new full refresh when the queue is empty
-      sambaShares <- runDBPool app.appSqlPool $ selectList [] []
-      let getMountPath (SambaShare svr shr) = mkMountPath svr shr
-      sambaPaths <- mapMaybeM (getMountPath . entityVal) sambaShares
-      homeDir <- getHomeDir
-      let localVideosPath = homeDir </> $(mkRelDir "Videos")
-      let allPaths = localVideosPath : sambaPaths
-      startedRefresh <- atomically $ do
-        isEmpty <- isEmptyTQueue $ appDirExplorationQueue app
-        when isEmpty . forM_ allPaths $
-          writeTQueue (appDirExplorationQueue app) . DirToExplore
-        pure isEmpty
-      when (not startedRefresh) $
-        putLog Warning "Already refreshing"
-    ActionRefreshDirectoryData path -> liftIO $ do
-      -- To prevent spamming this, we only start a new full refresh when the queue is empty
-      startedRefresh <- atomically $ do
-        isEmpty <- isEmptyTQueue $ appDirExplorationQueue app
-        when isEmpty $
-          writeTQueue (appDirExplorationQueue app) $
-            DirToExplore path
-        pure isEmpty
-      when (not startedRefresh) $
-        putLog Warning "Already refreshing"
+      -- -- To prevent spamming this, we only start a new full refresh when the queue is empty
+      -- sambaShares <- runDBPool app.appSqlPool $ selectList [] []
+      -- -- let getMountPath (SambaShare svr shr) = mkMountPath svr shr
+      -- sambaPaths <- mapMaybeM (getMountPath . entityVal) sambaShares
+      -- homeDir <- getHomeDir
+      -- -- let localVideosPath = homeDir </> $(mkRelDir "Videos")
+      -- let allPaths = localVideosPath : sambaPaths
+      -- startedRefresh <- atomically $ do
+      --   isEmpty <- isEmptyTQueue $ appDirExplorationQueue app
+      --   when isEmpty . forM_ allPaths $
+      --     writeTQueue (appDirExplorationQueue app) . DirToExplore
+      --   pure isEmpty
+      -- when (not startedRefresh) $
+      --   putLog Warning "Already refreshing"
+      putLog Warning "TODO: Reimplement this"
+    -- ActionRefreshDirectoryData path -> liftIO $ do
+    --   -- -- To prevent spamming this, we only start a new full refresh when the queue is empty
+    --   -- startedRefresh <- atomically $ do
+    --   --   isEmpty <- isEmptyTQueue $ appDirExplorationQueue app
+    --   --   when isEmpty $
+    --   --     writeTQueue (appDirExplorationQueue app) $
+    --   --       DirToExplore path
+    --   --   pure isEmpty
+    --   -- when (not startedRefresh) $
+    --   --   putLog Warning "Already refreshing"
+    --   putLog Warning "TODO: Reimplement this"
     ActionMedia a ->
       liftIO $ Mpris.performAction a
   where
@@ -350,35 +247,54 @@ performActionIO app action = do
         ++ [SyncEvent SynReport]
 
     markDirOrFileAsWatched :: DirOrFile -> IO ()
-    markDirOrFileAsWatched dirOrFile = do
+    markDirOrFileAsWatched dirOrFile = modifyMVar_ app.appRootDirs $ \roots -> do
+      let dirPathByName = case dirOrFile of
+            Dir p -> p
+            File (VideoFilePath p _) -> p
       now <- liftIO getCurrentTime
-      runDBPool app.appSqlPool $ case dirOrFile of
-        Dir path ->
-          [executeQQ|
-            UPDATE ^{DB.VideoFile}
-            SET @{DB.VideoFileWatched} = #{Just now}
-            WHERE @{DB.VideoFileParent} GLOB #{path} || '*'
-            AND @{DB.VideoFileWatched} IS NULL
-          |]
-        File path ->
-          update
-            (DB.VideoFileKey (DB.DirectoryKey $ parent path) (filename path))
-            [DB.VideoFileWatched =. Just now]
+      let applyWatched fileData =
+            case fileData.videoFileWatched of
+              Just _ -> fileData
+              Nothing -> fileData {videoFileWatched = Just now}
+      pure $ updateDirectory roots dirPathByName $ \dir ->
+        case dirOrFile of
+          Dir _ ->
+            dir
+              { directoryVideoFiles =
+                  Map.map applyWatched dir.directoryVideoFiles
+              }
+          File (VideoFilePath _ fileName) ->
+            dir
+              { directoryVideoFiles =
+                  Map.adjust applyWatched fileName dir.directoryVideoFiles
+              }
 
     markDirOrFileAsUnwatched :: DirOrFile -> IO ()
-    markDirOrFileAsUnwatched dirOrFile =
-      runDBPool app.appSqlPool $ case dirOrFile of
-        Dir path ->
-          [executeQQ|
-            UPDATE ^{DB.VideoFile}
-            SET @{DB.VideoFileWatched} = NULL
-            WHERE @{DB.VideoFileParent} GLOB #{path} || '*'
-            AND @{DB.VideoFileWatched} IS NOT NULL
-          |]
-        File path ->
-          update
-            (DB.VideoFileKey (DB.DirectoryKey $ parent path) (filename path))
-            [DB.VideoFileWatched =. Nothing]
+    markDirOrFileAsUnwatched dirOrFile = modifyMVar_ app.appRootDirs $ \roots -> do
+      let dirPathByName = case dirOrFile of
+            Dir p -> p
+            File (VideoFilePath p _) -> p
+      let applyUnwatched fileData =
+            case fileData.videoFileWatched of
+              Just _ -> fileData {videoFileWatched = Nothing}
+              Nothing -> fileData
+      pure $ updateDirectory roots dirPathByName $ \dir ->
+        case dirOrFile of
+          Dir _ ->
+            dir
+              { directoryVideoFiles =
+                  Map.map applyUnwatched dir.directoryVideoFiles
+              }
+          File (VideoFilePath _ fileName) ->
+            dir
+              { directoryVideoFiles =
+                  Map.adjust applyUnwatched fileName dir.directoryVideoFiles
+              }
+
+    dirOrFileToAbsPath :: DirOrFile -> IO FilePath
+    dirOrFileToAbsPath = \case
+      Dir d -> directoryPathToAbsPath d
+      File f -> videoFilePathToAbsPath f
 
 charToKey :: Char -> [Key]
 charToKey = \case

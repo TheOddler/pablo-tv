@@ -1,5 +1,5 @@
 $maybe imagePath <- imagePath
-  <img src=@{ImageR imagePath} alt="🖼️ Missing poster ☹️" class="header" onerror="this.style.display = 'none'">
+  <img src=@{ImageR imagePath.directoryPathRoot imagePath.directoryPathNames} alt="🖼️ Missing poster ☹️" class="header" onerror="this.style.display = 'none'">
 <h1>#{title}
 
 <div class="section">
@@ -23,18 +23,18 @@ $maybe imagePath <- imagePath
           >
             <i class="fa-regular fa-eye-slash">
     $forall videoFile <- files
-      <div class="row #{watchedClassM $ videoFileWatched videoFile}">
+      <div class="row #{watchedClassM videoFile.videoFileData.videoFileWatched}">
         <a href="#" class="name" 
-         onclick="sendActionE(event, '#{ActionPlayPath $ File $ videoFileAbsPath videoFile}')"
+         onclick="sendActionE(event, '#{ActionPlayPath $ File $ videoFilePath videoFile}')"
         >
           <i class="fa-solid fa-play">
-          <span>#{niceFileNameT $ videoFileName videoFile}
+          <span>#{niceFileNameT videoFile.videoFilePath.videoFilePathName}
         <a href="#" title="Mark as watched"
-          onclick="sendActionE(event, '#{ActionMarkAsWatched $ File $ videoFileAbsPath videoFile}', true)"
+          onclick="sendActionE(event, '#{ActionMarkAsWatched $ File $ videoFilePath videoFile}', true)"
         >
           <i class="fa-regular fa-eye">
         <a href="#" title="Mark as unwatched"
-          onclick="sendActionE(event, '#{ActionMarkAsUnwatched $ File $ videoFileAbsPath videoFile}', true)"
+          onclick="sendActionE(event, '#{ActionMarkAsUnwatched $ File $ videoFilePath videoFile}', true)"
         >
           <i class="fa-regular fa-eye-slash">
 
@@ -44,9 +44,9 @@ $maybe imagePath <- imagePath
       <h1>Directories
     $forall dir <- dirs
       <div class="row #{watchedClassDir dir}"> 
-        <a href=@{DirectoryR $ aggDirPath dir} class="name">
+        <a href=@{DirectoryR dir.aggDirPath.directoryPathRoot dir.aggDirPath.directoryPathNames } class="name">
           <i class="fa-regular fa-folder-open">
-          <span>#{niceDirNameT $ aggDirPath dir}
+          <span>#{niceDirNameT $ aggDirName dir}
         $if isWatchedDir dir
           <i class="fa-solid fa-check">
         $else

@@ -6,8 +6,8 @@
           <h1>#{name}
           <div class="row">
             $forall dir <- dirs
-              <a class="el" href=@{DirectoryR $ aggDirPath dir}>
-                <img src=@{ImageR $ aggDirPath dir} alt="#{niceDirNameT $ aggDirPath dir}" loading="lazy">
+              <a class="el" href=@{DirectoryR dir.aggDirPath.directoryPathRoot dir.aggDirPath.directoryPathNames}>
+                <img src=@{ImageR dir.aggDirPath.directoryPathRoot dir.aggDirPath.directoryPathNames} alt="#{niceDirNameT $ aggDirName dir}" loading="lazy">
                 <div class="watched">
                   $if aggDirPlayedVideoFileCount dir < aggDirVideoFileCount dir
                     <i class="fa-regular fa-eye">

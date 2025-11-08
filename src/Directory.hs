@@ -1,79 +1,197 @@
-{-# LANGUAGE QuasiQuotes #-}
-{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 module Directory where
 
 import Algorithms.NaturalSort qualified as Natural
 import Control.Applicative ((<|>))
-import Control.Concurrent.STM (atomically, readTQueue, writeTQueue)
-import Control.Concurrent.STM.TQueue (TQueue)
-import Control.Monad (forM_, forever, void)
-import DB qualified
-import Data.ByteString qualified as BS
+import Control.Exception (throwIO)
+import Control.Monad (forM, when)
+import Data.Aeson.TH (defaultOptions, deriveJSON)
 import Data.HashSet qualified as Set
-import Data.List (intercalate, sortBy)
+import Data.List (find, intercalate, sortBy, (\\))
 import Data.List.Extra (lower)
 import Data.List.NonEmpty qualified as NE
+import Data.Map qualified as Map
 import Data.Maybe (isJust, listToMaybe, mapMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
-import Data.Time (getCurrentTime)
-import Database.Persist.Sql.Raw.QQ (executeQQ)
-import Database.Persist.Sqlite
-  ( ConnectionPool,
-    Entity (..),
-    Single (..),
-    deleteWhere,
-    insertUnique_,
-    update,
-    upsert,
-    (/<-.),
-    (=.),
-    (==.),
-  )
+import Data.Time (UTCTime)
+import Data.Time.Clock.POSIX (posixSecondsToUTCTime)
 import GHC.Data.Maybe (firstJusts, orElse)
 import GHC.Exts (sortWith)
+import GHC.Generics (Generic)
 import GHC.IO.Exception (IOErrorType (..), IOException (..))
+import GHC.Read (Read (..))
 import GHC.Utils.Exception (displayException, tryIO)
 import Logging (LogLevel (..), putLog)
-import Path
-import System.Directory (listDirectory)
-import System.FilePath (dropTrailingPathSeparator, takeExtension)
-import TVDB (TVDBData (..), TVDBToken, TVDBType (..), getInfoFromTVDB)
+import Samba (SmbServer (..), SmbShare (..))
+import Samba qualified
+import System.Directory (getHomeDirectory, getModificationTime, listDirectory)
+import System.FilePath (dropTrailingPathSeparator, takeBaseName, takeExtension)
 import Text.Read (readMaybe)
 import Text.Regex.TDFA ((=~))
-import Util (getImageContentType, safeMinimumOn, withDuration)
-import Yesod.WebSockets (race_)
+import Util (safeMinimumOn)
+import Yesod (PathPiece (..))
+
+newtype DirectoryName = DirectoryName {unDirectoryName :: String}
+  deriving (Eq, Ord, Generic, PathPiece)
+
+instance Show DirectoryName where
+  showsPrec p (DirectoryName a) = showsPrec p a
+
+instance Read DirectoryName where
+  readPrec = do
+    str <- readPrec
+    when ('/' `elem` str) $ fail "DirectoryName cannot contain '/'"
+    pure $ DirectoryName str
+
+newtype VideoFileName = VideoFileName {unVideoFileName :: String}
+  deriving (Show, Eq, Ord)
+
+newtype ImageFileName = ImageFileName String
+  deriving (Eq)
+
+newtype IgnoredFileName = IgnoredFileName String
+
+data VideoFileData = VideoFileData
+  { videoFileAdded :: UTCTime,
+    videoFileWatched :: Maybe UTCTime
+  }
+
+data DirectoryData = DirectoryData
+  { directoryVideoFiles :: Map.Map VideoFileName VideoFileData,
+    directoryImage :: Maybe ImageFileName,
+    directorySubDirs :: Map.Map DirectoryName DirectoryData
+  }
+
+data RootDirectoryType
+  = RootSamba Samba.SmbServer Samba.SmbShare
+  | RootLocalVideos
+  deriving (Eq, Ord, Show, Read)
+
+instance PathPiece RootDirectoryType where
+  toPathPiece :: RootDirectoryType -> Text
+  toPathPiece = \case
+    RootSamba srv shr -> T.pack $ srv.unSmbServer ++ "/" ++ shr.unSmbShare
+    RootLocalVideos -> "Videos"
+
+  fromPathPiece :: Text -> Maybe RootDirectoryType
+  fromPathPiece t =
+    if t == "Videos"
+      then Just RootLocalVideos
+      else case T.split (== '/') t of
+        [srv, shr] ->
+          Just $
+            RootSamba
+              (SmbServer $ T.unpack srv)
+              (SmbShare $ T.unpack shr)
+        _ -> Nothing
+
+data RootDirectory = RootDirectory
+  { rootDirectoryType :: RootDirectoryType,
+    rootDirectoryData :: DirectoryData
+  }
+
+type RootDirectories = [RootDirectory]
+
+rootDirectoryPath :: RootDirectory -> DirectoryPath
+rootDirectoryPath root = DirectoryPath root.rootDirectoryType []
+
+rootDirectoryAsDirectory :: RootDirectory -> Directory
+rootDirectoryAsDirectory root = Directory (rootDirectoryPath root) root.rootDirectoryData
+
+data DirectoryPath = DirectoryPath
+  { directoryPathRoot :: RootDirectoryType,
+    directoryPathNames :: [DirectoryName]
+  }
+  deriving (Show, Eq)
+
+addSubDir :: DirectoryPath -> DirectoryName -> DirectoryPath
+addSubDir (DirectoryPath root names) newName = DirectoryPath root $ names ++ [newName]
+
+directoryPathToAbsPath :: DirectoryPath -> IO FilePath
+directoryPathToAbsPath (DirectoryPath root dirNames) = do
+  rootAbsPath <- case root of
+    RootSamba srv shr -> Samba.mkMountPath srv shr
+    RootLocalVideos -> do
+      home <- getHomeDirectory
+      pure $ home ++ "/Videos"
+  pure $ intercalate "/" $ rootAbsPath : (unDirectoryName <$> dirNames)
+
+data VideoFilePath = VideoFilePath
+  { videoFilePathDir :: DirectoryPath,
+    videoFilePathName :: VideoFileName
+  }
+  deriving (Show, Eq)
+
+videoFilePathToAbsPath :: VideoFilePath -> IO FilePath
+videoFilePathToAbsPath (VideoFilePath dirPath fileName) = do
+  dirAbsPath <- directoryPathToAbsPath dirPath
+  pure $ dirAbsPath ++ "/" ++ unVideoFileName fileName
+
+getDirectoryData :: RootDirectories -> DirectoryPath -> Maybe DirectoryData
+getDirectoryData roots (DirectoryPath wantedRoot wantedDirNames) = do
+  root <- find (\r -> r.rootDirectoryType == wantedRoot) roots
+  innerGet wantedDirNames root.rootDirectoryData
+  where
+    innerGet :: [DirectoryName] -> DirectoryData -> Maybe DirectoryData
+    innerGet [] _ = Nothing
+    innerGet [name] dirData = Map.lookup name dirData.directorySubDirs
+    innerGet (name : rest) dirData = do
+      nextDir <- Map.lookup name dirData.directorySubDirs
+      innerGet rest nextDir
+
+-- | Will silently do nothing if the path isn't found.
+-- TODO: This function is very broken, it seems to just overwrite the root dir's data
+updateDirectory :: RootDirectories -> DirectoryPath -> (DirectoryData -> DirectoryData) -> RootDirectories
+updateDirectory currentRoots (DirectoryPath wantedRoot wantedDirNames) updateFunc =
+  flip map currentRoots $ \currentRoot -> do
+    if currentRoot.rootDirectoryType /= wantedRoot
+      then currentRoot -- Leave this one alone
+      else
+        currentRoot
+          { rootDirectoryData = innerUpdate wantedDirNames currentRoot.rootDirectoryData
+          }
+  where
+    innerUpdate :: [DirectoryName] -> DirectoryData -> DirectoryData
+    innerUpdate [] d = updateFunc d
+    innerUpdate (n : ns) d = case Map.lookup n d.directorySubDirs of
+      Nothing -> d
+      Just subDir -> innerUpdate ns subDir
+
+data Directory = Directory DirectoryPath DirectoryData
+
+data VideoFile = VideoFile
+  { videoFilePath :: VideoFilePath,
+    videoFileData :: VideoFileData
+  }
 
 -- | Reading the file info of a path is rather slow, so we want to minimise the ones we read it for.
 -- So instead of reading it for every path, we first do a guess what the path is, and read it for dirs only.
 -- There's also some paths we ignore, regardless of wether they are files or dirs.
 data LikelyPathType
-  = LikelyDir (Path Abs Dir)
-  | LikelyVideoFile (Path Abs File)
-  | LikelyImageFile (Path Abs File)
-  | LikelyIgnored FilePath
+  = LikelyDir DirectoryName
+  | LikelyVideoFile VideoFileName
+  | LikelyImageFile ImageFileName
+  | LikelyIgnored IgnoredFileName
 
--- | If this guess is wrong, we won't explore the directory.
--- This expects just the file or directory name
-guessPathType :: Path Abs Dir -> FilePath -> LikelyPathType
-guessPathType basePath p = case p of
-  "" -> LikelyIgnored p
-  '.' : _ -> LikelyIgnored p
-  _ -> case parseRelFile p of
-    Just relPath -> case fileExtension relPath of
-      Nothing -> tryDir
-      Just ext | isVideoFileExt ext -> LikelyVideoFile $ basePath </> relPath
-      Just ext | isImageFileExt ext -> LikelyImageFile $ basePath </> relPath
-      Just ext | isCommonFileExt ext -> LikelyIgnored p
-      Just _ext -> tryDir -- Probably just a directory with a . in it's name
-    Nothing -> tryDir
-  where
-    tryDir = case parseRelDir p of
-      Just relPath -> LikelyDir $ basePath </> relPath
-      Nothing -> LikelyIgnored p
+-- | This expects a string that's the result of a `listDirectory` call
+guessType :: String -> LikelyPathType
+guessType p = case p of
+  "" -> LikelyIgnored $ IgnoredFileName p
+  '.' : _ -> LikelyIgnored $ IgnoredFileName p
+  _ -> case takeExtension p of
+    ext | isVideoFileExt ext -> LikelyVideoFile $ VideoFileName p
+    ext | isImageFileExt ext -> LikelyImageFile $ ImageFileName p
+    ext | isCommonFileExt ext -> LikelyIgnored $ IgnoredFileName p
+    _ -> LikelyDir $ DirectoryName p
 
-partitionPathTypes :: [LikelyPathType] -> ([Path Abs Dir], [Path Abs File], [Path Abs File], [FilePath])
+-- | Sometimes we guess something is a directory, but it turns out not to be.
+-- In that case we ignore it.
+dirToOther :: DirectoryName -> IgnoredFileName
+dirToOther (DirectoryName n) = IgnoredFileName n
+
+partitionPathTypes :: [LikelyPathType] -> ([DirectoryName], [VideoFileName], [ImageFileName], [IgnoredFileName])
 partitionPathTypes =
   foldr
     ( \guess (dirs, vids, imgs, igns) -> case guess of
@@ -84,22 +202,11 @@ partitionPathTypes =
     )
     ([], [], [], [])
 
-bestImageFile :: [Path Abs File] -> Maybe (Path Abs File)
-bestImageFile = safeMinimumOn $ \path ->
-  case lower . fromRelFile . fst <$> splitExtension (filename path) of
-    Just "poster" -> 0 :: Int
+bestImageFile :: [ImageFileName] -> Maybe ImageFileName
+bestImageFile = safeMinimumOn $ \(ImageFileName fileName) ->
+  case lower $ takeBaseName fileName of
+    "poster" -> 0 :: Int
     _ -> 100
-
-data DiscoveredDir = DiscoveredDir
-  { discoveredDir :: Path Abs Dir,
-    discoveredSubDirs :: [Path Abs Dir],
-    discoveredVideoFiles :: [Path Abs File],
-    discoveredImageFiles :: [Path Abs File]
-  }
-
-data DirDiscovery
-  = DirDiscovery DiscoveredDir
-  | DirDiscoveryDirDoesNotExist (Path Abs Dir)
 
 data DirectoryKindGuess
   = DirectoryKindMovie Text -- Best guess for the movie title
@@ -107,249 +214,156 @@ data DirectoryKindGuess
   | DirectoryKindSeriesSeason -- For now we don't need any extra info about seasons
   | DirectoryKindUnknown
 
-guessDirectoryKind :: DiscoveredDir -> DirectoryKindGuess
-guessDirectoryKind DiscoveredDir {..} =
-  let dirName = titleFromDir $ dirname discoveredDir
-      dirSeasonIndicator = isJust $ seasonFromDir discoveredDir
-      subDirsSeasonIndicators = any (isJust . seasonFromDir) discoveredSubDirs
-      hasSubDirs = not $ null discoveredSubDirs
-      filesSeasonIndicator = isJust $ seasonFromFiles discoveredVideoFiles
-      hasMovieFiles = not $ null discoveredVideoFiles
+guessDirectoryKind :: DirectoryName -> DirectoryData -> DirectoryKindGuess
+guessDirectoryKind dirName dirData =
+  let title = titleFromDir dirName
+      dirSeasonIndicator = isJust $ seasonFromDir dirName
+      subDirsSeasonIndicators = any (isJust . seasonFromDir) $ Map.keys dirData.directorySubDirs
+      hasSubDirs = not $ null dirData.directorySubDirs
+      filesSeasonIndicator = isJust $ seasonFromFiles $ Map.keys dirData.directoryVideoFiles
+      hasMovieFiles = not $ null dirData.directoryVideoFiles
    in firstJusts
         [ if dirSeasonIndicator
             then Just DirectoryKindSeriesSeason
             else Nothing,
           if subDirsSeasonIndicators && not hasMovieFiles
-            then Just $ DirectoryKindSeries dirName
+            then Just $ DirectoryKindSeries title
             else Nothing,
           if filesSeasonIndicator && not hasSubDirs
-            then Just $ DirectoryKindSeries dirName
+            then Just $ DirectoryKindSeries title
             else Nothing,
           if not filesSeasonIndicator && not hasSubDirs
-            then Just $ DirectoryKindMovie dirName
+            then Just $ DirectoryKindMovie title
             else Nothing
         ]
         `orElse` DirectoryKindUnknown
 
-newtype DirToExplore = DirToExplore {unDirToExplore :: Path Abs Dir}
+data DirectoryCheckResult
+  = DirectoryUnchanged
+  | DirectoryChanged DirectoryData
+  | DirectoryNotADirectory
 
--- | This explores forever, so run async.
-explorerThread ::
-  -- Unbounded queue because this function reads one and then possible pushes multiple.
-  -- I'm planning on only having a single thread do this, as the bottleneck is reading disk.
-  -- We use a TQueue because I want to be able to send new stuff to discover from other threads too.
-  -- Note: Since we're using a TQueue this means we'll be doing a breadth first search. I think that's good, but is not like a hard requirement.
-  TQueue DirToExplore ->
-  -- Here I'm not sure yet what is best, maybe a bounded queue is better, or maybe a TChan so potentially multiple threads can do stuff on discovery? Idk, we'll see what I need.
-  TQueue DirDiscovery ->
-  IO ()
-explorerThread explorationQueue discoveryQueue = forever $ do
-  DirToExplore nextDirToExplore <- atomically $ readTQueue explorationQueue
-  -- Here we use `listDirectory` of the FilePath API, **NOT** `listDir` of the Path API. This is because `listDir` does a lot more IO to figure out what
-  let dirPath = fromAbsDir nextDirToExplore
-  withDuration (tryIO $ listDirectory dirPath) >>= \case
-    (Right relPaths, duration) -> do
-      let pathGuesses = map (guessPathType nextDirToExplore) relPaths
-      let (subDirs, videoFiles, imageFiles, ignoredPaths) = partitionPathTypes pathGuesses
-      -- TODO: Remember the ignored paths somewhere. Maybe keep a set of ignored paths somewhere and then show them in the interface? Could be helpful while debugging. For now just include some info about them in the log.
-      putLog Info $
-        concat
-          [ "Explored directory ",
-            dirPath,
-            " (",
-            show duration,
-            "). Ignored files with these extensions: ",
-            let nonIgnored = filter (not . isHiddenPath) ignoredPaths
-             in showUnique (map takeExtension nonIgnored)
-          ]
-      atomically $ do
-        forM_ subDirs $ writeTQueue explorationQueue . DirToExplore
-        writeTQueue discoveryQueue . DirDiscovery $
-          DiscoveredDir
-            { discoveredDir = nextDirToExplore,
-              discoveredSubDirs = subDirs,
-              discoveredVideoFiles = videoFiles,
-              discoveredImageFiles = imageFiles
-            }
-    (Left err, duration) -> do
-      case ioe_type err of
-        InappropriateType ->
-          -- This dir is actually a file.
-          -- It's likely a wrong guess from a previous loop, so we can ignore it.
-          -- Other option is that some other thread added it, and in both cases we probably want to know, so log.
-          putLog Warning $
-            concat
-              [ "Tried exploring a directory that turned out to be a file ",
-                dirPath,
-                " (",
-                show duration,
-                ")"
-              ]
-        NoSuchThing ->
-          -- This means the directory doesn't exist.
-          -- This can happen when refreshing specifically a directory that was removed.
-          -- So we should just remove it.
-          atomically $
-            writeTQueue discoveryQueue $
-              DirDiscoveryDirDoesNotExist nextDirToExplore
+-- | Checks the directory with what it finds on disk, and returns the updates version, or Nothing if it's already the same as on disk.
+checkDirectory :: Directory -> IO DirectoryCheckResult
+checkDirectory (Directory dirPath dirData) = do
+  absDirPath <- directoryPathToAbsPath dirPath
+  (namesOrErr :: Either IOError [FilePath]) <- tryIO $ listDirectory absDirPath
+  case namesOrErr of
+    Left err | err.ioe_type == InappropriateType -> do
+      putLog Warning $ "Tried updating non-existant directory " ++ absDirPath
+      pure DirectoryNotADirectory
+    Left err -> do
+      putLog Error $
+        "IO error while trying to update directory "
+          ++ absDirPath
+          ++ ": "
+          ++ displayException err
+      throwIO err
+    Right names -> do
+      let typeGuesses = guessType <$> names
+      let (subDirGuesses, videoGuesses, imageGuesses, _ignored) = partitionPathTypes typeGuesses
+      -- Recursively check for directory updates
+      subDirUpdates <- forM subDirGuesses $ \dirName -> do
+        let knownData = Map.lookup dirName dirData.directorySubDirs
+        let emptyData = DirectoryData Map.empty Nothing Map.empty
+        let fullPath = addSubDir dirPath dirName
+        upd <- checkDirectory (Directory fullPath $ knownData `orElse` emptyData)
+        pure (dirName, upd)
+      let (unchanged, changed, notDirs) =
+            foldr
+              ( \(name, upd) (un, ch, nd) -> case upd of
+                  DirectoryUnchanged -> (name : un, ch, nd)
+                  DirectoryChanged dir -> (un, (name, dir) : ch, nd)
+                  DirectoryNotADirectory -> (un, ch, name : nd)
+              )
+              ([], [], [])
+              subDirUpdates
+      let actualSubDirs = subDirGuesses \\ notDirs
+      let noLongerExist = Map.keys dirData.directorySubDirs \\ actualSubDirs
+      let updatedSubDirs = case (unchanged, changed, noLongerExist) of
+            (_, [], []) -> Nothing -- Nothing indicates no changes were found
+            _ -> do
+              let removedNonExistant = foldr Map.delete dirData.directorySubDirs noLongerExist
+              let updated = foldr (uncurry Map.insert) removedNonExistant changed
+              Just updated
+
+      -- Check if there are any new files or remove files
+      -- Files we already knew about, we won't check again so we don't do unneeded IO
+      let newVideoNames = videoGuesses \\ Map.keys dirData.directoryVideoFiles
+      let removedVideoNames = Map.keys dirData.directoryVideoFiles \\ videoGuesses
+      updatedVideoFiles <- case (newVideoNames, removedVideoNames) of
+        ([], []) -> pure Nothing
+        _ -> do
+          let removedVideos = foldr Map.delete dirData.directoryVideoFiles removedVideoNames
+          newVideos <- forM newVideoNames $ \newVideoName -> do
+            let fullFilePath = absDirPath ++ "/" ++ unVideoFileName newVideoName
+            modTime <- getModificationTime fullFilePath
+            pure (newVideoName, VideoFileData modTime Nothing)
+          let withNewVideos = foldr (uncurry Map.insert) removedVideos newVideos
+          pure $ Just withNewVideos
+
+      -- We only care about the best image, other images ignore, even if there are new ones that aren't the best
+      let bestImage = bestImageFile imageGuesses
+      -- TODO: If we don't have an image, see if we can download one using TVDB
+
+      pure $ case (updatedSubDirs, updatedVideoFiles, bestImage) of
+        (Nothing, Nothing, _) | bestImage == dirData.directoryImage -> DirectoryUnchanged
         _ ->
-          putLog Error $
-            concat
-              [ "Error while trying to explore a directory ",
-                dirPath,
-                " (",
-                show duration,
-                "): ",
-                displayException err
-              ]
+          DirectoryChanged $
+            DirectoryData
+              { directoryVideoFiles = updatedVideoFiles `orElse` dirData.directoryVideoFiles,
+                directoryImage = bestImage,
+                directorySubDirs = updatedSubDirs `orElse` dirData.directorySubDirs
+              }
 
-discoveryHandlerThread :: ConnectionPool -> Maybe TVDBToken -> TQueue DirDiscovery -> IO ()
-discoveryHandlerThread dbConnPool tvdbToken discoveryQueue = forever $ do
-  -- We're likely to be using a network share for the data, so walking this dir is slow.
-  -- That means, discoveries comes slow, and we have plenty of time on each discovery to write to the locally stored DB.
-  -- It also means that the locally stored DB might be partially updated during a full update of the data. But that's fine, we're not doing brain surgery here, it's fine to have imperfect data at times, we just want it quickly.
+-- Agg data
+data AggDirInfo = AggDirInfo
+  { aggDirName :: DirectoryName,
+    aggDirPath :: DirectoryPath,
+    aggDirLastModified :: UTCTime,
+    aggDirLastWatched :: UTCTime,
+    aggDirVideoFileCount :: Int,
+    aggDirPlayedVideoFileCount :: Int
+  }
 
-  -- Time the work being done. Both the DB stuff and the potential followup action.
-  (path, updateDur) <- withDuration $ do
-    discovery <- atomically $ readTQueue discoveryQueue
-    case discovery of
-      DirDiscovery d -> do
-        updateDiscoveredDir dbConnPool tvdbToken d
-        pure $ discoveredDir d
-      DirDiscoveryDirDoesNotExist path -> DB.runDBPool dbConnPool $ do
-        [executeQQ|
-          DELETE FROM ^{DB.Directory} AS d
-          WHERE d.@{DB.DirectoryPath} GLOB #{path} || '*'
-        |]
-        pure path
+foldFilesDataRecur :: (VideoFileData -> a -> a) -> a -> DirectoryData -> a
+foldFilesDataRecur updateAgg agg dir = loop agg [dir]
+  where
+    loop a [] = a
+    loop a (dirTodo : restDirs) = do
+      let newA = foldr updateAgg a dirTodo.directoryVideoFiles
+          subDirs = Map.elems dirTodo.directorySubDirs
+      loop newA $ restDirs ++ subDirs
 
-  -- TODO Idea:
-  -- Read all known data (commented out above), and do a `getFileStatus` for any new directories to get when they were last modified.
-  -- Then we'd have the modified timestamp on the directory, rather than an added timestamp on files.
-  -- We could then update the modified timestamp with a good guess (good enough for what we need), by checking if there were any new files added (again, we can read all files we already know about).
-  -- That way we do a bit more work for completely new directories (usually there will only be a few, only when creating the DB for the first time will there be many),
-  -- and we'll have better timestamps for when new files are added (and we only really care about that on a per-directory level).
-  -- Though, one problem with adding this timestamp to directories is that we'd either have to update all parent directories as well, or when reading check if there are any child directories to get a fully accurate timestamp.
-  putLog Info $
-    concat
-      [ "Got discovery and updated ",
-        fromAbsDir path,
-        " (",
-        show updateDur,
-        ")"
-      ]
-
-updateDiscoveredDir :: ConnectionPool -> Maybe TVDBToken -> DiscoveredDir -> IO ()
-updateDiscoveredDir dbConnPool tvdbToken discovery@DiscoveredDir {..} = do
-  now <- getCurrentTime
-  -- Try and do as much in a single transaction, but we might need some followup work that reads from disk and then does a second transaction
-  (followupAction :: IO ()) <- DB.runDBPool dbConnPool $ do
-    -- Add dir, and if it already exists don't do anything.
-    existingDir <- upsert (DB.Directory discoveredDir Nothing Nothing) []
-
-    -- Insert/update video files
-    forM_ discoveredVideoFiles $ \filePath ->
-      insertUnique_
-        DB.VideoFile
-          { videoFileParent = entityKey existingDir,
-            videoFileName = filename filePath,
-            videoFileAdded = now,
-            videoFileWatched = Nothing
-          }
-    -- Delete files that no longer exist
-    deleteWhere
-      [ DB.VideoFileParent ==. entityKey existingDir,
-        -- `/<-.` is `NOT IN`
-        DB.VideoFileName /<-. map filename discoveredVideoFiles
-      ]
-
-    -- Delete all sub-directories that no-longer exist
-    case NE.nonEmpty discoveredSubDirs of
-      Nothing ->
-        -- Delete all sub-dirs (but not the dir itself)
-        [executeQQ|
-          DELETE FROM ^{DB.Directory} AS d
-          WHERE d.@{DB.DirectoryPath} <> #{discoveredDir}
-          AND d.@{DB.DirectoryPath} GLOB #{discoveredDir} || '*'
-        |]
-      Just subDirs -> do
-        -- Delete all subdirs (but not the dir itself) that no longer exist (recursively)
-        [executeQQ|
-          DELETE FROM ^{DB.Directory} AS d
-          WHERE d.@{DB.DirectoryPath} <> #{discoveredDir}
-          AND d.@{DB.DirectoryPath} GLOB #{discoveredDir} || '*'
-          AND NOT EXISTS (
-            WITH subDirs(path) AS (VALUES *{Single <$> subDirs})
-            SELECT *
-            FROM subDirs
-            WHERE d.@{DB.DirectoryPath} GLOB subDirs.path || '*'
-          )
-        |]
-
-    -- Figure out if we should do another update after.
-    -- We do this in two steps because this followup action can then do slow IO, like reading the image from disk
-    hasExistingImg <- DB.hasImageQ discoveredDir
-    -- Find best image on disc
-    let mBestImg = bestImageFile discoveredImageFiles
-    let followup :: IO ()
-        followup = case (hasExistingImg, mBestImg) of
-          (_, Just foundImg) -> do
-            -- We found an image, so we update the directory in the db.
-            -- Since this requires slow IO, we do this in the followup.
-            -- It's an update, in case between this and the followup the directory got removed, it should then probably remain removed.
-            imageData <- BS.readFile $ fromAbsFile foundImg
-            void . DB.runDBPool dbConnPool $
-              update
-                (entityKey existingDir)
-                [ DB.DirectoryImageContentType
-                    =. Just (getImageContentType foundImg),
-                  DB.DirectoryImage =. Just imageData
-                ]
-          (False, Nothing) -> do
-            case tvdbToken of
-              Nothing -> pure ()
-              Just token -> do
-                -- There's no existing image in the DB, nor is there one on disk:
-                -- So we try and get one from the TVDB.
-                let mInfo = case guessDirectoryKind discovery of
-                      DirectoryKindMovie title -> Just (title, TVDBTypeMovie)
-                      DirectoryKindSeries title -> Just (title, TVDBTypeSeries)
-                      DirectoryKindSeriesSeason -> Nothing
-                      DirectoryKindUnknown -> Nothing
-                case mInfo of
-                  Nothing -> pure ()
-                  Just (name, type') -> do
-                    -- If there were no images in disk, so we try and find one online.
-                    mTVDBInfo <- getInfoFromTVDB token name type' Nothing Nothing
-                    case mTVDBInfo >>= tvdbDataImage of
-                      Nothing -> pure ()
-                      Just (contentType, imageData) ->
-                        void . DB.runDBPool dbConnPool $
-                          update
-                            (entityKey existingDir)
-                            [ DB.DirectoryImageContentType =. Just contentType,
-                              DB.DirectoryImage =. Just imageData
-                            ]
-          (True, Nothing) ->
-            -- We already have an image in the DB, just keep that one.
-            pure ()
-
-    pure followup
-
-  -- Run this followup action outside the transaction so we don't block too long with slow IO
-  followupAction
-
--- | This creates multiple threads
-dirUpdatorThreads ::
-  ConnectionPool ->
-  Maybe TVDBToken ->
-  TQueue DirToExplore ->
-  TQueue DirDiscovery ->
-  IO ()
-dirUpdatorThreads dbConnPool tvdbToken explorationQueue discoveryQueue = do
-  race_
-    (explorerThread explorationQueue discoveryQueue)
-    (discoveryHandlerThread dbConnPool tvdbToken discoveryQueue)
+getSubDirAggInfo :: Directory -> [AggDirInfo]
+getSubDirAggInfo (Directory dirPath dirData) = do
+  let epoch = posixSecondsToUTCTime 0
+  flip map (Map.assocs dirData.directorySubDirs) $ \(subDirName, subDirData) ->
+    foldFilesDataRecur
+      ( \videoFileData agg ->
+          AggDirInfo
+            agg.aggDirName
+            agg.aggDirPath
+            (max agg.aggDirLastModified videoFileData.videoFileAdded)
+            ( case videoFileData.videoFileWatched of
+                Nothing -> agg.aggDirLastWatched
+                Just w -> max agg.aggDirLastWatched w
+            )
+            (agg.aggDirVideoFileCount + 1)
+            ( case videoFileData.videoFileWatched of
+                Nothing -> agg.aggDirPlayedVideoFileCount
+                Just _ -> agg.aggDirPlayedVideoFileCount + 1
+            )
+      )
+      ( AggDirInfo
+          subDirName
+          (addSubDir dirPath subDirName)
+          epoch
+          epoch
+          0
+          0
+      )
+      subDirData
 
 -- Some helpers
 showUnique :: [String] -> String
@@ -363,10 +377,10 @@ isHiddenPath = \case
 readInt :: String -> Maybe Int
 readInt = readMaybe
 
-tryRegex :: Path x y -> ([String] -> Maybe a) -> String -> Maybe a
+tryRegex :: String -> ([String] -> Maybe a) -> String -> Maybe a
 tryRegex source resultParser regex =
   let res :: (String, String, String, [String])
-      res = toFilePath source =~ regex
+      res = source =~ regex
       (_, _, _, matches) = res
    in resultParser matches
 
@@ -388,13 +402,13 @@ expect3Ints = \case
     (,,) <$> readInt a <*> readInt b <*> readInt c
   _ -> Nothing
 
-seasonFromDir :: Path a Dir -> Maybe Int
-seasonFromDir dir =
+seasonFromDir :: DirectoryName -> Maybe Int
+seasonFromDir (DirectoryName dir) =
   tryRegex dir expect1Int "[Ss]eason ([0-9]+)"
     <|> tryRegex dir expect1Int "[Ss]eries ([0-9]+)"
     <|> tryRegex dir expect1Int "[Ss]eizoen ([0-9]+)"
 
-seasonFromFiles :: [Path a File] -> Maybe Int
+seasonFromFiles :: [VideoFileName] -> Maybe Int
 seasonFromFiles files =
   case mSeason of
     Just season -> Just season
@@ -403,16 +417,16 @@ seasonFromFiles files =
     mSeason = NE.head <$> listToMaybe (sortWith NE.length $ NE.group (mapMaybe seasonFromFile files))
     looseEpisodesFound = any (isJust . snd . episodeInfoFromFile) files
 
-    seasonFromFile :: Path a File -> Maybe Int
-    seasonFromFile file =
+    seasonFromFile :: VideoFileName -> Maybe Int
+    seasonFromFile (VideoFileName file) =
       tryRegex file expect1Int "[Ss]eason ([0-9]+)"
         <|> tryRegex file expect1Int "[Ss]eries ([0-9]+)"
         <|> tryRegex file expect1Int "[Ss]eizoen ([0-9]+)"
         <|> tryRegex file expect1Int "[Ss]([0-9]+)[Ee][0-9]+"
         <|> tryRegex file expect1Int "([0-9]+)[Xx][0-9]+"
 
-episodeInfoFromFile :: Path a File -> (Maybe Int, Maybe (Either Int (Int, Int)))
-episodeInfoFromFile file =
+episodeInfoFromFile :: VideoFileName -> (Maybe Int, Maybe (Either Int (Int, Int)))
+episodeInfoFromFile (VideoFileName file) =
   let double :: Maybe (Int, Int, Int)
       double =
         tryRegex file expect3Ints "[Ss]([0-9]+)[Ee]([0-9]+)-[Ee]([0-9]+)"
@@ -434,32 +448,15 @@ episodeInfoFromFile file =
             Just a -> (Nothing, Just $ Left a)
             Nothing -> (Nothing, Nothing)
 
-yearRegex :: String
-yearRegex = "((19|20)[0-9][0-9])"
+titleFromDir :: DirectoryName -> Text
+titleFromDir = T.strip . fst . T.breakOn "(" . niceDirNameT
 
-yearFromDir :: Path a Dir -> Maybe Int
-yearFromDir dir =
-  -- Take fst because the regex parses doesn't support non-capturing groups
-  -- so we capture two, but only use the first, and ignore the inner group
-  fst <$> tryRegex (dirname dir) expect2Ints yearRegex
+niceDirNameT :: DirectoryName -> Text
+niceDirNameT (DirectoryName dir) = T.pack $ dropTrailingPathSeparator dir
 
-yearFromFiles :: [Path a File] -> Maybe Int
-yearFromFiles files =
-  firstJusts (try <$> files)
-  where
-    try file = fst <$> tryRegex file expect2Ints yearRegex
-
-titleFromDir :: Path a Dir -> Text
-titleFromDir folder = T.strip . fst $ T.breakOn "(" (niceDirNameT folder)
-
-niceDirNameT :: Path a Dir -> Text
-niceDirNameT = T.pack . dropTrailingPathSeparator . fromRelDir . dirname
-
-niceFileNameT :: Path a File -> Text
-niceFileNameT file =
-  let withoutExt = (fst <$> splitExtension file) `orElse` file
-      name = fromRelFile $ filename withoutExt
-   in T.replace "." " " $ T.pack name
+niceFileNameT :: VideoFileName -> Text
+niceFileNameT (VideoFileName file) =
+  T.replace "." " " $ T.pack $ takeBaseName file
 
 isVideoFileExt :: String -> Bool
 isVideoFileExt ext =
@@ -550,3 +547,9 @@ naturalCompareBy f a b = Natural.compare (lower $ f a) (lower $ f b)
 -- | Sorts taking into account numbers properly
 naturalSortBy :: (a -> String) -> [a] -> [a]
 naturalSortBy f = sortBy $ naturalCompareBy f
+
+$(deriveJSON defaultOptions ''DirectoryName)
+$(deriveJSON defaultOptions ''RootDirectoryType)
+$(deriveJSON defaultOptions ''DirectoryPath)
+$(deriveJSON defaultOptions ''VideoFileName)
+$(deriveJSON defaultOptions ''VideoFilePath)

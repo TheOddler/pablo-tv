@@ -8,20 +8,17 @@
 
 module Foundation where
 
-import Control.Concurrent.STM (TQueue)
+import Control.Concurrent (MVar)
 import Control.Monad (when)
-import DB (runDBPool)
 import Data.ByteString.Char8 qualified as BS
 import Data.Maybe (isNothing, listToMaybe)
-import Database.Persist.Sqlite (ConnectionPool, SqlBackend)
-import Directory (DirToExplore)
+import Directory (DirectoryName, RootDirectories, RootDirectoryType)
 import Evdev.Uinput (Device)
 import GHC.Conc (TVar)
 import GHC.Utils.Misc (sortWith)
 import IsDevelopment (isDevelopment)
 import Logging (Logger (..))
 import Network.Info (getNetworkInterfaces)
-import Path (Abs, Dir, Path)
 import TVDB (TVDBToken)
 import TVState (TVState)
 import Text.Hamlet (hamletFile)
@@ -36,11 +33,10 @@ data App = App
     appInputDevice :: Device,
     appGetStatic :: EmbeddedStatic,
     appTVState :: TVar TVState,
-    appSqlPool :: ConnectionPool,
-    appDirExplorationQueue :: TQueue DirToExplore
+    appRootDirs :: MVar RootDirectories
   }
 
-type PathAbsDir = Path Abs Dir
+type DirectoryNames = [DirectoryName]
 
 mkYesodData
   "App"
@@ -50,10 +46,10 @@ mkYesodData
 /input InputR GET
 /remote RemoteR GET
 /dir DirectoryHomeR GET
-/dir/#PathAbsDir DirectoryR GET
+/dir/#RootDirectoryType/+DirectoryNames DirectoryR GET
 
 -- Other
-/image/#PathAbsDir ImageR GET
+/image/#RootDirectoryType/+DirectoryNames ImageR GET
 /static StaticR EmbeddedStatic appGetStatic
 |]
 
@@ -122,15 +118,6 @@ defaultLayout :: Html -> Widget -> Handler Html
 defaultLayout title widget = Yesod.defaultLayout $ do
   setTitle $ title <> " - Pablo TV"
   widget
-
--- Now we need to define a YesodPersist instance, which will keep track of
--- which backend we're using and how to run an action.
-instance YesodPersist App where
-  type YesodPersistBackend App = SqlBackend
-
-  runDB action = do
-    state <- getYesod
-    runDBPool (appSqlPool state) action
 
 instance Logger Handler where
   putLogBS l = liftIO . putLogBS l

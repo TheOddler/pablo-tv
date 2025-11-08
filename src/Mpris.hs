@@ -1,6 +1,7 @@
+{-# LANGUAGE TemplateHaskell #-}
+
 module Mpris where
 
-import Autodocodec (HasCodec (..))
 import Control.Monad.Trans.Except (Except, ExceptT (..), runExcept)
 import DBus
   ( BusName,
@@ -16,15 +17,15 @@ import DBus
     methodCall,
   )
 import DBus.Client (Client, MatchRule (..), SignalHandler, addMatch, call, connectSession, matchAny)
+import Data.Aeson.TH (defaultOptions, deriveJSON)
 import Data.Int (Int64)
 import Data.List (isPrefixOf)
 import Data.Map qualified as Map
 import Data.Maybe (listToMaybe)
 import Data.String (IsString (..))
+import Directory (VideoFilePath)
 import Logging (LogLevel (..), Logger (..))
 import Network.URI (unEscapeString)
-import Path (Abs, File, Path, parseAbsFile)
-import Util (boundedEnumCodec)
 
 data MprisAction
   = MprisQuit
@@ -39,21 +40,6 @@ data MprisAction
   | MprisGoFullscreen
   | MprisGoWindowed
   deriving (Show, Eq, Bounded, Enum)
-
-instance HasCodec MprisAction where
-  codec =
-    boundedEnumCodec $ \case
-      MprisQuit -> "quit"
-      MprisPlayPause -> "playPause"
-      MprisStop -> "stop"
-      MprisNext -> "next"
-      MprisPrevious -> "previous"
-      MprisForwardStep -> "forwardStep"
-      MprisBackwardStep -> "backwardStep"
-      MprisForwardJump -> "forwardJump"
-      MprisBackwardJump -> "backwardJump"
-      MprisGoFullscreen -> "fullscreen"
-      MprisGoWindowed -> "windowed"
 
 newtype MediaPlayer = MediaPlayer {unMediaPlayer :: BusName}
 
@@ -101,7 +87,7 @@ mprisMethodCall destination interface member body =
 
 -- | This instantly returns, and shouldn't be run in a race.
 -- This is essentially a wrapper around `addMatch` so can be stopped by using the returned SignalHandler.
-mediaListener :: (Path Abs File -> IO ()) -> IO SignalHandler
+mediaListener :: (VideoFilePath -> IO ()) -> IO SignalHandler
 mediaListener onFilePlayed = do
   client <- connectSession
 
@@ -129,7 +115,7 @@ mediaListener onFilePlayed = do
     let body = signalBody signal
     case body of
       [interface', changedProps', _] ->
-        let errOrPath :: Either String (Path Abs File)
+        let errOrPath :: Either String VideoFilePath
             errOrPath = runExcept $ do
               interface <- justOrErr "interface failed parsing" $ fromVariant interface'
               guard (interface == playerInterface) $ "interface is not " ++ show playerInterface
@@ -141,10 +127,11 @@ mediaListener onFilePlayed = do
               -- I observed that opening a video sends 3 signals, each time with a bit more information. The last one is the only one with a proper length, so only listen for that one
               guard (videoLength > 0) "length reported as 0, so likely some in-between signal"
               (xesamUrl :: String) <- justOrErr "video path" $ Map.lookup "xesam:url" metaData >>= fromVariant
-              let mFile :: Maybe (Path Abs File)
+              let mFile :: Maybe VideoFilePath
                   mFile = case unEscapeString xesamUrl of
                     'f' : 'i' : 'l' : 'e' : ':' : '/' : '/' : path ->
-                      parseAbsFile path
+                      -- TODO: Convert a filePath to VideoFilePath by checking what root it belongs to and stuff
+                      undefined path
                     _ -> Nothing
               justOrErr "file path failed parsing" mFile
          in case errOrPath of
@@ -234,3 +221,5 @@ expectSingleValue = \case
 
 fromVariant2 :: (IsVariant a) => Variant -> Maybe a
 fromVariant2 v = fromVariant v >>= fromVariant
+
+$(deriveJSON defaultOptions ''Mpris.MprisAction)

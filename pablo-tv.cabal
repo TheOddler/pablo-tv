@@ -42,14 +42,12 @@ library
     hs-source-dirs:   src
     exposed-modules:
         Actions
-        DB
         Directory
         Foundation
         IsDevelopment
         LibMain
         Logging
         Mpris
-        Orphanage
         SafeMaths
         Samba
         TVDB
@@ -78,10 +76,6 @@ library
       , natural-sort
       , network-info
       , network-uri
-      , path
-      , path-io
-      , persistent-qq
-      , persistent-sqlite
       , process
       , random
       -- Later versions of random have a shuffle function, but for now we need this package
@@ -123,8 +117,7 @@ test-suite pablo-tv-test
         Orphanage
         TestUtils
     build-depends:
-        autodocodec
-      , bytestring
+        bytestring
       , generic-random
       , pablo-tv
       , path
