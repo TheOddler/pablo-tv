@@ -22,19 +22,19 @@ $maybe imagePath <- imagePath
             onclick="sendActionE(event, '#{action}', true)"
           >
             <i class="fa-regular fa-eye-slash">
-    $forall videoFile <- files
-      <div class="row #{watchedClassM videoFile.videoFileData.videoFileWatched}">
+    $forall (videoPath, videoFile) <- files
+      <div class="row #{watchedClassM videoFile.videoFileWatched}">
         <a href="#" class="name" 
-         onclick="sendActionE(event, '#{ActionPlayPath $ File $ videoFilePath videoFile}')"
+         onclick="sendActionE(event, '#{ActionPlayPath $ File videoPath}')"
         >
           <i class="fa-solid fa-play">
-          <span>#{niceFileNameT videoFile.videoFilePath.videoFilePathName}
+          <span>#{niceFileNameT videoFile.videoFileName}
         <a href="#" title="Mark as watched"
-          onclick="sendActionE(event, '#{ActionMarkAsWatched $ File $ videoFilePath videoFile}', true)"
+          onclick="sendActionE(event, '#{ActionMarkAsWatched $ File videoPath}', true)"
         >
           <i class="fa-regular fa-eye">
         <a href="#" title="Mark as unwatched"
-          onclick="sendActionE(event, '#{ActionMarkAsUnwatched $ File $ videoFilePath videoFile}', true)"
+          onclick="sendActionE(event, '#{ActionMarkAsUnwatched $ File videoPath}', true)"
         >
           <i class="fa-regular fa-eye-slash">
 

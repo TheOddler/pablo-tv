@@ -10,18 +10,18 @@ import Data.Aeson.TH (defaultOptions, deriveJSON)
 import Data.Char (isSpace)
 import Data.Int (Int32)
 import Data.List (dropWhileEnd, nub)
-import Data.Map qualified as Map
 import Data.Scientific (Scientific, scientific)
 import Data.Text (Text)
 import Data.Text.Lazy.Encoding qualified as T
 import Data.Time (getCurrentTime)
+import Data.Vector qualified as Vector
 import Directory
-  ( DirectoryData (..),
+  ( Directory (..),
     DirectoryPath (..),
-    VideoFileData (..),
+    VideoFile (..),
     VideoFilePath (..),
     directoryPathToAbsPath,
-    updateDirectory,
+    updateDirectoryAtPath,
     videoFilePathToAbsPath,
   )
 import Evdev.Codes
@@ -247,47 +247,59 @@ performActionIO app action = do
 
     markDirOrFileAsWatched :: DirOrFile -> IO ()
     markDirOrFileAsWatched dirOrFile = modifyMVar_ app.appRootDirs $ \roots -> do
-      let dirPathByName = case dirOrFile of
+      let dirPath = case dirOrFile of
             Dir p -> p
-            File (VideoFilePath p _) -> p
+            File (VideoFilePath r p _) -> DirectoryPath r p
       now <- liftIO getCurrentTime
       let applyWatched fileData =
             case fileData.videoFileWatched of
               Just _ -> fileData
               Nothing -> fileData {videoFileWatched = Just now}
-      pure $ updateDirectory roots dirPathByName $ \dir ->
+      pure $ updateDirectoryAtPath roots dirPath $ \dir ->
         case dirOrFile of
           Dir _ ->
             dir
               { directoryVideoFiles =
-                  Map.map applyWatched dir.directoryVideoFiles
+                  Vector.map applyWatched dir.directoryVideoFiles
               }
-          File (VideoFilePath _ fileName) ->
+          File (VideoFilePath _ _ fileName) ->
             dir
               { directoryVideoFiles =
-                  Map.adjust applyWatched fileName dir.directoryVideoFiles
+                  Vector.map
+                    ( \v ->
+                        if v.videoFileName == fileName
+                          then applyWatched v
+                          else v
+                    )
+                    dir.directoryVideoFiles
               }
 
     markDirOrFileAsUnwatched :: DirOrFile -> IO ()
     markDirOrFileAsUnwatched dirOrFile = modifyMVar_ app.appRootDirs $ \roots -> do
-      let dirPathByName = case dirOrFile of
+      let dirPath = case dirOrFile of
             Dir p -> p
-            File (VideoFilePath p _) -> p
+            File (VideoFilePath r p _) -> DirectoryPath r p
       let applyUnwatched fileData =
             case fileData.videoFileWatched of
               Just _ -> fileData {videoFileWatched = Nothing}
               Nothing -> fileData
-      pure $ updateDirectory roots dirPathByName $ \dir ->
+      pure $ updateDirectoryAtPath roots dirPath $ \dir ->
         case dirOrFile of
           Dir _ ->
             dir
               { directoryVideoFiles =
-                  Map.map applyUnwatched dir.directoryVideoFiles
+                  Vector.map applyUnwatched dir.directoryVideoFiles
               }
-          File (VideoFilePath _ fileName) ->
+          File (VideoFilePath _ _ fileName) ->
             dir
               { directoryVideoFiles =
-                  Map.adjust applyUnwatched fileName dir.directoryVideoFiles
+                  Vector.map
+                    ( \v ->
+                        if v.videoFileName == fileName
+                          then applyUnwatched v
+                          else v
+                    )
+                    dir.directoryVideoFiles
               }
 
     dirOrFileToAbsPath :: DirOrFile -> IO FilePath

@@ -12,7 +12,7 @@ import Control.Concurrent (MVar)
 import Control.Monad (when)
 import Data.ByteString.Char8 qualified as BS
 import Data.Maybe (isNothing, listToMaybe)
-import Directory (DirectoryName, RootDirectories, RootDirectoryType)
+import Directory (DirectoryName, RootDirectories, RootDirectoryLocation)
 import Evdev.Uinput (Device)
 import GHC.Conc (TVar)
 import GHC.Utils.Misc (sortWith)
@@ -46,10 +46,10 @@ mkYesodData
 /input InputR GET
 /remote RemoteR GET
 /dir DirectoryHomeR GET
-/dir/#RootDirectoryType/+DirectoryNames DirectoryR GET
+/dir/#RootDirectoryLocation/+DirectoryNames DirectoryR GET
 
 -- Other
-/image/#RootDirectoryType/+DirectoryNames ImageR GET
+/image/#RootDirectoryLocation/+DirectoryNames ImageR GET
 /static StaticR EmbeddedStatic appGetStatic
 |]
 

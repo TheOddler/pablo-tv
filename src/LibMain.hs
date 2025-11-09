@@ -25,30 +25,31 @@ import Data.Aeson qualified as Aeson
 import Data.Char (isSpace)
 import Data.List.Extra (notNull)
 import Data.List.NonEmpty qualified as NE
-import Data.Map qualified as Map
 import Data.Maybe (isJust, isNothing)
 import Data.Ord (Down (..))
 import Data.Text (Text, unpack)
 import Data.Text qualified as Text
 import Data.Time (UTCTime)
+import Data.Vector qualified as Vector
 import Directory
   ( AggDirInfo (..),
     Directory (..),
-    DirectoryCheckResult (..),
-    DirectoryData (..),
     DirectoryName,
     DirectoryPath (..),
+    DirectoryUpdateResult (..),
     RootDirectory (..),
-    RootDirectoryType (..),
+    RootDirectoryLocation (..),
     VideoFile (..),
-    VideoFileData (..),
     VideoFilePath (..),
-    checkDirectory,
-    getDirectoryData,
+    getDirectoryAtPath,
     getSubDirAggInfo,
     niceDirNameT,
     niceFileNameT,
     rootDirectoryAsDirectory,
+    rootDirectoryLocationName,
+    rootDirectoryPath,
+    updateDirectoryFromDisk,
+    videoFilePath,
   )
 import Foundation
   ( App (..),
@@ -64,12 +65,10 @@ import Foundation
 import GHC.Conc (newTVarIO)
 import GHC.Utils.Misc (sortWith)
 import IsDevelopment (isDevelopment)
-import Lens.Micro ((&), (.~))
 import Logging (LogLevel (..), logDuration, putLog, runLoggingT)
 import Mpris (MprisAction (..), mediaListener)
 import Network.Info (NetworkInterface (..), getNetworkInterfaces)
 import Network.Wai.Handler.Warp (run)
-import Samba (MountResult, SmbServer (..), SmbShare (..), mount)
 import System.Environment (lookupEnv)
 import System.Process (callProcess)
 import System.Random (initStdGen, mkStdGen)
@@ -104,7 +103,14 @@ getHomeR = do
 
   roots <- liftIO . readMVar =<< getsYesod appRootDirs
   let homeData :: [AggDirInfo]
-      homeData = concatMap (getSubDirAggInfo . rootDirectoryAsDirectory) roots
+      homeData =
+        concatMap
+          ( \r ->
+              getSubDirAggInfo
+                (rootDirectoryPath r)
+                (rootDirectoryAsDirectory r)
+          )
+          roots
 
   let mkRandom =
         -- When in dev we auto-reload the page every second or so,
@@ -169,18 +175,26 @@ watchedClassDir :: AggDirInfo -> Html
 watchedClassDir dirInfo =
   watchedClass $ isWatchedDir dirInfo
 
+type VideoFileWithPath = (VideoFilePath, VideoFile)
+
 getDirectoryHomeR :: Handler Html
 getDirectoryHomeR = do
   roots <- liftIO . readMVar =<< getsYesod appRootDirs
   let dirs :: [AggDirInfo]
-      dirs = concatMap (getSubDirAggInfo . rootDirectoryAsDirectory) roots
-  let files :: [VideoFile]
+      dirs =
+        concatMap
+          ( \r ->
+              getSubDirAggInfo
+                (rootDirectoryPath r)
+                (rootDirectoryAsDirectory r)
+          )
+          roots
+  let files :: [VideoFileWithPath]
       files =
         concatMap
           ( \r -> do
-              let vids = Map.assocs r.rootDirectoryData.directoryVideoFiles
-              let dirPath = DirectoryPath r.rootDirectoryType []
-              uncurry (VideoFile . VideoFilePath dirPath) <$> vids
+              v <- Vector.toList (rootDirectoryVideoFiles r)
+              pure (videoFilePath (rootDirectoryPath r) v, v)
           )
           roots
 
@@ -197,23 +211,26 @@ getDirectoryHomeR = do
   let title = "Videos"
   defaultLayout title $(widgetFile "directory")
 
-getDirectoryR :: RootDirectoryType -> [DirectoryName] -> Handler Html
+getDirectoryR :: RootDirectoryLocation -> [DirectoryName] -> Handler Html
 getDirectoryR rootType dirNames = do
   roots <- liftIO . readMVar =<< getsYesod appRootDirs
   dirNamesNE <- case dirNames of
     [] -> redirect DirectoryHomeR
     f : r -> pure $ f NE.:| r
   let dirPath = DirectoryPath rootType dirNames
-  let mDirData = getDirectoryData roots dirPath
-  dirData <- case mDirData of
+  let mDir = getDirectoryAtPath roots dirPath
+  dir <- case mDir of
     Nothing -> redirect DirectoryHomeR
     Just d -> pure d
   let dirs :: [AggDirInfo]
-      dirs = getSubDirAggInfo $ Directory dirPath dirData
-  let files :: [VideoFile]
-      files = uncurry (VideoFile . VideoFilePath dirPath) <$> Map.assocs dirData.directoryVideoFiles
+      dirs = getSubDirAggInfo dirPath dir
+  let files :: [VideoFileWithPath]
+      files =
+        map
+          (\v -> (videoFilePath dirPath v, v))
+          (Vector.toList dir.directoryVideoFiles)
 
-  let imagePath = if isJust dirData.directoryImage then Just dirPath else Nothing
+  let imagePath = if isJust dir.directoryImage then Just dirPath else Nothing
   let playAllAction = Just $ ActionPlayPath $ Dir dirPath
   let markAllWatchedAction = Just $ ActionMarkAsWatched $ Dir dirPath
   let markAllUnwatchedAction = Just $ ActionMarkAsUnwatched $ Dir dirPath
@@ -227,7 +244,7 @@ getDirectoryR rootType dirNames = do
   let title = toHtml $ niceDirNameT $ NE.last dirNamesNE
   defaultLayout title $(widgetFile "directory")
 
-getImageR :: RootDirectoryType -> [DirectoryName] -> Handler TypedContent
+getImageR :: RootDirectoryLocation -> [DirectoryName] -> Handler TypedContent
 getImageR root dirNames = notFound -- TODO
 -- runDB (getImageQ absPath) >>= \case
 --   Nothing -> notFound
@@ -299,16 +316,21 @@ main = do
     callProcess "xdg-open" [url]
 
   rootDirs <- logDuration "Startup directory check" $ do
-    result <-
-      checkDirectory $
-        Directory
-          (DirectoryPath RootLocalVideos [])
-          (DirectoryData mempty Nothing mempty)
-    let dirData = case result of
-          DirectoryUnchanged -> DirectoryData mempty Nothing mempty
+    let rootLoc = RootLocalVideos
+    let rootPath = DirectoryPath rootLoc []
+    let rootName = rootDirectoryLocationName rootLoc
+    let emptyRootAsDir = Directory rootName Nothing mempty mempty
+    result <- updateDirectoryFromDisk rootPath emptyRootAsDir
+    let rootAsDir = case result of
+          DirectoryUnchanged -> emptyRootAsDir
           DirectoryChanged d -> d
-          DirectoryNotADirectory -> DirectoryData mempty Nothing mempty
-    newMVar [RootDirectory RootLocalVideos dirData]
+          DirectoryNotADirectory -> emptyRootAsDir
+    newMVar
+      [ RootDirectory
+          RootLocalVideos
+          rootAsDir.directorySubDirs
+          rootAsDir.directoryVideoFiles
+      ]
 
   runLoggingT $ liftIO $ do
     -- Open samba shares. TODO: Make some way of checking and re-mounting the broken ones at runtime

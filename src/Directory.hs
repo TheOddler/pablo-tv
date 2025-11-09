@@ -1,3 +1,4 @@
+{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TemplateHaskell #-}
 
 module Directory where
@@ -11,12 +12,13 @@ import Data.HashSet qualified as Set
 import Data.List (find, intercalate, sortBy, (\\))
 import Data.List.Extra (lower)
 import Data.List.NonEmpty qualified as NE
-import Data.Map qualified as Map
 import Data.Maybe (isJust, listToMaybe, mapMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Time (UTCTime)
 import Data.Time.Clock.POSIX (posixSecondsToUTCTime)
+import Data.Vector qualified as Vector
+import Data.Vector.Algorithms.Intro qualified as VectorAlgs
 import GHC.Data.Maybe (firstJusts, orElse)
 import GHC.Exts (sortWith)
 import GHC.Generics (Generic)
@@ -53,29 +55,31 @@ newtype ImageFileName = ImageFileName String
 
 newtype IgnoredFileName = IgnoredFileName String
 
-data VideoFileData = VideoFileData
-  { videoFileAdded :: UTCTime,
+data VideoFile = VideoFile
+  { videoFileName :: VideoFileName,
+    videoFileAdded :: UTCTime,
     videoFileWatched :: Maybe UTCTime
   }
 
-data DirectoryData = DirectoryData
-  { directoryVideoFiles :: Map.Map VideoFileName VideoFileData,
+data Directory = Directory
+  { directoryName :: DirectoryName,
     directoryImage :: Maybe ImageFileName,
-    directorySubDirs :: Map.Map DirectoryName DirectoryData
+    directorySubDirs :: Vector.Vector Directory,
+    directoryVideoFiles :: Vector.Vector VideoFile
   }
 
-data RootDirectoryType
+data RootDirectoryLocation
   = RootSamba Samba.SmbServer Samba.SmbShare
   | RootLocalVideos
   deriving (Eq, Ord, Show, Read)
 
-instance PathPiece RootDirectoryType where
-  toPathPiece :: RootDirectoryType -> Text
+instance PathPiece RootDirectoryLocation where
+  toPathPiece :: RootDirectoryLocation -> Text
   toPathPiece = \case
     RootSamba srv shr -> T.pack $ srv.unSmbServer ++ "/" ++ shr.unSmbShare
     RootLocalVideos -> "Videos"
 
-  fromPathPiece :: Text -> Maybe RootDirectoryType
+  fromPathPiece :: Text -> Maybe RootDirectoryLocation
   fromPathPiece t =
     if t == "Videos"
       then Just RootLocalVideos
@@ -88,20 +92,33 @@ instance PathPiece RootDirectoryType where
         _ -> Nothing
 
 data RootDirectory = RootDirectory
-  { rootDirectoryType :: RootDirectoryType,
-    rootDirectoryData :: DirectoryData
+  { rootDirectoryLocation :: RootDirectoryLocation,
+    rootDirectoryDirs :: Vector.Vector Directory,
+    rootDirectoryVideoFiles :: Vector.Vector VideoFile
   }
+
+rootDirectoryLocationName :: RootDirectoryLocation -> DirectoryName
+rootDirectoryLocationName l = DirectoryName $ T.unpack $ toPathPiece l
+
+rootDirectoryName :: RootDirectory -> DirectoryName
+rootDirectoryName root = rootDirectoryLocationName root.rootDirectoryLocation
+
+rootDirectoryAsDirectory :: RootDirectory -> Directory
+rootDirectoryAsDirectory root =
+  Directory
+    { directoryName = rootDirectoryName root,
+      directoryImage = Nothing,
+      directorySubDirs = root.rootDirectoryDirs,
+      directoryVideoFiles = root.rootDirectoryVideoFiles
+    }
+
+rootDirectoryPath :: RootDirectory -> DirectoryPath
+rootDirectoryPath r = DirectoryPath r.rootDirectoryLocation []
 
 type RootDirectories = [RootDirectory]
 
-rootDirectoryPath :: RootDirectory -> DirectoryPath
-rootDirectoryPath root = DirectoryPath root.rootDirectoryType []
-
-rootDirectoryAsDirectory :: RootDirectory -> Directory
-rootDirectoryAsDirectory root = Directory (rootDirectoryPath root) root.rootDirectoryData
-
 data DirectoryPath = DirectoryPath
-  { directoryPathRoot :: RootDirectoryType,
+  { directoryPathRoot :: RootDirectoryLocation,
     directoryPathNames :: [DirectoryName]
   }
   deriving (Show, Eq)
@@ -119,52 +136,60 @@ directoryPathToAbsPath (DirectoryPath root dirNames) = do
   pure $ intercalate "/" $ rootAbsPath : (unDirectoryName <$> dirNames)
 
 data VideoFilePath = VideoFilePath
-  { videoFilePathDir :: DirectoryPath,
+  { videoFilePathRoot :: RootDirectoryLocation,
+    videoFilePathNames :: [DirectoryName],
     videoFilePathName :: VideoFileName
   }
   deriving (Show, Eq)
 
+videoFilePath :: DirectoryPath -> VideoFile -> VideoFilePath
+videoFilePath dir video =
+  VideoFilePath
+    { videoFilePathRoot = dir.directoryPathRoot,
+      videoFilePathNames = dir.directoryPathNames,
+      videoFilePathName = video.videoFileName
+    }
+
 videoFilePathToAbsPath :: VideoFilePath -> IO FilePath
-videoFilePathToAbsPath (VideoFilePath dirPath fileName) = do
-  dirAbsPath <- directoryPathToAbsPath dirPath
+videoFilePathToAbsPath (VideoFilePath root dirNames fileName) = do
+  dirAbsPath <- directoryPathToAbsPath $ DirectoryPath root dirNames
   pure $ dirAbsPath ++ "/" ++ unVideoFileName fileName
 
-getDirectoryData :: RootDirectories -> DirectoryPath -> Maybe DirectoryData
-getDirectoryData roots (DirectoryPath wantedRoot wantedDirNames) = do
-  root <- find (\r -> r.rootDirectoryType == wantedRoot) roots
-  innerGet wantedDirNames root.rootDirectoryData
+getDirectoryAtPath :: RootDirectories -> DirectoryPath -> Maybe Directory
+getDirectoryAtPath roots (DirectoryPath wantedRoot wantedDirNames) = do
+  root <- find (\r -> r.rootDirectoryLocation == wantedRoot) roots
+  innerGet wantedDirNames $ rootDirectoryAsDirectory root
   where
-    innerGet :: [DirectoryName] -> DirectoryData -> Maybe DirectoryData
+    innerGet :: [DirectoryName] -> Directory -> Maybe Directory
     innerGet [] _ = Nothing
-    innerGet [name] dirData = Map.lookup name dirData.directorySubDirs
-    innerGet (name : rest) dirData = do
-      nextDir <- Map.lookup name dirData.directorySubDirs
-      innerGet rest nextDir
+    innerGet [name] dir =
+      Vector.find ((== name) . directoryName) dir.directorySubDirs
+    innerGet (name : rest) dir = do
+      subDir <- Vector.find ((== name) . directoryName) dir.directorySubDirs
+      innerGet rest subDir
 
 -- | Will silently do nothing if the path isn't found.
--- TODO: This function is very broken, it seems to just overwrite the root dir's data
-updateDirectory :: RootDirectories -> DirectoryPath -> (DirectoryData -> DirectoryData) -> RootDirectories
-updateDirectory currentRoots (DirectoryPath wantedRoot wantedDirNames) updateFunc =
-  flip map currentRoots $ \currentRoot -> do
-    if currentRoot.rootDirectoryType /= wantedRoot
-      then currentRoot -- Leave this one alone
-      else
+updateDirectoryAtPath :: RootDirectories -> DirectoryPath -> (Directory -> Directory) -> RootDirectories
+updateDirectoryAtPath roots (DirectoryPath wantedRoot wantedDirNames) updateFunc =
+  flip map roots $ \currentRoot -> do
+    if currentRoot.rootDirectoryLocation == wantedRoot
+      then
         currentRoot
-          { rootDirectoryData = innerUpdate wantedDirNames currentRoot.rootDirectoryData
+          { rootDirectoryDirs =
+              fmap (innerUpdate wantedDirNames) currentRoot.rootDirectoryDirs
           }
+      else currentRoot -- Leave this one alone
   where
-    innerUpdate :: [DirectoryName] -> DirectoryData -> DirectoryData
-    innerUpdate [] d = updateFunc d
-    innerUpdate (n : ns) d = case Map.lookup n d.directorySubDirs of
-      Nothing -> d
-      Just subDir -> innerUpdate ns subDir
-
-data Directory = Directory DirectoryPath DirectoryData
-
-data VideoFile = VideoFile
-  { videoFilePath :: VideoFilePath,
-    videoFileData :: VideoFileData
-  }
+    innerUpdate :: [DirectoryName] -> Directory -> Directory
+    innerUpdate [] d = d
+    innerUpdate [n] d = if d.directoryName == n then updateFunc d else d
+    innerUpdate (n : ns) d =
+      if d.directoryName == n
+        then
+          d
+            { directorySubDirs = fmap (innerUpdate ns) d.directorySubDirs
+            }
+        else d
 
 -- | Reading the file info of a path is rather slow, so we want to minimise the ones we read it for.
 -- So instead of reading it for every path, we first do a guess what the path is, and read it for dirs only.
@@ -214,14 +239,15 @@ data DirectoryKindGuess
   | DirectoryKindSeriesSeason -- For now we don't need any extra info about seasons
   | DirectoryKindUnknown
 
-guessDirectoryKind :: DirectoryName -> DirectoryData -> DirectoryKindGuess
-guessDirectoryKind dirName dirData =
-  let title = titleFromDir dirName
-      dirSeasonIndicator = isJust $ seasonFromDir dirName
-      subDirsSeasonIndicators = any (isJust . seasonFromDir) $ Map.keys dirData.directorySubDirs
-      hasSubDirs = not $ null dirData.directorySubDirs
-      filesSeasonIndicator = isJust $ seasonFromFiles $ Map.keys dirData.directoryVideoFiles
-      hasMovieFiles = not $ null dirData.directoryVideoFiles
+guessDirectoryKind :: Directory -> DirectoryKindGuess
+guessDirectoryKind dir =
+  let title = titleFromDir dir.directoryName
+      dirSeasonIndicator = isJust $ seasonFromDir dir.directoryName
+      subDirsSeasonIndicators =
+        any (isJust . seasonFromDir . directoryName) dir.directorySubDirs
+      hasSubDirs = not $ null dir.directorySubDirs
+      filesSeasonIndicator = isJust $ seasonFromFiles dir.directoryVideoFiles
+      hasMovieFiles = not $ null dir.directoryVideoFiles
    in firstJusts
         [ if dirSeasonIndicator
             then Just DirectoryKindSeriesSeason
@@ -238,14 +264,16 @@ guessDirectoryKind dirName dirData =
         ]
         `orElse` DirectoryKindUnknown
 
-data DirectoryCheckResult
+data DirectoryUpdateResult
   = DirectoryUnchanged
-  | DirectoryChanged DirectoryData
+  | DirectoryChanged Directory
   | DirectoryNotADirectory
 
--- | Checks the directory with what it finds on disk, and returns the updates version, or Nothing if it's already the same as on disk.
-checkDirectory :: Directory -> IO DirectoryCheckResult
-checkDirectory (Directory dirPath dirData) = do
+-- | Updates the directory (at given path) with new data from disk.
+-- It will potentially remove or add video files and sub-directories.
+-- It leaves watched or added information for files in tact.
+updateDirectoryFromDisk :: DirectoryPath -> Directory -> IO DirectoryUpdateResult
+updateDirectoryFromDisk dirPath dir = do
   absDirPath <- directoryPathToAbsPath dirPath
   (namesOrErr :: Either IOError [FilePath]) <- tryIO $ listDirectory absDirPath
   case namesOrErr of
@@ -264,56 +292,77 @@ checkDirectory (Directory dirPath dirData) = do
       let (subDirGuesses, videoGuesses, imageGuesses, _ignored) = partitionPathTypes typeGuesses
       -- Recursively check for directory updates
       subDirUpdates <- forM subDirGuesses $ \dirName -> do
-        let knownData = Map.lookup dirName dirData.directorySubDirs
-        let emptyData = DirectoryData Map.empty Nothing Map.empty
+        let knownDir = Vector.find ((== dirName) . directoryName) dir.directorySubDirs
+        let newDir = Directory dirName Nothing Vector.empty Vector.empty
         let fullPath = addSubDir dirPath dirName
-        upd <- checkDirectory (Directory fullPath $ knownData `orElse` emptyData)
+        upd <- updateDirectoryFromDisk fullPath $ knownDir `orElse` newDir
         pure (dirName, upd)
       let (unchanged, changed, notDirs) =
             foldr
               ( \(name, upd) (un, ch, nd) -> case upd of
                   DirectoryUnchanged -> (name : un, ch, nd)
-                  DirectoryChanged dir -> (un, (name, dir) : ch, nd)
+                  DirectoryChanged d -> (un, (name, d) : ch, nd)
                   DirectoryNotADirectory -> (un, ch, name : nd)
               )
               ([], [], [])
               subDirUpdates
       let actualSubDirs = subDirGuesses \\ notDirs
-      let noLongerExist = Map.keys dirData.directorySubDirs \\ actualSubDirs
-      let updatedSubDirs = case (unchanged, changed, noLongerExist) of
+      let noLongerExist =
+            fmap directoryName (Vector.toList dir.directorySubDirs) \\ actualSubDirs
+      let updatedSubDirs :: Maybe (Vector.Vector Directory)
+          updatedSubDirs = case (unchanged, changed, noLongerExist) of
             (_, [], []) -> Nothing -- Nothing indicates no changes were found
             _ -> do
-              let removedNonExistant = foldr Map.delete dirData.directorySubDirs noLongerExist
-              let updated = foldr (uncurry Map.insert) removedNonExistant changed
-              Just updated
+              -- Step 1: Remove dirs that that no longer exist or that were changed as we'll add their updated version back after
+              let toRemove = noLongerExist ++ map fst changed
+              let step1 = Vector.filter ((`notElem` toRemove) . directoryName) dir.directorySubDirs
+              -- Step 2: Add the updates back
+              let step2 = step1 <> Vector.fromList (map snd changed)
+              -- Finally sort them nicely
+              let nameSorter = naturalCompareBy $ unDirectoryName . directoryName
+              Just $ Vector.modify (VectorAlgs.sortBy nameSorter) step2
 
       -- Check if there are any new files or remove files
       -- Files we already knew about, we won't check again so we don't do unneeded IO
-      let newVideoNames = videoGuesses \\ Map.keys dirData.directoryVideoFiles
-      let removedVideoNames = Map.keys dirData.directoryVideoFiles \\ videoGuesses
+      let knownVideoNames = fmap videoFileName (Vector.toList dir.directoryVideoFiles)
+      let newVideoNames = videoGuesses \\ knownVideoNames
+      let removedVideoNames = knownVideoNames \\ videoGuesses
       updatedVideoFiles <- case (newVideoNames, removedVideoNames) of
         ([], []) -> pure Nothing
         _ -> do
-          let removedVideos = foldr Map.delete dirData.directoryVideoFiles removedVideoNames
+          -- Step 1: Remove files that no longer exist
+          let step1 = Vector.filter ((`elem` removedVideoNames) . videoFileName) dir.directoryVideoFiles
+          -- Step 2: Add new videos
           newVideos <- forM newVideoNames $ \newVideoName -> do
             let fullFilePath = absDirPath ++ "/" ++ unVideoFileName newVideoName
             modTime <- getModificationTime fullFilePath
-            pure (newVideoName, VideoFileData modTime Nothing)
-          let withNewVideos = foldr (uncurry Map.insert) removedVideos newVideos
-          pure $ Just withNewVideos
+            pure
+              VideoFile
+                { videoFileName = newVideoName,
+                  videoFileAdded = modTime,
+                  videoFileWatched = Nothing
+                }
+          let step2 = step1 <> Vector.fromList newVideos
+          -- For files that we already knew about and that still exist, we do nothing so their watched and added info stays the same
+          -- Finally we sort
+          let nameSorter = naturalCompareBy $ unVideoFileName . videoFileName
+          pure $ Just $ Vector.modify (VectorAlgs.sortBy nameSorter) step2
 
       -- We only care about the best image, other images ignore, even if there are new ones that aren't the best
       let bestImage = bestImageFile imageGuesses
-      -- TODO: If we don't have an image, see if we can download one using TVDB
+      -- TODO: If we don't have an image, see if we can download one using TVDB. Or perhaps we do that in a separate function
 
       pure $ case (updatedSubDirs, updatedVideoFiles, bestImage) of
-        (Nothing, Nothing, _) | bestImage == dirData.directoryImage -> DirectoryUnchanged
+        (Nothing, Nothing, _) | bestImage == dir.directoryImage -> DirectoryUnchanged
         _ ->
           DirectoryChanged $
-            DirectoryData
-              { directoryVideoFiles = updatedVideoFiles `orElse` dirData.directoryVideoFiles,
+            Directory
+              { directoryName = dir.directoryName,
                 directoryImage = bestImage,
-                directorySubDirs = updatedSubDirs `orElse` dirData.directorySubDirs
+                directoryVideoFiles =
+                  updatedVideoFiles `orElse` dir.directoryVideoFiles,
+                directorySubDirs =
+                  updatedSubDirs `orElse` dir.directorySubDirs
               }
 
 -- Agg data
@@ -326,19 +375,20 @@ data AggDirInfo = AggDirInfo
     aggDirPlayedVideoFileCount :: Int
   }
 
-foldFilesDataRecur :: (VideoFileData -> a -> a) -> a -> DirectoryData -> a
+foldFilesDataRecur :: forall a. (VideoFile -> a -> a) -> a -> Directory -> a
 foldFilesDataRecur updateAgg agg dir = loop agg [dir]
   where
+    loop :: a -> [Directory] -> a
     loop a [] = a
     loop a (dirTodo : restDirs) = do
       let newA = foldr updateAgg a dirTodo.directoryVideoFiles
-          subDirs = Map.elems dirTodo.directorySubDirs
+          subDirs = Vector.toList dirTodo.directorySubDirs
       loop newA $ restDirs ++ subDirs
 
-getSubDirAggInfo :: Directory -> [AggDirInfo]
-getSubDirAggInfo (Directory dirPath dirData) = do
+getSubDirAggInfo :: DirectoryPath -> Directory -> [AggDirInfo]
+getSubDirAggInfo dirPath dir = do
   let epoch = posixSecondsToUTCTime 0
-  flip map (Map.assocs dirData.directorySubDirs) $ \(subDirName, subDirData) ->
+  flip map (Vector.toList dir.directorySubDirs) $ \subDir ->
     foldFilesDataRecur
       ( \videoFileData agg ->
           AggDirInfo
@@ -356,14 +406,14 @@ getSubDirAggInfo (Directory dirPath dirData) = do
             )
       )
       ( AggDirInfo
-          subDirName
-          (addSubDir dirPath subDirName)
+          subDir.directoryName
+          (addSubDir dirPath subDir.directoryName)
           epoch
           epoch
           0
           0
       )
-      subDirData
+      subDir
 
 -- Some helpers
 showUnique :: [String] -> String
@@ -408,14 +458,15 @@ seasonFromDir (DirectoryName dir) =
     <|> tryRegex dir expect1Int "[Ss]eries ([0-9]+)"
     <|> tryRegex dir expect1Int "[Ss]eizoen ([0-9]+)"
 
-seasonFromFiles :: [VideoFileName] -> Maybe Int
+seasonFromFiles :: Vector.Vector VideoFile -> Maybe Int
 seasonFromFiles files =
   case mSeason of
     Just season -> Just season
     Nothing -> if looseEpisodesFound then Just 1 else Nothing
   where
-    mSeason = NE.head <$> listToMaybe (sortWith NE.length $ NE.group (mapMaybe seasonFromFile files))
-    looseEpisodesFound = any (isJust . snd . episodeInfoFromFile) files
+    fileNames = Vector.toList (videoFileName <$> files)
+    mSeason = NE.head <$> listToMaybe (sortWith NE.length $ NE.group (mapMaybe seasonFromFile fileNames))
+    looseEpisodesFound = any (isJust . snd . episodeInfoFromFile) fileNames
 
     seasonFromFile :: VideoFileName -> Maybe Int
     seasonFromFile (VideoFileName file) =
@@ -549,7 +600,7 @@ naturalSortBy :: (a -> String) -> [a] -> [a]
 naturalSortBy f = sortBy $ naturalCompareBy f
 
 $(deriveJSON defaultOptions ''DirectoryName)
-$(deriveJSON defaultOptions ''RootDirectoryType)
+$(deriveJSON defaultOptions ''RootDirectoryLocation)
 $(deriveJSON defaultOptions ''DirectoryPath)
 $(deriveJSON defaultOptions ''VideoFileName)
 $(deriveJSON defaultOptions ''VideoFilePath)

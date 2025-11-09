@@ -93,6 +93,8 @@ library
       , unliftio
       , unordered-containers
       , utf8-string
+      , vector
+      , vector-algorithms
       , warp
       , websockets
       , yesod
