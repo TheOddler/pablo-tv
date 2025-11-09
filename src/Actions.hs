@@ -28,7 +28,6 @@ import Evdev.Codes
 import Evdev.Uinput
 import Foundation (App (..), Handler)
 import GHC.Conc (atomically, readTVar, writeTVar)
-import GHC.Generics (Generic)
 import Logging (LogLevel (..), putLog)
 import Mpris qualified
 import Network.WebSockets qualified as WS
@@ -67,7 +66,7 @@ data Action
   | ActionRefreshAllDirectoryData
   | -- | ActionRefreshDirectoryData DirectoryPath
     ActionMedia Mpris.MprisAction
-  deriving (Show, Eq, Generic)
+  deriving (Show, Eq)
 
 data MouseButton = MouseButtonLeft | MouseButtonRight
   deriving (Show, Eq, Bounded, Enum)
