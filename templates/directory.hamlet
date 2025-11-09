@@ -14,12 +14,12 @@ $maybe imagePath <- imagePath
             <span>Play All
         $maybe action <- markAllWatchedAction
           <a href="#" title="Mark all as watched"
-            onclick="sendActionE(event, '#{action}', true)"
+            onclick="sendActionE(event, '#{action}')"
           >
             <i class="fa-regular fa-eye">
         $maybe action <- markAllUnwatchedAction
           <a href="#" title="Mark all as unwatched"
-            onclick="sendActionE(event, '#{action}', true)"
+            onclick="sendActionE(event, '#{action}')"
           >
             <i class="fa-regular fa-eye-slash">
     $forall (videoPath, videoFile) <- files
@@ -30,11 +30,11 @@ $maybe imagePath <- imagePath
           <i class="fa-solid fa-play">
           <span>#{niceFileNameT videoFile.videoFileName}
         <a href="#" title="Mark as watched"
-          onclick="sendActionE(event, '#{ActionMarkAsWatched $ File videoPath}', true)"
+          onclick="sendActionE(event, '#{ActionMarkAsWatched $ File videoPath}')"
         >
           <i class="fa-regular fa-eye">
         <a href="#" title="Mark as unwatched"
-          onclick="sendActionE(event, '#{ActionMarkAsUnwatched $ File videoPath}', true)"
+          onclick="sendActionE(event, '#{ActionMarkAsUnwatched $ File videoPath}')"
         >
           <i class="fa-regular fa-eye-slash">
 

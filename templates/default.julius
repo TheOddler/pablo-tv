@@ -22,11 +22,20 @@ async function sendAction(action) {
   });
 }
 
-async function sendActionE(event, action, refreshPageAfter = false) {
+async function sendActionE(event, action, refreshPageAfter = true, disableButtonDuring = true) {
+  // A function meant to be used on buttons or similar:
+  // It'll send the action, disable the element, and then refresh the page when the action returns.
+  // It requires the event object so it can disable the element, and prevent default.
   event.preventDefault()
-  await sendAction(action, refreshPageAfter)
+  if (disableButtonDuring) {
+    event.target.disabled = true;
+  }
+  await sendAction(action)
+  if (disableButtonDuring) {
+    event.target.disabled = false;
+  }
   if (refreshPageAfter) {
-    document.location.reload()
+    document.location.reload();
   }
 }
 

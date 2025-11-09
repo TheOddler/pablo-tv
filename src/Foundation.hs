@@ -8,7 +8,6 @@
 
 module Foundation where
 
-import Control.Concurrent (MVar)
 import Control.Monad (when)
 import Data.ByteString.Char8 qualified as BS
 import Data.Maybe (isNothing, listToMaybe)
@@ -19,6 +18,7 @@ import GHC.Utils.Misc (sortWith)
 import IsDevelopment (isDevelopment)
 import Logging (Logger (..))
 import Network.Info (getNetworkInterfaces)
+import PVar (PVar)
 import TVDB (TVDBToken)
 import TVState (TVState)
 import Text.Hamlet (hamletFile)
@@ -33,7 +33,7 @@ data App = App
     appInputDevice :: Device,
     appGetStatic :: EmbeddedStatic,
     appTVState :: TVar TVState,
-    appRootDirs :: MVar RootDirectories
+    appRootDirs :: PVar RootDirectories
   }
 
 type DirectoryNames = [DirectoryName]

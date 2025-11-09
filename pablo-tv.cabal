@@ -48,6 +48,7 @@ library
         LibMain
         Logging
         Mpris
+        PVar
         SafeMaths
         Samba
         TVDB

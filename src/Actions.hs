@@ -2,7 +2,6 @@
 
 module Actions where
 
-import Control.Concurrent (modifyMVar_)
 import Control.Exception (Exception (..))
 import Control.Monad (forever)
 import Data.Aeson (ToJSON (..), eitherDecode, encode)
@@ -22,15 +21,17 @@ import Directory
     VideoFilePath (..),
     directoryPathToAbsPath,
     updateDirectoryAtPath,
+    updateRootDirectoriesFromDisk,
     videoFilePathToAbsPath,
   )
 import Evdev.Codes
 import Evdev.Uinput
 import Foundation (App (..), Handler)
 import GHC.Conc (atomically, readTVar, writeTVar)
-import Logging (LogLevel (..), putLog)
+import Logging (LogLevel (..), logDuration, putLog)
 import Mpris qualified
 import Network.WebSockets qualified as WS
+import PVar (modifyPVar_, tryModifyPVar_)
 import SafeMaths (int32ToInteger)
 import System.Process (callProcess, readProcess)
 import TVState (TVState (..))
@@ -207,32 +208,13 @@ performActionIO app action = do
         tvState <- readTVar tvStateTVar
         writeTVar tvStateTVar $ tvState {tvPage = url}
     ActionRefreshAllDirectoryData -> liftIO $ do
-      -- -- To prevent spamming this, we only start a new full refresh when the queue is empty
-      -- sambaShares <- runDBPool app.appSqlPool $ selectList [] []
-      -- -- let getMountPath (SambaShare svr shr) = mkMountPath svr shr
-      -- sambaPaths <- mapMaybeM (getMountPath . entityVal) sambaShares
-      -- homeDir <- getHomeDir
-      -- -- let localVideosPath = homeDir </> $(mkRelDir "Videos")
-      -- let allPaths = localVideosPath : sambaPaths
-      -- startedRefresh <- atomically $ do
-      --   isEmpty <- isEmptyTQueue $ appDirExplorationQueue app
-      --   when isEmpty . forM_ allPaths $
-      --     writeTQueue (appDirExplorationQueue app) . DirToExplore
-      --   pure isEmpty
-      -- when (not startedRefresh) $
-      --   putLog Warning "Already refreshing"
-      putLog Warning "TODO: Reimplement this"
-    -- ActionRefreshDirectoryData path -> liftIO $ do
-    --   -- -- To prevent spamming this, we only start a new full refresh when the queue is empty
-    --   -- startedRefresh <- atomically $ do
-    --   --   isEmpty <- isEmptyTQueue $ appDirExplorationQueue app
-    --   --   when isEmpty $
-    --   --     writeTQueue (appDirExplorationQueue app) $
-    --   --       DirToExplore path
-    --   --   pure isEmpty
-    --   -- when (not startedRefresh) $
-    --   --   putLog Warning "Already refreshing"
-    --   putLog Warning "TODO: Reimplement this"
+      -- To prevent spamming this, we only try to update
+      -- This action can be slow, but that's fine, Yesod calls are run in their own thread anyway, and that way we have a nice way of letter the frontend know when the refresh is done.
+      didUpdate <- tryModifyPVar_ app.appRootDirs $ \roots ->
+        logDuration "Updated directory data" $ updateRootDirectoriesFromDisk roots
+      if didUpdate
+        then pure ()
+        else putLog Warning "Already refreshing"
     ActionMedia a ->
       liftIO $ Mpris.performAction a
   where
@@ -246,7 +228,7 @@ performActionIO app action = do
         ++ [SyncEvent SynReport]
 
     markDirOrFileAsWatched :: DirOrFile -> IO ()
-    markDirOrFileAsWatched dirOrFile = modifyMVar_ app.appRootDirs $ \roots -> do
+    markDirOrFileAsWatched dirOrFile = modifyPVar_ app.appRootDirs $ \roots -> do
       let dirPath = case dirOrFile of
             Dir p -> p
             File (VideoFilePath r p _) -> DirectoryPath r p
@@ -275,7 +257,7 @@ performActionIO app action = do
               }
 
     markDirOrFileAsUnwatched :: DirOrFile -> IO ()
-    markDirOrFileAsUnwatched dirOrFile = modifyMVar_ app.appRootDirs $ \roots -> do
+    markDirOrFileAsUnwatched dirOrFile = modifyPVar_ app.appRootDirs $ \roots -> do
       let dirPath = case dirOrFile of
             Dir p -> p
             File (VideoFilePath r p _) -> DirectoryPath r p

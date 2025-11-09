@@ -19,7 +19,6 @@ import Actions
     performAction,
     performActionIO,
   )
-import Control.Concurrent (newMVar, readMVar)
 import Control.Monad (when)
 import Data.Aeson qualified as Aeson
 import Data.Char (isSpace)
@@ -36,7 +35,6 @@ import Directory
     Directory (..),
     DirectoryName,
     DirectoryPath (..),
-    DirectoryUpdateResult (..),
     RootDirectory (..),
     RootDirectoryLocation (..),
     VideoFile (..),
@@ -46,9 +44,7 @@ import Directory
     niceDirNameT,
     niceFileNameT,
     rootDirectoryAsDirectory,
-    rootDirectoryLocationName,
     rootDirectoryPath,
-    updateDirectoryFromDisk,
     videoFilePath,
   )
 import Foundation
@@ -69,6 +65,8 @@ import Logging (LogLevel (..), logDuration, putLog, runLoggingT)
 import Mpris (MprisAction (..), mediaListener)
 import Network.Info (NetworkInterface (..), getNetworkInterfaces)
 import Network.Wai.Handler.Warp (run)
+import PVar (newPVar, readPVar)
+import Samba (SmbServer (..), SmbShare (..))
 import System.Environment (lookupEnv)
 import System.Process (callProcess)
 import System.Random (initStdGen, mkStdGen)
@@ -81,7 +79,7 @@ import Util
     widgetFile,
   )
 import Yesod hiding (defaultLayout, replace)
-import Yesod.WebSockets (race_, webSockets)
+import Yesod.WebSockets (concurrently_, race_, webSockets)
 
 mkYesodDispatch "App" resourcesApp
 
@@ -101,7 +99,7 @@ getHomeR = do
   tvStateTVar <- getsYesod appTVState
   webSockets $ race_ actionsWebSocket (tvStateWebSocket tvStateTVar)
 
-  roots <- liftIO . readMVar =<< getsYesod appRootDirs
+  roots <- liftIO . readPVar =<< getsYesod appRootDirs
   homeData <-
     logDuration "Calculated home dir agg data" . pure $
       concatMap
@@ -179,7 +177,7 @@ type VideoFileWithPath = (VideoFilePath, VideoFile)
 
 getDirectoryHomeR :: Handler Html
 getDirectoryHomeR = do
-  roots <- liftIO . readMVar =<< getsYesod appRootDirs
+  roots <- liftIO . readPVar =<< getsYesod appRootDirs
   let dirs :: [AggDirInfo]
       dirs =
         concatMap
@@ -213,7 +211,7 @@ getDirectoryHomeR = do
 
 getDirectoryR :: RootDirectoryLocation -> [DirectoryName] -> Handler Html
 getDirectoryR rootType dirNames = do
-  roots <- liftIO . readMVar =<< getsYesod appRootDirs
+  roots <- liftIO . readPVar =<< getsYesod appRootDirs
   dirNamesNE <- case dirNames of
     [] -> redirect DirectoryHomeR
     f : r -> pure $ f NE.:| r
@@ -315,21 +313,17 @@ main = do
   when (not isDevelopment) $ do
     callProcess "xdg-open" [url]
 
-  rootDirs <- logDuration "Startup directory check" $ do
-    let rootLoc = RootLocalVideos
-    let rootPath = DirectoryPath rootLoc []
-    let rootName = rootDirectoryLocationName rootLoc
-    let emptyRootAsDir = Directory rootName Nothing mempty mempty
-    result <- updateDirectoryFromDisk rootPath emptyRootAsDir
-    let rootAsDir = case result of
-          DirectoryUnchanged -> emptyRootAsDir
-          DirectoryChanged d -> d
-          DirectoryNotADirectory -> emptyRootAsDir
-    newMVar
+  rootDirs <-
+    -- TODO: Read the starting value from Disk
+    newPVar
       [ RootDirectory
           RootLocalVideos
-          rootAsDir.directorySubDirs
-          rootAsDir.directoryVideoFiles
+          Vector.empty
+          Vector.empty,
+        RootDirectory
+          (RootSamba (SmbServer "192.168.0.99") (SmbShare "videos"))
+          Vector.empty
+          Vector.empty
       ]
 
   runLoggingT $ liftIO $ do

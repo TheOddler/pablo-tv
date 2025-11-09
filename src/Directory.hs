@@ -269,6 +269,31 @@ data DirectoryUpdateResult
   | DirectoryChanged Directory
   | DirectoryNotADirectory
 
+updateRootDirectoriesFromDisk :: RootDirectories -> IO RootDirectories
+updateRootDirectoriesFromDisk rootDirs =
+  forM rootDirs $ \rootDir -> do
+    let path = rootDirectoryPath rootDir
+    let dir = rootDirectoryAsDirectory rootDir
+    result <- updateDirectoryFromDisk path dir
+    case result of
+      DirectoryChanged updated ->
+        pure
+          RootDirectory
+            { rootDirectoryLocation = rootDir.rootDirectoryLocation,
+              rootDirectoryDirs = updated.directorySubDirs,
+              rootDirectoryVideoFiles = updated.directoryVideoFiles
+            }
+      DirectoryUnchanged -> pure rootDir
+      DirectoryNotADirectory -> do
+        let name = rootDirectoryName rootDir
+        putLog Warning $
+          unwords
+            [ "Root directory",
+              name.unDirectoryName,
+              "wasn't a directory somehow?"
+            ]
+        pure rootDir
+
 -- | Updates the directory (at given path) with new data from disk.
 -- It will potentially remove or add video files and sub-directories.
 -- It leaves watched or added information for files in tact.

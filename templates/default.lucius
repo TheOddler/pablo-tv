@@ -104,6 +104,10 @@ button.like-link {
   font: inherit;
   cursor: pointer;
   // text-decoration: underline;
+
+  &:disabled {
+    color: grey;
+  }
 }
 
 pre {
