@@ -102,15 +102,15 @@ getHomeR = do
   webSockets $ race_ actionsWebSocket (tvStateWebSocket tvStateTVar)
 
   roots <- liftIO . readMVar =<< getsYesod appRootDirs
-  let homeData :: [AggDirInfo]
-      homeData =
-        concatMap
-          ( \r ->
-              getSubDirAggInfo
-                (rootDirectoryPath r)
-                (rootDirectoryAsDirectory r)
-          )
-          roots
+  homeData <-
+    logDuration "Calculated home dir agg data" . pure $
+      concatMap
+        ( \r ->
+            getSubDirAggInfo
+              (rootDirectoryPath r)
+              (rootDirectoryAsDirectory r)
+        )
+        roots
 
   let mkRandom =
         -- When in dev we auto-reload the page every second or so,
