@@ -5,8 +5,9 @@ module Directory where
 
 import Algorithms.NaturalSort qualified as Natural
 import Control.Applicative ((<|>))
-import Control.Exception (throwIO)
+import Control.Exception (SomeException, catch, throwIO)
 import Control.Monad (forM, when)
+import Data.Aeson (eitherDecodeFileStrict, encodeFile)
 import Data.Aeson.TH (defaultOptions, deriveJSON)
 import Data.HashSet qualified as Set
 import Data.List (find, intercalate, sortBy, (\\))
@@ -25,11 +26,11 @@ import GHC.Generics (Generic)
 import GHC.IO.Exception (IOErrorType (..), IOException (..))
 import GHC.Read (Read (..))
 import GHC.Utils.Exception (displayException, tryIO)
-import Logging (LogLevel (..), putLog)
+import Logging (LogLevel (..), logDuration, putLog)
 import Samba (SmbServer (..), SmbShare (..))
 import Samba qualified
-import System.Directory (getHomeDirectory, getModificationTime, listDirectory)
-import System.FilePath (dropTrailingPathSeparator, takeBaseName, takeExtension)
+import System.Directory (XdgDirectory (..), createDirectoryIfMissing, getHomeDirectory, getModificationTime, getXdgDirectory, listDirectory)
+import System.FilePath (dropTrailingPathSeparator, takeBaseName, takeExtension, (</>))
 import Text.Read (readMaybe)
 import Text.Regex.TDFA ((=~))
 import Util (safeMinimumOn)
@@ -141,6 +142,16 @@ data VideoFilePath = VideoFilePath
     videoFilePathName :: VideoFileName
   }
   deriving (Show, Eq)
+
+$(deriveJSON defaultOptions ''ImageFileName)
+$(deriveJSON defaultOptions ''DirectoryName)
+$(deriveJSON defaultOptions ''VideoFileName)
+$(deriveJSON defaultOptions ''RootDirectoryLocation)
+$(deriveJSON defaultOptions ''VideoFilePath)
+$(deriveJSON defaultOptions ''DirectoryPath)
+$(deriveJSON defaultOptions ''VideoFile)
+$(deriveJSON defaultOptions ''Directory)
+$(deriveJSON defaultOptions ''RootDirectory)
 
 videoFilePath :: DirectoryPath -> VideoFile -> VideoFilePath
 videoFilePath dir video =
@@ -293,6 +304,34 @@ updateRootDirectoriesFromDisk rootDirs =
               "wasn't a directory somehow?"
             ]
         pure rootDir
+
+memoryFileName :: FilePath
+memoryFileName = "pablo-tv.json"
+
+getMemoryFileDir :: IO FilePath
+getMemoryFileDir = getXdgDirectory XdgData ""
+
+-- | Writes the known disks to a json file on disk, so we can read it on startup next time.
+saveRootsToDisk :: RootDirectories -> IO ()
+saveRootsToDisk roots = logDuration "Saved roots to disk" $ do
+  memoryDir <- getMemoryFileDir
+  createDirectoryIfMissing True memoryDir
+  encodeFile (memoryDir </> memoryFileName) roots
+
+loadRootsFromDisk :: IO (Maybe RootDirectories)
+loadRootsFromDisk = do
+  memoryDir <- getMemoryFileDir
+  let memoryFile = memoryDir </> memoryFileName
+  rootsOrErr <-
+    logDuration
+      "Loaded roots from disk"
+      (eitherDecodeFileStrict memoryFile)
+      `catch` \(e :: SomeException) -> pure $ Left $ displayException e
+  case rootsOrErr of
+    Right roots -> pure $ Just roots
+    Left err -> do
+      putLog Error $ "Failed loading roots from disk: " ++ err
+      pure Nothing
 
 -- | Updates the directory (at given path) with new data from disk.
 -- It will potentially remove or add video files and sub-directories.
@@ -623,9 +662,3 @@ naturalCompareBy f a b = Natural.compare (lower $ f a) (lower $ f b)
 -- | Sorts taking into account numbers properly
 naturalSortBy :: (a -> String) -> [a] -> [a]
 naturalSortBy f = sortBy $ naturalCompareBy f
-
-$(deriveJSON defaultOptions ''DirectoryName)
-$(deriveJSON defaultOptions ''RootDirectoryLocation)
-$(deriveJSON defaultOptions ''DirectoryPath)
-$(deriveJSON defaultOptions ''VideoFileName)
-$(deriveJSON defaultOptions ''VideoFilePath)

@@ -22,9 +22,9 @@ import Actions
 import Control.Monad (when)
 import Data.Aeson qualified as Aeson
 import Data.Char (isSpace)
-import Data.List.Extra (notNull)
+import Data.List.Extra (intercalate, notNull)
 import Data.List.NonEmpty qualified as NE
-import Data.Maybe (isJust, isNothing)
+import Data.Maybe (fromMaybe, isJust, isNothing, mapMaybe)
 import Data.Ord (Down (..))
 import Data.Text (Text, unpack)
 import Data.Text qualified as Text
@@ -35,12 +35,14 @@ import Directory
     Directory (..),
     DirectoryName,
     DirectoryPath (..),
+    RootDirectories,
     RootDirectory (..),
     RootDirectoryLocation (..),
     VideoFile (..),
     VideoFilePath (..),
     getDirectoryAtPath,
     getSubDirAggInfo,
+    loadRootsFromDisk,
     niceDirNameT,
     niceFileNameT,
     rootDirectoryAsDirectory,
@@ -66,7 +68,7 @@ import Mpris (MprisAction (..), mediaListener)
 import Network.Info (NetworkInterface (..), getNetworkInterfaces)
 import Network.Wai.Handler.Warp (run)
 import PVar (newPVar, readPVar)
-import Samba (SmbServer (..), SmbShare (..))
+import Samba (MountResult, SmbServer (..), SmbShare (..), mount)
 import System.Environment (lookupEnv)
 import System.Process (callProcess)
 import System.Random (initStdGen, mkStdGen)
@@ -79,7 +81,7 @@ import Util
     widgetFile,
   )
 import Yesod hiding (defaultLayout, replace)
-import Yesod.WebSockets (concurrently_, race_, webSockets)
+import Yesod.WebSockets (race_, webSockets)
 
 mkYesodDispatch "App" resourcesApp
 
@@ -271,19 +273,22 @@ getAllIPsR = do
         then ""
         else show a
 
-mountAllSambaShares :: IO ()
-mountAllSambaShares = do
-  -- sambaShares <- runDBPool connPool $ selectList [] []
-  -- let doMount (SambaShare svr shr) = mount svr shr
-  -- results <- forM sambaShares $ doMount . entityVal
-  -- let showResult :: (SambaShare, MountResult) -> String
-  --     showResult (SambaShare (SmbServer srv) (SmbShare shr), result) =
-  --       srv ++ "/" ++ shr ++ ": " ++ show result
-  -- putLog Info $
-  --   "Mounted sambas:\n\t"
-  --     ++ intercalate "\t\n" (showResult <$> zip (entityVal <$> sambaShares) results)
-  -- TODO: Actually implement this
-  pure ()
+mountAllSambaShares :: RootDirectories -> IO ()
+mountAllSambaShares roots = do
+  let sambaShares =
+        mapMaybe
+          ( \r -> case r.rootDirectoryLocation of
+              RootLocalVideos -> Nothing
+              RootSamba srv shr -> Just (srv, shr)
+          )
+          roots
+  results <- mapM (uncurry mount) sambaShares
+  let showResult :: ((SmbServer, SmbShare), MountResult) -> String
+      showResult ((SmbServer srv, SmbShare shr), result) =
+        srv ++ "/" ++ shr ++ ": " ++ show result
+  putLog Info $
+    "Mounted sambas:\n\t"
+      ++ intercalate "\t\n" (showResult <$> zip sambaShares results)
 
 main :: IO ()
 main = do
@@ -313,22 +318,25 @@ main = do
   when (not isDevelopment) $ do
     callProcess "xdg-open" [url]
 
-  rootDirs <-
-    -- TODO: Read the starting value from Disk
-    newPVar
-      [ RootDirectory
-          RootLocalVideos
-          Vector.empty
-          Vector.empty,
-        RootDirectory
-          (RootSamba (SmbServer "192.168.0.99") (SmbShare "videos"))
-          Vector.empty
-          Vector.empty
-      ]
+  mRootDirs <- loadRootsFromDisk
+  let rootDirs =
+        fromMaybe
+          [ RootDirectory
+              RootLocalVideos
+              Vector.empty
+              Vector.empty,
+            -- TODO: I'll have to add an interface somewhere to add these
+            RootDirectory
+              (RootSamba (SmbServer "192.168.0.99") (SmbShare "videos"))
+              Vector.empty
+              Vector.empty
+          ]
+          mRootDirs
+  rootDirsPVar <- newPVar rootDirs
 
   runLoggingT $ liftIO $ do
     -- Open samba shares. TODO: Make some way of checking and re-mounting the broken ones at runtime
-    mountAllSambaShares
+    mountAllSambaShares rootDirs
 
     -- The thread for the app
     let app =
@@ -338,7 +346,7 @@ main = do
               appInputDevice = inputDevice,
               appTVState = tvState,
               appGetStatic = embeddedStatic,
-              appRootDirs = rootDirs
+              appRootDirs = rootDirsPVar
             }
     let appThread = toWaiAppPlain app >>= run port . defaultMiddlewaresNoLogging
 

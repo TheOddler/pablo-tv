@@ -20,6 +20,7 @@ import Directory
     VideoFile (..),
     VideoFilePath (..),
     directoryPathToAbsPath,
+    saveRootsToDisk,
     updateDirectoryAtPath,
     updateRootDirectoriesFromDisk,
     videoFilePathToAbsPath,
@@ -31,7 +32,7 @@ import GHC.Conc (atomically, readTVar, writeTVar)
 import Logging (LogLevel (..), logDuration, putLog)
 import Mpris qualified
 import Network.WebSockets qualified as WS
-import PVar (modifyPVar_, tryModifyPVar_)
+import PVar (modifyPVar_, tryModifyPVar)
 import SafeMaths (int32ToInteger)
 import System.Process (callProcess, readProcess)
 import TVState (TVState (..))
@@ -210,11 +211,11 @@ performActionIO app action = do
     ActionRefreshAllDirectoryData -> liftIO $ do
       -- To prevent spamming this, we only try to update
       -- This action can be slow, but that's fine, Yesod calls are run in their own thread anyway, and that way we have a nice way of letter the frontend know when the refresh is done.
-      didUpdate <- tryModifyPVar_ app.appRootDirs $ \roots ->
+      mUpdatedRoots <- tryModifyPVar app.appRootDirs $ \roots ->
         logDuration "Updated directory data" $ updateRootDirectoriesFromDisk roots
-      if didUpdate
-        then pure ()
-        else putLog Warning "Already refreshing"
+      case mUpdatedRoots of
+        Nothing -> putLog Warning "Already refreshing"
+        Just updatedRoots -> saveRootsToDisk updatedRoots
     ActionMedia a ->
       liftIO $ Mpris.performAction a
   where

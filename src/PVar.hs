@@ -5,7 +5,7 @@ module PVar
     newPVar,
     readPVar,
     modifyPVar_,
-    tryModifyPVar_,
+    tryModifyPVar,
   )
 where
 
@@ -39,8 +39,8 @@ modifyPVar_ (PVar inner) update = do
 
 -- | Tries to modify the PVar, but won't if it's already being updated, rather than wait.
 -- Returns whether it did an update or not.
-tryModifyPVar_ :: PVar a -> (a -> IO a) -> IO Bool
-tryModifyPVar_ (PVar inner) update = do
+tryModifyPVar :: PVar a -> (a -> IO a) -> IO (Maybe a)
+tryModifyPVar (PVar inner) update = do
   mValue <- atomically $ do
     (state, val) <- readTVar inner
     case state of
@@ -50,8 +50,8 @@ tryModifyPVar_ (PVar inner) update = do
       PVarUpdating ->
         pure Nothing
   case mValue of
-    Nothing -> pure False
+    Nothing -> pure Nothing
     Just value -> do
       newValue <- update value
       atomically $ writeTVar inner (PVarReady, newValue)
-      pure True
+      pure $ Just newValue
