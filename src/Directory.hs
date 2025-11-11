@@ -8,7 +8,7 @@ import Control.Applicative ((<|>))
 import Control.Exception (SomeException, catch, throwIO)
 import Control.Monad (forM, when)
 import Data.Aeson (eitherDecodeFileStrict, encodeFile)
-import Data.Aeson.TH (defaultOptions, deriveJSON)
+import Data.Aeson.TH (deriveJSON)
 import Data.HashSet qualified as Set
 import Data.List (find, intercalate, sortBy, (\\))
 import Data.List.Extra (lower)
@@ -33,7 +33,7 @@ import System.Directory (XdgDirectory (..), createDirectoryIfMissing, getHomeDir
 import System.FilePath (dropTrailingPathSeparator, takeBaseName, takeExtension, (</>))
 import Text.Read (readMaybe)
 import Text.Regex.TDFA ((=~))
-import Util (safeMinimumOn)
+import Util (ourAesonOptions, safeMinimumOn)
 import Yesod (PathPiece (..))
 
 newtype DirectoryName = DirectoryName {unDirectoryName :: String}
@@ -143,15 +143,15 @@ data VideoFilePath = VideoFilePath
   }
   deriving (Show, Eq)
 
-$(deriveJSON defaultOptions ''ImageFileName)
-$(deriveJSON defaultOptions ''DirectoryName)
-$(deriveJSON defaultOptions ''VideoFileName)
-$(deriveJSON defaultOptions ''RootDirectoryLocation)
-$(deriveJSON defaultOptions ''VideoFilePath)
-$(deriveJSON defaultOptions ''DirectoryPath)
-$(deriveJSON defaultOptions ''VideoFile)
-$(deriveJSON defaultOptions ''Directory)
-$(deriveJSON defaultOptions ''RootDirectory)
+$(deriveJSON ourAesonOptions ''ImageFileName)
+$(deriveJSON ourAesonOptions ''DirectoryName)
+$(deriveJSON ourAesonOptions ''VideoFileName)
+$(deriveJSON ourAesonOptions ''RootDirectoryLocation)
+$(deriveJSON ourAesonOptions ''VideoFilePath)
+$(deriveJSON ourAesonOptions ''DirectoryPath)
+$(deriveJSON ourAesonOptions ''VideoFile)
+$(deriveJSON ourAesonOptions ''Directory)
+$(deriveJSON ourAesonOptions ''RootDirectory)
 
 videoFilePath :: DirectoryPath -> VideoFile -> VideoFilePath
 videoFilePath dir video =

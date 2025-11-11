@@ -17,7 +17,7 @@ import DBus
     methodCall,
   )
 import DBus.Client (Client, MatchRule (..), SignalHandler, addMatch, call, connectSession, matchAny)
-import Data.Aeson.TH (defaultOptions, deriveJSON)
+import Data.Aeson.TH (deriveJSON)
 import Data.Int (Int64)
 import Data.List (isPrefixOf)
 import Data.Map qualified as Map
@@ -26,6 +26,7 @@ import Data.String (IsString (..))
 import Directory (VideoFilePath)
 import Logging (LogLevel (..), Logger (..))
 import Network.URI (unEscapeString)
+import Util (ourAesonOptions)
 
 data MprisAction
   = MprisQuit
@@ -222,4 +223,4 @@ expectSingleValue = \case
 fromVariant2 :: (IsVariant a) => Variant -> Maybe a
 fromVariant2 v = fromVariant v >>= fromVariant
 
-$(deriveJSON defaultOptions ''Mpris.MprisAction)
+$(deriveJSON ourAesonOptions ''Mpris.MprisAction)

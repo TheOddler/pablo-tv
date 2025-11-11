@@ -2,6 +2,7 @@ module Util where
 
 import Control.Concurrent (MVar, takeMVar)
 import Control.Monad (when)
+import Data.Aeson qualified as Aeson
 import Data.Default (def)
 import Data.List (foldl', isPrefixOf)
 import Data.List.Extra (lower)
@@ -20,6 +21,12 @@ import System.Random.Shuffle (shuffle')
 import Yesod
 import Yesod.Default.Util (widgetFileNoReload, widgetFileReload)
 import Yesod.WebSockets (race_)
+
+ourAesonOptions :: Aeson.Options
+ourAesonOptions =
+  Aeson.defaultOptions
+    { Aeson.unwrapUnaryRecords = True
+    }
 
 -- | Load a widget file, automatically reloading it in development.
 widgetFile :: String -> Q Exp

@@ -5,7 +5,7 @@ module Actions where
 import Control.Exception (Exception (..))
 import Control.Monad (forever)
 import Data.Aeson (ToJSON (..), eitherDecode, encode)
-import Data.Aeson.TH (defaultOptions, deriveJSON)
+import Data.Aeson.TH (deriveJSON)
 import Data.Char (isSpace)
 import Data.Int (Int32)
 import Data.List (dropWhileEnd, nub)
@@ -39,6 +39,7 @@ import TVState (TVState (..))
 import Text.Blaze qualified as Blaze
 import Text.Julius (ToJavascript (..))
 import UnliftIO.Exception (catch)
+import Util (ourAesonOptions)
 import Yesod (getYesod, lift, liftIO)
 import Yesod.WebSockets (WebSocketsT, receiveData)
 
@@ -85,10 +86,10 @@ data KeyboardButton
   | KeyboardVolumeDown
   deriving (Show, Eq, Bounded, Enum)
 
-$(deriveJSON defaultOptions ''DirOrFile)
-$(deriveJSON defaultOptions ''KeyboardButton)
-$(deriveJSON defaultOptions ''MouseButton)
-$(deriveJSON defaultOptions ''Action)
+$(deriveJSON ourAesonOptions ''DirOrFile)
+$(deriveJSON ourAesonOptions ''KeyboardButton)
+$(deriveJSON ourAesonOptions ''MouseButton)
+$(deriveJSON ourAesonOptions ''Action)
 
 instance ToJavascript Action where
   toJavascript = toJavascript . toJSON
