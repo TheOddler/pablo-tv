@@ -9,6 +9,7 @@ import Control.Exception (SomeException, catch, throwIO)
 import Control.Monad (forM, when)
 import Data.Aeson (eitherDecodeFileStrict, encodeFile)
 import Data.Aeson.TH (deriveJSON)
+import Data.Foldable (foldrM)
 import Data.HashSet qualified as Set
 import Data.List (find, intercalate, sortBy, (\\))
 import Data.List.Extra (lower)
@@ -21,6 +22,7 @@ import Data.Time.Clock.POSIX (posixSecondsToUTCTime)
 import Data.Vector qualified as Vector
 import Data.Vector.Algorithms.Intro qualified as VectorAlgs
 import GHC.Data.Maybe (firstJusts, orElse)
+import GHC.Exception (errorCallException)
 import GHC.Exts (sortWith)
 import GHC.Generics (Generic)
 import GHC.IO.Exception (IOErrorType (..), IOException (..))
@@ -279,6 +281,8 @@ data DirectoryUpdateResult
   = DirectoryUnchanged
   | DirectoryChanged Directory
   | DirectoryNotADirectory
+  | -- | A special case, it's possible for a root not to be found, if for example the samba share isn't mounted.
+    DirectoryNotFoundRoot
 
 updateRootDirectoriesFromDisk :: RootDirectories -> IO RootDirectories
 updateRootDirectoriesFromDisk rootDirs =
@@ -303,6 +307,9 @@ updateRootDirectoriesFromDisk rootDirs =
               name.unDirectoryName,
               "wasn't a directory somehow?"
             ]
+        pure rootDir
+      DirectoryNotFoundRoot ->
+        -- Don't remove the root dir, this should only be done manually.
         pure rootDir
 
 memoryFileName :: FilePath
@@ -342,8 +349,11 @@ updateDirectoryFromDisk dirPath dir = do
   (namesOrErr :: Either IOError [FilePath]) <- tryIO $ listDirectory absDirPath
   case namesOrErr of
     Left err | err.ioe_type == InappropriateType -> do
-      putLog Warning $ "Tried updating non-existant directory " ++ absDirPath
+      putLog Warning $ "What we thought was a directory turned out not to be: " ++ absDirPath
       pure DirectoryNotADirectory
+    Left err | err.ioe_type == NoSuchThing && null dirPath.directoryPathNames -> do
+      putLog Warning $ "Root folder not found: " ++ absDirPath
+      pure DirectoryNotFoundRoot
     Left err -> do
       putLog Error $
         "IO error while trying to update directory "
@@ -361,15 +371,16 @@ updateDirectoryFromDisk dirPath dir = do
         let fullPath = addSubDir dirPath dirName
         upd <- updateDirectoryFromDisk fullPath $ knownDir `orElse` newDir
         pure (dirName, upd)
-      let (unchanged, changed, notDirs) =
-            foldr
-              ( \(name, upd) (un, ch, nd) -> case upd of
-                  DirectoryUnchanged -> (name : un, ch, nd)
-                  DirectoryChanged d -> (un, (name, d) : ch, nd)
-                  DirectoryNotADirectory -> (un, ch, name : nd)
-              )
-              ([], [], [])
-              subDirUpdates
+      (unchanged, changed, notDirs) <-
+        foldrM
+          ( \(name, upd) (un, ch, nd) -> case upd of
+              DirectoryUnchanged -> pure (name : un, ch, nd)
+              DirectoryChanged d -> pure (un, (name, d) : ch, nd)
+              DirectoryNotADirectory -> pure (un, ch, name : nd)
+              DirectoryNotFoundRoot -> throwIO $ errorCallException "This should only happen on roots, and thus should be impossible here."
+          )
+          ([], [], [])
+          subDirUpdates
       let actualSubDirs = subDirGuesses \\ notDirs
       let noLongerExist =
             fmap directoryName (Vector.toList dir.directorySubDirs) \\ actualSubDirs
