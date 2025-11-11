@@ -24,21 +24,22 @@ import Data.Aeson qualified as Aeson
 import Data.Char (isSpace)
 import Data.List.Extra (intercalate, notNull)
 import Data.List.NonEmpty qualified as NE
+import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe, isJust, isNothing, mapMaybe)
 import Data.Ord (Down (..))
 import Data.Text (Text, unpack)
 import Data.Text qualified as Text
 import Data.Time (UTCTime)
-import Data.Vector qualified as Vector
 import Directory
   ( AggDirInfo (..),
-    Directory (..),
+    DirectoryData (..),
     DirectoryName,
     DirectoryPath (..),
     RootDirectories,
-    RootDirectory (..),
+    RootDirectoryData (..),
     RootDirectoryLocation (..),
-    VideoFile (..),
+    VideoFileData (..),
+    VideoFileName,
     VideoFilePath (..),
     getDirectoryAtPath,
     getSubDirAggInfo,
@@ -105,12 +106,12 @@ getHomeR = do
   homeData <-
     logDuration "Calculated home dir agg data" . pure $
       concatMap
-        ( \r ->
+        ( \(rootLocation, rootData) ->
             getSubDirAggInfo
-              (rootDirectoryPath r)
-              (rootDirectoryAsDirectory r)
+              (rootDirectoryPath rootLocation)
+              (rootDirectoryAsDirectory rootData)
         )
-        roots
+        (Map.toList roots)
 
   let mkRandom =
         -- When in dev we auto-reload the page every second or so,
@@ -175,7 +176,7 @@ watchedClassDir :: AggDirInfo -> Html
 watchedClassDir dirInfo =
   watchedClass $ isWatchedDir dirInfo
 
-type VideoFileWithPath = (VideoFilePath, VideoFile)
+type VideoFileWithNameAndPath = (VideoFileName, VideoFilePath, VideoFileData)
 
 getDirectoryHomeR :: Handler Html
 getDirectoryHomeR = do
@@ -183,20 +184,24 @@ getDirectoryHomeR = do
   let dirs :: [AggDirInfo]
       dirs =
         concatMap
-          ( \r ->
+          ( \(rootLocation, rootData) ->
               getSubDirAggInfo
-                (rootDirectoryPath r)
-                (rootDirectoryAsDirectory r)
+                (rootDirectoryPath rootLocation)
+                (rootDirectoryAsDirectory rootData)
           )
-          roots
-  let files :: [VideoFileWithPath]
+          (Map.toList roots)
+  let files :: [VideoFileWithNameAndPath]
       files =
         concatMap
-          ( \r -> do
-              v <- Vector.toList (rootDirectoryVideoFiles r)
-              pure (videoFilePath (rootDirectoryPath r) v, v)
+          ( \(rootLocation, rootData) -> do
+              (videoName, videoData) <- Map.toList rootData.rootDirectoryVideoFiles
+              pure
+                ( videoName,
+                  videoFilePath (rootDirectoryPath rootLocation) videoName,
+                  videoData
+                )
           )
-          roots
+          (Map.toList roots)
 
   -- We share the widget with directory, so we need these, but they are all hidden on the home dir
   let imagePath = Nothing :: Maybe DirectoryPath
@@ -224,11 +229,16 @@ getDirectoryR rootType dirNames = do
     Just d -> pure d
   let dirs :: [AggDirInfo]
       dirs = getSubDirAggInfo dirPath dir
-  let files :: [VideoFileWithPath]
+  let files :: [VideoFileWithNameAndPath]
       files =
         map
-          (\v -> (videoFilePath dirPath v, v))
-          (Vector.toList dir.directoryVideoFiles)
+          ( \(videoName, videoData) ->
+              ( videoName,
+                videoFilePath dirPath videoName,
+                videoData
+              )
+          )
+          (Map.toList dir.directoryVideoFiles)
 
   let imagePath = if isJust dir.directoryImage then Just dirPath else Nothing
   let playAllAction = Just $ ActionPlayPath $ Dir dirPath
@@ -277,11 +287,11 @@ mountAllSambaShares :: RootDirectories -> IO ()
 mountAllSambaShares roots = do
   let sambaShares =
         mapMaybe
-          ( \r -> case r.rootDirectoryLocation of
+          ( \case
               RootLocalVideos -> Nothing
               RootSamba srv shr -> Just (srv, shr)
           )
-          roots
+          (Map.keys roots)
   results <- mapM (uncurry mount) sambaShares
   let showResult :: ((SmbServer, SmbShare), MountResult) -> String
       showResult ((SmbServer srv, SmbShare shr), result) =
@@ -319,19 +329,14 @@ main = do
     callProcess "xdg-open" [url]
 
   mRootDirs <- loadRootsFromDisk
-  let rootDirs =
-        fromMaybe
-          [ RootDirectory
-              RootLocalVideos
-              Vector.empty
-              Vector.empty,
+  let emptyRootData = RootDirectoryData Map.empty Map.empty
+  let rootDirsDefault =
+        Map.fromList
+          [ (RootLocalVideos, emptyRootData),
             -- TODO: I'll have to add an interface somewhere to add these
-            RootDirectory
-              (RootSamba (SmbServer "192.168.0.99") (SmbShare "videos"))
-              Vector.empty
-              Vector.empty
+            (RootSamba (SmbServer "192.168.0.99") (SmbShare "videos"), emptyRootData)
           ]
-          mRootDirs
+  let rootDirs = fromMaybe rootDirsDefault mRootDirs
   rootDirsPVar <- newPVar rootDirs
 
   runLoggingT $ liftIO $ do

@@ -22,13 +22,13 @@ $maybe imagePath <- imagePath
             onclick="sendActionE(event, '#{action}')"
           >
             <i class="fa-regular fa-eye-slash">
-    $forall (videoPath, videoFile) <- files
-      <div class="row #{watchedClassM videoFile.videoFileWatched}">
+    $forall (videoName, videoPath, videoData) <- files
+      <div class="row #{watchedClassM videoData.videoFileWatched}">
         <a href="#" class="name" 
          onclick="sendActionE(event, '#{ActionPlayPath $ File videoPath}')"
         >
           <i class="fa-solid fa-play">
-          <span>#{niceFileNameT videoFile.videoFileName}
+          <span>#{niceFileNameT videoName}
         <a href="#" title="Mark as watched"
           onclick="sendActionE(event, '#{ActionMarkAsWatched $ File videoPath}')"
         >

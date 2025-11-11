@@ -1,23 +1,20 @@
-{-# LANGUAGE TemplateHaskell #-}
-
 module Actions where
 
 import Control.Exception (Exception (..))
 import Control.Monad (forever)
-import Data.Aeson (ToJSON (..), eitherDecode, encode)
-import Data.Aeson.TH (deriveJSON)
+import Data.Aeson (FromJSON (..), ToJSON (..), eitherDecode, encode, genericParseJSON, genericToEncoding)
 import Data.Char (isSpace)
 import Data.Int (Int32)
 import Data.List (dropWhileEnd, nub)
+import Data.Map.Strict qualified as Map
 import Data.Scientific (Scientific, scientific)
 import Data.Text (Text)
 import Data.Text.Lazy.Encoding qualified as T
 import Data.Time (getCurrentTime)
-import Data.Vector qualified as Vector
 import Directory
-  ( Directory (..),
+  ( DirectoryData (..),
     DirectoryPath (..),
-    VideoFile (..),
+    VideoFileData (..),
     VideoFilePath (..),
     directoryPathToAbsPath,
     saveRootsToDisk,
@@ -29,6 +26,7 @@ import Evdev.Codes
 import Evdev.Uinput
 import Foundation (App (..), Handler)
 import GHC.Conc (atomically, readTVar, writeTVar)
+import GHC.Generics (Generic)
 import Logging (LogLevel (..), logDuration, putLog)
 import Mpris qualified
 import Network.WebSockets qualified as WS
@@ -46,7 +44,13 @@ import Yesod.WebSockets (WebSocketsT, receiveData)
 data DirOrFile
   = Dir DirectoryPath
   | File VideoFilePath
-  deriving (Show, Eq)
+  deriving (Show, Eq, Generic)
+
+instance ToJSON DirOrFile where
+  toEncoding = genericToEncoding ourAesonOptions
+
+instance FromJSON DirOrFile where
+  parseJSON = genericParseJSON ourAesonOptions
 
 data Action
   = ActionClickMouse MouseButton
@@ -69,10 +73,28 @@ data Action
   | ActionRefreshAllDirectoryData
   | -- | ActionRefreshDirectoryData DirectoryPath
     ActionMedia Mpris.MprisAction
-  deriving (Show, Eq)
+  deriving (Show, Eq, Generic)
+
+instance ToJSON Action where
+  toEncoding = genericToEncoding ourAesonOptions
+
+instance FromJSON Action where
+  parseJSON = genericParseJSON ourAesonOptions
+
+instance ToJavascript Action where
+  toJavascript = toJavascript . toJSON
+
+instance Blaze.ToMarkup Action where
+  toMarkup = Blaze.lazyText . T.decodeUtf8 . encode
 
 data MouseButton = MouseButtonLeft | MouseButtonRight
-  deriving (Show, Eq, Bounded, Enum)
+  deriving (Show, Eq, Bounded, Enum, Generic)
+
+instance ToJSON MouseButton where
+  toEncoding = genericToEncoding ourAesonOptions
+
+instance FromJSON MouseButton where
+  parseJSON = genericParseJSON ourAesonOptions
 
 data KeyboardButton
   = KeyboardBackspace
@@ -84,18 +106,13 @@ data KeyboardButton
   | KeyboardDownArrow
   | KeyboardVolumeUp
   | KeyboardVolumeDown
-  deriving (Show, Eq, Bounded, Enum)
+  deriving (Show, Eq, Bounded, Enum, Generic)
 
-$(deriveJSON ourAesonOptions ''DirOrFile)
-$(deriveJSON ourAesonOptions ''KeyboardButton)
-$(deriveJSON ourAesonOptions ''MouseButton)
-$(deriveJSON ourAesonOptions ''Action)
+instance ToJSON KeyboardButton where
+  toEncoding = genericToEncoding ourAesonOptions
 
-instance ToJavascript Action where
-  toJavascript = toJavascript . toJSON
-
-instance Blaze.ToMarkup Action where
-  toMarkup = Blaze.lazyText . T.decodeUtf8 . encode
+instance FromJSON KeyboardButton where
+  parseJSON = genericParseJSON ourAesonOptions
 
 mouseButtonToEvdevKey :: MouseButton -> Key
 mouseButtonToEvdevKey = \case
@@ -244,18 +261,12 @@ performActionIO app action = do
           Dir _ ->
             dir
               { directoryVideoFiles =
-                  Vector.map applyWatched dir.directoryVideoFiles
+                  Map.map applyWatched dir.directoryVideoFiles
               }
           File (VideoFilePath _ _ fileName) ->
             dir
               { directoryVideoFiles =
-                  Vector.map
-                    ( \v ->
-                        if v.videoFileName == fileName
-                          then applyWatched v
-                          else v
-                    )
-                    dir.directoryVideoFiles
+                  Map.adjust applyWatched fileName dir.directoryVideoFiles
               }
 
     markDirOrFileAsUnwatched :: DirOrFile -> IO ()
@@ -272,18 +283,12 @@ performActionIO app action = do
           Dir _ ->
             dir
               { directoryVideoFiles =
-                  Vector.map applyUnwatched dir.directoryVideoFiles
+                  Map.map applyUnwatched dir.directoryVideoFiles
               }
           File (VideoFilePath _ _ fileName) ->
             dir
               { directoryVideoFiles =
-                  Vector.map
-                    ( \v ->
-                        if v.videoFileName == fileName
-                          then applyUnwatched v
-                          else v
-                    )
-                    dir.directoryVideoFiles
+                  Map.adjust applyUnwatched fileName dir.directoryVideoFiles
               }
 
     dirOrFileToAbsPath :: DirOrFile -> IO FilePath

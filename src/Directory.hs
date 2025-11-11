@@ -1,26 +1,21 @@
-{-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE TemplateHaskell #-}
-
 module Directory where
 
 import Algorithms.NaturalSort qualified as Natural
 import Control.Applicative ((<|>))
 import Control.Exception (SomeException, catch, throwIO)
 import Control.Monad (forM, when)
-import Data.Aeson (eitherDecodeFileStrict, encodeFile)
-import Data.Aeson.TH (deriveJSON)
+import Data.Aeson (FromJSON (..), FromJSONKey, ToJSON (..), ToJSONKey, eitherDecodeFileStrict, encodeFile, genericParseJSON, genericToEncoding)
 import Data.Foldable (foldrM)
 import Data.HashSet qualified as Set
-import Data.List (find, intercalate, sortBy, (\\))
+import Data.List (intercalate, sortBy, (\\))
 import Data.List.Extra (lower)
 import Data.List.NonEmpty qualified as NE
+import Data.Map.Strict qualified as Map
 import Data.Maybe (isJust, listToMaybe, mapMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Time (UTCTime)
 import Data.Time.Clock.POSIX (posixSecondsToUTCTime)
-import Data.Vector qualified as Vector
-import Data.Vector.Algorithms.Intro qualified as VectorAlgs
 import GHC.Data.Maybe (firstJusts, orElse)
 import GHC.Exception (errorCallException)
 import GHC.Exts (sortWith)
@@ -38,8 +33,18 @@ import Text.Regex.TDFA ((=~))
 import Util (ourAesonOptions, safeMinimumOn)
 import Yesod (PathPiece (..))
 
-newtype DirectoryName = DirectoryName {unDirectoryName :: String}
+newtype DirectoryName = DirectoryName {unDirectoryName :: Text}
   deriving (Eq, Ord, Generic, PathPiece)
+
+instance ToJSON DirectoryName where
+  toEncoding = genericToEncoding ourAesonOptions
+
+instance FromJSON DirectoryName where
+  parseJSON = genericParseJSON ourAesonOptions
+
+instance ToJSONKey DirectoryName
+
+instance FromJSONKey DirectoryName
 
 instance Show DirectoryName where
   showsPrec p (DirectoryName a) = showsPrec p a
@@ -48,33 +53,71 @@ instance Read DirectoryName where
   readPrec = do
     str <- readPrec
     when ('/' `elem` str) $ fail "DirectoryName cannot contain '/'"
-    pure $ DirectoryName str
+    pure $ DirectoryName $ T.pack str
 
-newtype VideoFileName = VideoFileName {unVideoFileName :: String}
-  deriving (Show, Eq, Ord)
+newtype VideoFileName = VideoFileName {unVideoFileName :: Text}
+  deriving (Show, Eq, Ord, Generic)
 
-newtype ImageFileName = ImageFileName String
-  deriving (Eq)
+instance ToJSON VideoFileName where
+  toEncoding = genericToEncoding ourAesonOptions
 
-newtype IgnoredFileName = IgnoredFileName String
+instance FromJSON VideoFileName where
+  parseJSON = genericParseJSON ourAesonOptions
 
-data VideoFile = VideoFile
-  { videoFileName :: VideoFileName,
-    videoFileAdded :: UTCTime,
+instance ToJSONKey VideoFileName
+
+instance FromJSONKey VideoFileName
+
+newtype ImageFileName = ImageFileName Text
+  deriving (Eq, Generic)
+
+instance ToJSON ImageFileName where
+  toEncoding = genericToEncoding ourAesonOptions
+
+instance FromJSON ImageFileName where
+  parseJSON = genericParseJSON ourAesonOptions
+
+newtype IgnoredFileName = IgnoredFileName Text
+
+data VideoFileData = VideoFileData
+  { videoFileAdded :: UTCTime,
     videoFileWatched :: Maybe UTCTime
   }
+  deriving (Generic)
 
-data Directory = Directory
-  { directoryName :: DirectoryName,
-    directoryImage :: Maybe ImageFileName,
-    directorySubDirs :: Vector.Vector Directory,
-    directoryVideoFiles :: Vector.Vector VideoFile
+instance ToJSON VideoFileData where
+  toEncoding = genericToEncoding ourAesonOptions
+
+instance FromJSON VideoFileData where
+  parseJSON = genericParseJSON ourAesonOptions
+
+data DirectoryData = DirectoryData
+  { directoryImage :: Maybe ImageFileName,
+    directorySubDirs :: Map.Map DirectoryName DirectoryData,
+    directoryVideoFiles :: Map.Map VideoFileName VideoFileData
   }
+  deriving (Generic)
+
+instance ToJSON DirectoryData where
+  toEncoding = genericToEncoding ourAesonOptions
+
+instance FromJSON DirectoryData where
+  parseJSON = genericParseJSON ourAesonOptions
 
 data RootDirectoryLocation
   = RootSamba Samba.SmbServer Samba.SmbShare
   | RootLocalVideos
-  deriving (Eq, Ord, Show, Read)
+  deriving (Eq, Ord, Show, Read, Generic)
+
+instance ToJSON RootDirectoryLocation where
+  toEncoding = genericToEncoding ourAesonOptions
+
+instance FromJSON RootDirectoryLocation where
+  parseJSON = genericParseJSON ourAesonOptions
+
+instance ToJSONKey RootDirectoryLocation
+
+instance FromJSONKey RootDirectoryLocation
 
 instance PathPiece RootDirectoryLocation where
   toPathPiece :: RootDirectoryLocation -> Text
@@ -94,37 +137,45 @@ instance PathPiece RootDirectoryLocation where
               (SmbShare $ T.unpack shr)
         _ -> Nothing
 
-data RootDirectory = RootDirectory
-  { rootDirectoryLocation :: RootDirectoryLocation,
-    rootDirectoryDirs :: Vector.Vector Directory,
-    rootDirectoryVideoFiles :: Vector.Vector VideoFile
+data RootDirectoryData = RootDirectoryData
+  { rootDirectorySubDirs :: Map.Map DirectoryName DirectoryData,
+    rootDirectoryVideoFiles :: Map.Map VideoFileName VideoFileData
   }
+  deriving (Generic)
+
+instance ToJSON RootDirectoryData where
+  toEncoding = genericToEncoding ourAesonOptions
+
+instance FromJSON RootDirectoryData where
+  parseJSON = genericParseJSON ourAesonOptions
 
 rootDirectoryLocationName :: RootDirectoryLocation -> DirectoryName
-rootDirectoryLocationName l = DirectoryName $ T.unpack $ toPathPiece l
+rootDirectoryLocationName l = DirectoryName $ toPathPiece l
 
-rootDirectoryName :: RootDirectory -> DirectoryName
-rootDirectoryName root = rootDirectoryLocationName root.rootDirectoryLocation
-
-rootDirectoryAsDirectory :: RootDirectory -> Directory
+rootDirectoryAsDirectory :: RootDirectoryData -> DirectoryData
 rootDirectoryAsDirectory root =
-  Directory
-    { directoryName = rootDirectoryName root,
-      directoryImage = Nothing,
-      directorySubDirs = root.rootDirectoryDirs,
+  DirectoryData
+    { directoryImage = Nothing,
+      directorySubDirs = root.rootDirectorySubDirs,
       directoryVideoFiles = root.rootDirectoryVideoFiles
     }
 
-rootDirectoryPath :: RootDirectory -> DirectoryPath
-rootDirectoryPath r = DirectoryPath r.rootDirectoryLocation []
+rootDirectoryPath :: RootDirectoryLocation -> DirectoryPath
+rootDirectoryPath r = DirectoryPath r []
 
-type RootDirectories = [RootDirectory]
+type RootDirectories = Map.Map RootDirectoryLocation RootDirectoryData
 
 data DirectoryPath = DirectoryPath
   { directoryPathRoot :: RootDirectoryLocation,
     directoryPathNames :: [DirectoryName]
   }
-  deriving (Show, Eq)
+  deriving (Show, Eq, Generic)
+
+instance ToJSON DirectoryPath where
+  toEncoding = genericToEncoding ourAesonOptions
+
+instance FromJSON DirectoryPath where
+  parseJSON = genericParseJSON ourAesonOptions
 
 addSubDir :: DirectoryPath -> DirectoryName -> DirectoryPath
 addSubDir (DirectoryPath root names) newName = DirectoryPath root $ names ++ [newName]
@@ -136,73 +187,67 @@ directoryPathToAbsPath (DirectoryPath root dirNames) = do
     RootLocalVideos -> do
       home <- getHomeDirectory
       pure $ home ++ "/Videos"
-  pure $ intercalate "/" $ rootAbsPath : (unDirectoryName <$> dirNames)
+  pure $ intercalate "/" $ rootAbsPath : (T.unpack . unDirectoryName <$> dirNames)
 
 data VideoFilePath = VideoFilePath
   { videoFilePathRoot :: RootDirectoryLocation,
     videoFilePathNames :: [DirectoryName],
     videoFilePathName :: VideoFileName
   }
-  deriving (Show, Eq)
+  deriving (Show, Eq, Generic)
 
-$(deriveJSON ourAesonOptions ''ImageFileName)
-$(deriveJSON ourAesonOptions ''DirectoryName)
-$(deriveJSON ourAesonOptions ''VideoFileName)
-$(deriveJSON ourAesonOptions ''RootDirectoryLocation)
-$(deriveJSON ourAesonOptions ''VideoFilePath)
-$(deriveJSON ourAesonOptions ''DirectoryPath)
-$(deriveJSON ourAesonOptions ''VideoFile)
-$(deriveJSON ourAesonOptions ''Directory)
-$(deriveJSON ourAesonOptions ''RootDirectory)
+instance ToJSON VideoFilePath where
+  toEncoding = genericToEncoding ourAesonOptions
 
-videoFilePath :: DirectoryPath -> VideoFile -> VideoFilePath
-videoFilePath dir video =
+instance FromJSON VideoFilePath where
+  parseJSON = genericParseJSON ourAesonOptions
+
+videoFilePath :: DirectoryPath -> VideoFileName -> VideoFilePath
+videoFilePath dir videoName =
   VideoFilePath
     { videoFilePathRoot = dir.directoryPathRoot,
       videoFilePathNames = dir.directoryPathNames,
-      videoFilePathName = video.videoFileName
+      videoFilePathName = videoName
     }
 
 videoFilePathToAbsPath :: VideoFilePath -> IO FilePath
 videoFilePathToAbsPath (VideoFilePath root dirNames fileName) = do
   dirAbsPath <- directoryPathToAbsPath $ DirectoryPath root dirNames
-  pure $ dirAbsPath ++ "/" ++ unVideoFileName fileName
+  pure $ dirAbsPath ++ "/" ++ T.unpack (unVideoFileName fileName)
 
-getDirectoryAtPath :: RootDirectories -> DirectoryPath -> Maybe Directory
+getDirectoryAtPath :: RootDirectories -> DirectoryPath -> Maybe DirectoryData
 getDirectoryAtPath roots (DirectoryPath wantedRoot wantedDirNames) = do
-  root <- find (\r -> r.rootDirectoryLocation == wantedRoot) roots
+  root <- Map.lookup wantedRoot roots
   innerGet wantedDirNames $ rootDirectoryAsDirectory root
   where
-    innerGet :: [DirectoryName] -> Directory -> Maybe Directory
+    innerGet :: [DirectoryName] -> DirectoryData -> Maybe DirectoryData
     innerGet [] _ = Nothing
     innerGet [name] dir =
-      Vector.find ((== name) . directoryName) dir.directorySubDirs
+      Map.lookup name dir.directorySubDirs
     innerGet (name : rest) dir = do
-      subDir <- Vector.find ((== name) . directoryName) dir.directorySubDirs
+      subDir <- Map.lookup name dir.directorySubDirs
       innerGet rest subDir
 
 -- | Will silently do nothing if the path isn't found.
-updateDirectoryAtPath :: RootDirectories -> DirectoryPath -> (Directory -> Directory) -> RootDirectories
+updateDirectoryAtPath :: RootDirectories -> DirectoryPath -> (DirectoryData -> DirectoryData) -> RootDirectories
 updateDirectoryAtPath roots (DirectoryPath wantedRoot wantedDirNames) updateFunc =
-  flip map roots $ \currentRoot -> do
-    if currentRoot.rootDirectoryLocation == wantedRoot
-      then
-        currentRoot
-          { rootDirectoryDirs =
-              fmap (innerUpdate wantedDirNames) currentRoot.rootDirectoryDirs
-          }
-      else currentRoot -- Leave this one alone
+  Map.adjust
+    ( let dirBackToRoot dir =
+            RootDirectoryData
+              { rootDirectorySubDirs = dir.directorySubDirs,
+                rootDirectoryVideoFiles = dir.directoryVideoFiles
+              }
+       in dirBackToRoot . innerUpdate wantedDirNames . rootDirectoryAsDirectory
+    )
+    wantedRoot
+    roots
   where
-    innerUpdate :: [DirectoryName] -> Directory -> Directory
-    innerUpdate [] d = d
-    innerUpdate [n] d = if d.directoryName == n then updateFunc d else d
-    innerUpdate (n : ns) d =
-      if d.directoryName == n
-        then
-          d
-            { directorySubDirs = fmap (innerUpdate ns) d.directorySubDirs
-            }
-        else d
+    innerUpdate :: [DirectoryName] -> DirectoryData -> DirectoryData
+    innerUpdate [] dirData = updateFunc dirData
+    innerUpdate (name : ns) dirData =
+      dirData
+        { directorySubDirs = Map.adjust (innerUpdate ns) name dirData.directorySubDirs
+        }
 
 -- | Reading the file info of a path is rather slow, so we want to minimise the ones we read it for.
 -- So instead of reading it for every path, we first do a guess what the path is, and read it for dirs only.
@@ -216,13 +261,13 @@ data LikelyPathType
 -- | This expects a string that's the result of a `listDirectory` call
 guessType :: String -> LikelyPathType
 guessType p = case p of
-  "" -> LikelyIgnored $ IgnoredFileName p
-  '.' : _ -> LikelyIgnored $ IgnoredFileName p
+  "" -> LikelyIgnored $ IgnoredFileName $ T.pack p
+  '.' : _ -> LikelyIgnored $ IgnoredFileName $ T.pack p
   _ -> case takeExtension p of
-    ext | isVideoFileExt ext -> LikelyVideoFile $ VideoFileName p
-    ext | isImageFileExt ext -> LikelyImageFile $ ImageFileName p
-    ext | isCommonFileExt ext -> LikelyIgnored $ IgnoredFileName p
-    _ -> LikelyDir $ DirectoryName p
+    ext | isVideoFileExt ext -> LikelyVideoFile $ VideoFileName $ T.pack p
+    ext | isImageFileExt ext -> LikelyImageFile $ ImageFileName $ T.pack p
+    ext | isCommonFileExt ext -> LikelyIgnored $ IgnoredFileName $ T.pack p
+    _ -> LikelyDir $ DirectoryName $ T.pack p
 
 -- | Sometimes we guess something is a directory, but it turns out not to be.
 -- In that case we ignore it.
@@ -242,7 +287,7 @@ partitionPathTypes =
 
 bestImageFile :: [ImageFileName] -> Maybe ImageFileName
 bestImageFile = safeMinimumOn $ \(ImageFileName fileName) ->
-  case lower $ takeBaseName fileName of
+  case lower $ takeBaseName $ T.unpack fileName of
     "poster" -> 0 :: Int
     _ -> 100
 
@@ -252,15 +297,15 @@ data DirectoryKindGuess
   | DirectoryKindSeriesSeason -- For now we don't need any extra info about seasons
   | DirectoryKindUnknown
 
-guessDirectoryKind :: Directory -> DirectoryKindGuess
-guessDirectoryKind dir =
-  let title = titleFromDir dir.directoryName
-      dirSeasonIndicator = isJust $ seasonFromDir dir.directoryName
+guessDirectoryKind :: DirectoryName -> DirectoryData -> DirectoryKindGuess
+guessDirectoryKind dirName dirData =
+  let title = titleFromDir dirName
+      dirSeasonIndicator = isJust $ seasonFromDir dirName
       subDirsSeasonIndicators =
-        any (isJust . seasonFromDir . directoryName) dir.directorySubDirs
-      hasSubDirs = not $ null dir.directorySubDirs
-      filesSeasonIndicator = isJust $ seasonFromFiles dir.directoryVideoFiles
-      hasMovieFiles = not $ null dir.directoryVideoFiles
+        any (isJust . seasonFromDir) $ Map.keys dirData.directorySubDirs
+      hasSubDirs = not $ null dirData.directorySubDirs
+      filesSeasonIndicator = isJust $ seasonFromFiles $ Map.keys dirData.directoryVideoFiles
+      hasMovieFiles = not $ null dirData.directoryVideoFiles
    in firstJusts
         [ if dirSeasonIndicator
             then Just DirectoryKindSeriesSeason
@@ -279,38 +324,37 @@ guessDirectoryKind dir =
 
 data DirectoryUpdateResult
   = DirectoryUnchanged
-  | DirectoryChanged Directory
+  | DirectoryChanged DirectoryData
   | DirectoryNotADirectory
   | -- | A special case, it's possible for a root not to be found, if for example the samba share isn't mounted.
     DirectoryNotFoundRoot
 
 updateRootDirectoriesFromDisk :: RootDirectories -> IO RootDirectories
 updateRootDirectoriesFromDisk rootDirs =
-  forM rootDirs $ \rootDir -> do
-    let path = rootDirectoryPath rootDir
-    let dir = rootDirectoryAsDirectory rootDir
-    result <- updateDirectoryFromDisk path dir
+  flip Map.traverseWithKey rootDirs $ \rootLocation rootDirData -> do
+    let path = rootDirectoryPath rootLocation
+    let rootAsDir = rootDirectoryAsDirectory rootDirData
+    result <- updateDirectoryFromDisk path rootAsDir
     case result of
       DirectoryChanged updated ->
         pure
-          RootDirectory
-            { rootDirectoryLocation = rootDir.rootDirectoryLocation,
-              rootDirectoryDirs = updated.directorySubDirs,
+          RootDirectoryData
+            { rootDirectorySubDirs = updated.directorySubDirs,
               rootDirectoryVideoFiles = updated.directoryVideoFiles
             }
-      DirectoryUnchanged -> pure rootDir
+      DirectoryUnchanged -> pure rootDirData
       DirectoryNotADirectory -> do
-        let name = rootDirectoryName rootDir
+        let name = rootDirectoryLocationName rootLocation
         putLog Warning $
           unwords
             [ "Root directory",
-              name.unDirectoryName,
+              T.unpack name.unDirectoryName,
               "wasn't a directory somehow?"
             ]
-        pure rootDir
+        pure rootDirData
       DirectoryNotFoundRoot ->
         -- Don't remove the root dir, this should only be done manually.
-        pure rootDir
+        pure rootDirData
 
 memoryFileName :: FilePath
 memoryFileName = "pablo-tv.json"
@@ -343,7 +387,7 @@ loadRootsFromDisk = do
 -- | Updates the directory (at given path) with new data from disk.
 -- It will potentially remove or add video files and sub-directories.
 -- It leaves watched or added information for files in tact.
-updateDirectoryFromDisk :: DirectoryPath -> Directory -> IO DirectoryUpdateResult
+updateDirectoryFromDisk :: DirectoryPath -> DirectoryData -> IO DirectoryUpdateResult
 updateDirectoryFromDisk dirPath dir = do
   absDirPath <- directoryPathToAbsPath dirPath
   (namesOrErr :: Either IOError [FilePath]) <- tryIO $ listDirectory absDirPath
@@ -366,8 +410,8 @@ updateDirectoryFromDisk dirPath dir = do
       let (subDirGuesses, videoGuesses, imageGuesses, _ignored) = partitionPathTypes typeGuesses
       -- Recursively check for directory updates
       subDirUpdates <- forM subDirGuesses $ \dirName -> do
-        let knownDir = Vector.find ((== dirName) . directoryName) dir.directorySubDirs
-        let newDir = Directory dirName Nothing Vector.empty Vector.empty
+        let knownDir = Map.lookup dirName dir.directorySubDirs
+        let newDir = DirectoryData Nothing Map.empty Map.empty
         let fullPath = addSubDir dirPath dirName
         upd <- updateDirectoryFromDisk fullPath $ knownDir `orElse` newDir
         pure (dirName, upd)
@@ -382,46 +426,40 @@ updateDirectoryFromDisk dirPath dir = do
           ([], [], [])
           subDirUpdates
       let actualSubDirs = subDirGuesses \\ notDirs
-      let noLongerExist =
-            fmap directoryName (Vector.toList dir.directorySubDirs) \\ actualSubDirs
-      let updatedSubDirs :: Maybe (Vector.Vector Directory)
+      let noLongerExist = Map.keys dir.directorySubDirs \\ actualSubDirs
+      let updatedSubDirs :: Maybe (Map.Map DirectoryName DirectoryData)
           updatedSubDirs = case (unchanged, changed, noLongerExist) of
             (_, [], []) -> Nothing -- Nothing indicates no changes were found
             _ -> do
-              -- Step 1: Remove dirs that that no longer exist or that were changed as we'll add their updated version back after
-              let toRemove = noLongerExist ++ map fst changed
-              let step1 = Vector.filter ((`notElem` toRemove) . directoryName) dir.directorySubDirs
-              -- Step 2: Add the updates back
-              let step2 = step1 <> Vector.fromList (map snd changed)
-              -- Finally sort them nicely
-              let nameSorter = naturalCompareBy $ unDirectoryName . directoryName
-              Just $ Vector.modify (VectorAlgs.sortBy nameSorter) step2
+              -- Step 1: Remove dirs that that no longer exist
+              let step1 = foldr Map.delete dir.directorySubDirs noLongerExist
+              -- Step 2: Update the updated dirs (insert overwrites)
+              let step2 = foldr (uncurry Map.insert) step1 changed
+              Just step2
 
       -- Check if there are any new files or remove files
       -- Files we already knew about, we won't check again so we don't do unneeded IO
-      let knownVideoNames = fmap videoFileName (Vector.toList dir.directoryVideoFiles)
+      let knownVideoNames = Map.keys dir.directoryVideoFiles
       let newVideoNames = videoGuesses \\ knownVideoNames
       let removedVideoNames = knownVideoNames \\ videoGuesses
       updatedVideoFiles <- case (newVideoNames, removedVideoNames) of
         ([], []) -> pure Nothing
         _ -> do
           -- Step 1: Remove files that no longer exist
-          let step1 = Vector.filter ((`elem` removedVideoNames) . videoFileName) dir.directoryVideoFiles
+          let step1 = foldr Map.delete dir.directoryVideoFiles removedVideoNames
           -- Step 2: Add new videos
           newVideos <- forM newVideoNames $ \newVideoName -> do
-            let fullFilePath = absDirPath ++ "/" ++ unVideoFileName newVideoName
+            let fullFilePath = absDirPath ++ "/" ++ T.unpack newVideoName.unVideoFileName
             modTime <- getModificationTime fullFilePath
             pure
-              VideoFile
-                { videoFileName = newVideoName,
-                  videoFileAdded = modTime,
-                  videoFileWatched = Nothing
-                }
-          let step2 = step1 <> Vector.fromList newVideos
-          -- For files that we already knew about and that still exist, we do nothing so their watched and added info stays the same
-          -- Finally we sort
-          let nameSorter = naturalCompareBy $ unVideoFileName . videoFileName
-          pure $ Just $ Vector.modify (VectorAlgs.sortBy nameSorter) step2
+              ( newVideoName,
+                VideoFileData
+                  { videoFileAdded = modTime,
+                    videoFileWatched = Nothing
+                  }
+              )
+          let step2 = foldr (uncurry Map.insert) step1 newVideos
+          pure $ Just step2
 
       -- We only care about the best image, other images ignore, even if there are new ones that aren't the best
       let bestImage = bestImageFile imageGuesses
@@ -431,9 +469,8 @@ updateDirectoryFromDisk dirPath dir = do
         (Nothing, Nothing, _) | bestImage == dir.directoryImage -> DirectoryUnchanged
         _ ->
           DirectoryChanged $
-            Directory
-              { directoryName = dir.directoryName,
-                directoryImage = bestImage,
+            DirectoryData
+              { directoryImage = bestImage,
                 directoryVideoFiles =
                   updatedVideoFiles `orElse` dir.directoryVideoFiles,
                 directorySubDirs =
@@ -450,20 +487,20 @@ data AggDirInfo = AggDirInfo
     aggDirPlayedVideoFileCount :: Int
   }
 
-foldFilesDataRecur :: forall a. (VideoFile -> a -> a) -> a -> Directory -> a
+foldFilesDataRecur :: forall a. (VideoFileData -> a -> a) -> a -> DirectoryData -> a
 foldFilesDataRecur updateAgg agg dir = loop agg [dir]
   where
-    loop :: a -> [Directory] -> a
+    loop :: a -> [DirectoryData] -> a
     loop a [] = a
     loop a (dirTodo : restDirs) = do
       let newA = foldr updateAgg a dirTodo.directoryVideoFiles
-          subDirs = Vector.toList dirTodo.directorySubDirs
+          subDirs = Map.elems dirTodo.directorySubDirs
       loop newA $ restDirs ++ subDirs
 
-getSubDirAggInfo :: DirectoryPath -> Directory -> [AggDirInfo]
+getSubDirAggInfo :: DirectoryPath -> DirectoryData -> [AggDirInfo]
 getSubDirAggInfo dirPath dir = do
   let epoch = posixSecondsToUTCTime 0
-  flip map (Vector.toList dir.directorySubDirs) $ \subDir ->
+  flip map (Map.toList dir.directorySubDirs) $ \(subDirName, subDirData) ->
     foldFilesDataRecur
       ( \videoFileData agg ->
           AggDirInfo
@@ -481,14 +518,14 @@ getSubDirAggInfo dirPath dir = do
             )
       )
       ( AggDirInfo
-          subDir.directoryName
-          (addSubDir dirPath subDir.directoryName)
+          subDirName
+          (addSubDir dirPath subDirName)
           epoch
           epoch
           0
           0
       )
-      subDir
+      subDirData
 
 -- Some helpers
 showUnique :: [String] -> String
@@ -499,29 +536,29 @@ isHiddenPath = \case
   '.' : _ -> True
   _ -> False
 
-readInt :: String -> Maybe Int
-readInt = readMaybe
+readInt :: Text -> Maybe Int
+readInt = readMaybe . T.unpack
 
-tryRegex :: String -> ([String] -> Maybe a) -> String -> Maybe a
+tryRegex :: Text -> ([Text] -> Maybe a) -> Text -> Maybe a
 tryRegex source resultParser regex =
-  let res :: (String, String, String, [String])
+  let res :: (Text, Text, Text, [Text])
       res = source =~ regex
       (_, _, _, matches) = res
    in resultParser matches
 
-expect1Int :: [String] -> Maybe Int
+expect1Int :: [Text] -> Maybe Int
 expect1Int = \case
   [a] ->
     readInt a
   _ -> Nothing
 
-expect2Ints :: [String] -> Maybe (Int, Int)
+expect2Ints :: [Text] -> Maybe (Int, Int)
 expect2Ints = \case
   [a, b] ->
     (,) <$> readInt a <*> readInt b
   _ -> Nothing
 
-expect3Ints :: [String] -> Maybe (Int, Int, Int)
+expect3Ints :: [Text] -> Maybe (Int, Int, Int)
 expect3Ints = \case
   [a, b, c] ->
     (,,) <$> readInt a <*> readInt b <*> readInt c
@@ -533,13 +570,12 @@ seasonFromDir (DirectoryName dir) =
     <|> tryRegex dir expect1Int "[Ss]eries ([0-9]+)"
     <|> tryRegex dir expect1Int "[Ss]eizoen ([0-9]+)"
 
-seasonFromFiles :: Vector.Vector VideoFile -> Maybe Int
-seasonFromFiles files =
+seasonFromFiles :: [VideoFileName] -> Maybe Int
+seasonFromFiles fileNames =
   case mSeason of
     Just season -> Just season
     Nothing -> if looseEpisodesFound then Just 1 else Nothing
   where
-    fileNames = Vector.toList (videoFileName <$> files)
     mSeason = NE.head <$> listToMaybe (sortWith NE.length $ NE.group (mapMaybe seasonFromFile fileNames))
     looseEpisodesFound = any (isJust . snd . episodeInfoFromFile) fileNames
 
@@ -578,11 +614,11 @@ titleFromDir :: DirectoryName -> Text
 titleFromDir = T.strip . fst . T.breakOn "(" . niceDirNameT
 
 niceDirNameT :: DirectoryName -> Text
-niceDirNameT (DirectoryName dir) = T.pack $ dropTrailingPathSeparator dir
+niceDirNameT (DirectoryName dir) = T.pack $ dropTrailingPathSeparator $ T.unpack dir
 
 niceFileNameT :: VideoFileName -> Text
 niceFileNameT (VideoFileName file) =
-  T.replace "." " " $ T.pack $ takeBaseName file
+  T.replace "." " " $ T.pack $ takeBaseName $ T.unpack file
 
 isVideoFileExt :: String -> Bool
 isVideoFileExt ext =
