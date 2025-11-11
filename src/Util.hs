@@ -25,7 +25,8 @@ import Yesod.WebSockets (race_)
 ourAesonOptions :: Aeson.Options
 ourAesonOptions =
   Aeson.defaultOptions
-    { Aeson.unwrapUnaryRecords = True
+    { Aeson.unwrapUnaryRecords = True,
+      Aeson.omitNothingFields = True
     }
 
 -- | Load a widget file, automatically reloading it in development.
