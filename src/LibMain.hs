@@ -245,12 +245,10 @@ getDirectoryR rootType dirNames = do
   let markAllWatchedAction = Just $ ActionMarkAsWatched $ Dir dirPath
   let markAllUnwatchedAction = Just $ ActionMarkAsUnwatched $ Dir dirPath
   let refreshDirectoryLabelAndAction =
-        -- Just
-        --   ( "Refresh this directory" :: String,
-        --     ActionRefreshDirectoryData dirPath
-        --   )
-        -- TODO: I need to re-enabled ActionRefreshDirectoryData
-        Nothing :: Maybe (String, Action)
+        Just
+          ( "Refresh this directory" :: String,
+            ActionRefreshDirectoryData dirPath
+          )
   let title = toHtml $ niceDirNameT $ NE.last dirNamesNE
   defaultLayout title $(widgetFile "directory")
 

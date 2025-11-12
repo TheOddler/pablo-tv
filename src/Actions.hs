@@ -14,11 +14,14 @@ import Data.Time (getCurrentTime)
 import Directory
   ( DirectoryData (..),
     DirectoryPath (..),
+    DirectoryUpdateResult (..),
     VideoFileData (..),
     VideoFilePath (..),
     directoryPathToAbsPath,
+    getDirectoryAtPath,
     saveRootsToDisk,
     updateDirectoryAtPath,
+    updateDirectoryFromDisk,
     updateRootDirectoriesFromDisk,
     videoFilePathToAbsPath,
   )
@@ -71,8 +74,8 @@ data Action
   | ActionMarkAsUnwatched DirOrFile
   | ActionOpenUrlOnTV Text
   | ActionRefreshAllDirectoryData
-  | -- | ActionRefreshDirectoryData DirectoryPath
-    ActionMedia Mpris.MprisAction
+  | ActionRefreshDirectoryData DirectoryPath
+  | ActionMedia Mpris.MprisAction
   deriving (Show, Eq, Generic)
 
 instance ToJSON Action where
@@ -226,11 +229,33 @@ performActionIO app action = do
       liftIO $ atomically $ do
         tvState <- readTVar tvStateTVar
         writeTVar tvStateTVar $ tvState {tvPage = url}
+    ActionRefreshDirectoryData dirPath -> liftIO $ do
+      -- To prevent spamming this, we only try to update
+      -- This action can be slow, but that's fine, Yesod calls are run in their own thread anyway, and that way we have a nice way of letter the frontend know when the refresh is done.
+      absDirPath <- directoryPathToAbsPath dirPath
+      let logMessage = "Updated directory " ++ absDirPath ++ " data"
+      mUpdatedRoots <- tryModifyPVar app.appRootDirs $ \roots -> logDuration logMessage $ do
+        let mCurrentKnownData = getDirectoryAtPath roots dirPath
+        case mCurrentKnownData of
+          Nothing -> do
+            putLog Error "Trying to refresh a drive we don't actually know about. This should only be used on already known dirs for updating them."
+            pure roots
+          Just currentKnownData -> do
+            updatedData <- updateDirectoryFromDisk dirPath currentKnownData
+            pure $ case updatedData of
+              DirectoryUnchanged -> roots
+              DirectoryChanged d -> updateDirectoryAtPath roots dirPath (const d)
+              DirectoryNotADirectory -> roots
+              DirectoryNotFoundRoot -> roots
+
+      case mUpdatedRoots of
+        Nothing -> putLog Warning "Already refreshing"
+        Just updatedRoots -> saveRootsToDisk updatedRoots
     ActionRefreshAllDirectoryData -> liftIO $ do
       -- To prevent spamming this, we only try to update
       -- This action can be slow, but that's fine, Yesod calls are run in their own thread anyway, and that way we have a nice way of letter the frontend know when the refresh is done.
       mUpdatedRoots <- tryModifyPVar app.appRootDirs $ \roots ->
-        logDuration "Updated directory data" $ updateRootDirectoriesFromDisk roots
+        logDuration "Updated all data" $ updateRootDirectoriesFromDisk roots
       case mUpdatedRoots of
         Nothing -> putLog Warning "Already refreshing"
         Just updatedRoots -> saveRootsToDisk updatedRoots
