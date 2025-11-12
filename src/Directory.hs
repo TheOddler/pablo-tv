@@ -2,8 +2,8 @@ module Directory where
 
 import Algorithms.NaturalSort qualified as Natural
 import Control.Applicative ((<|>))
-import Control.Exception (SomeException, catch, throwIO)
 import Control.Monad (forM, when)
+import Control.Monad.Catch (MonadThrow)
 import Data.Aeson (FromJSON (..), FromJSONKey, ToJSON (..), ToJSONKey, eitherDecodeFileStrict, encodeFile, genericParseJSON, genericToEncoding)
 import Data.Foldable (foldrM)
 import Data.HashSet qualified as Set
@@ -17,21 +17,21 @@ import Data.Text qualified as T
 import Data.Time (UTCTime)
 import Data.Time.Clock.POSIX (posixSecondsToUTCTime)
 import GHC.Data.Maybe (firstJusts, orElse)
-import GHC.Exception (errorCallException)
 import GHC.Exts (sortWith)
 import GHC.Generics (Generic)
+import GHC.IO (catchAny)
 import GHC.IO.Exception (IOErrorType (..), IOException (..))
 import GHC.Read (Read (..))
 import GHC.Utils.Exception (displayException, tryIO)
-import Logging (LogLevel (..), logDuration, putLog)
+import Logging (LogLevel (..), Logger, putLog)
 import Samba (SmbServer (..), SmbShare (..))
 import Samba qualified
 import System.Directory (XdgDirectory (..), createDirectoryIfMissing, getHomeDirectory, getModificationTime, getXdgDirectory, listDirectory)
 import System.FilePath (dropTrailingPathSeparator, takeBaseName, takeExtension, (</>))
 import Text.Read (readMaybe)
 import Text.Regex.TDFA ((=~))
-import Util (ourAesonOptions, safeMinimumOn)
-import Yesod (PathPiece (..))
+import Util (failE, impossible, logDuration, ourAesonOptions, safeMinimumOn)
+import Yesod (MonadIO (..), PathPiece (..))
 
 newtype DirectoryName = DirectoryName {unDirectoryName :: Text}
   deriving (Eq, Ord, Generic, PathPiece)
@@ -180,12 +180,12 @@ instance FromJSON DirectoryPath where
 addSubDir :: DirectoryPath -> DirectoryName -> DirectoryPath
 addSubDir (DirectoryPath root names) newName = DirectoryPath root $ names ++ [newName]
 
-directoryPathToAbsPath :: DirectoryPath -> IO FilePath
+directoryPathToAbsPath :: (MonadIO m) => DirectoryPath -> m FilePath
 directoryPathToAbsPath (DirectoryPath root dirNames) = do
   rootAbsPath <- case root of
     RootSamba srv shr -> Samba.mkMountPath srv shr
     RootLocalVideos -> do
-      home <- getHomeDirectory
+      home <- liftIO getHomeDirectory
       pure $ home ++ "/Videos"
   pure $ intercalate "/" $ rootAbsPath : (T.unpack . unDirectoryName <$> dirNames)
 
@@ -329,7 +329,7 @@ data DirectoryUpdateResult
   | -- | A special case, it's possible for a root not to be found, if for example the samba share isn't mounted.
     DirectoryNotFoundRoot
 
-updateRootDirectoriesFromDisk :: RootDirectories -> IO RootDirectories
+updateRootDirectoriesFromDisk :: (MonadIO m, MonadThrow m, Logger m) => RootDirectories -> m RootDirectories
 updateRootDirectoriesFromDisk rootDirs =
   flip Map.traverseWithKey rootDirs $ \rootLocation rootDirData -> do
     let path = rootDirectoryPath rootLocation
@@ -359,15 +359,16 @@ updateRootDirectoriesFromDisk rootDirs =
 memoryFileName :: FilePath
 memoryFileName = "pablo-tv.json"
 
-getMemoryFileDir :: IO FilePath
-getMemoryFileDir = getXdgDirectory XdgData ""
+getMemoryFileDir :: (MonadIO m) => m FilePath
+getMemoryFileDir = liftIO $ getXdgDirectory XdgData ""
 
 -- | Writes the known disks to a json file on disk, so we can read it on startup next time.
-saveRootsToDisk :: RootDirectories -> IO ()
+saveRootsToDisk :: (MonadIO m, Logger m) => RootDirectories -> m ()
 saveRootsToDisk roots = logDuration "Saved roots to disk" $ do
   memoryDir <- getMemoryFileDir
-  createDirectoryIfMissing True memoryDir
-  encodeFile (memoryDir </> memoryFileName) roots
+  liftIO $ do
+    createDirectoryIfMissing True memoryDir
+    encodeFile (memoryDir </> memoryFileName) roots
 
 loadRootsFromDisk :: IO (Maybe RootDirectories)
 loadRootsFromDisk = do
@@ -377,7 +378,7 @@ loadRootsFromDisk = do
     logDuration
       "Loaded roots from disk"
       (eitherDecodeFileStrict memoryFile)
-      `catch` \(e :: SomeException) -> pure $ Left $ displayException e
+      `catchAny` \e -> pure $ Left $ displayException e
   case rootsOrErr of
     Right roots -> pure $ Just roots
     Left err -> do
@@ -387,10 +388,10 @@ loadRootsFromDisk = do
 -- | Updates the directory (at given path) with new data from disk.
 -- It will potentially remove or add video files and sub-directories.
 -- It leaves watched or added information for files in tact.
-updateDirectoryFromDisk :: DirectoryPath -> DirectoryData -> IO DirectoryUpdateResult
+updateDirectoryFromDisk :: (MonadIO m, MonadThrow m, Logger m) => DirectoryPath -> DirectoryData -> m DirectoryUpdateResult
 updateDirectoryFromDisk dirPath dir = do
   absDirPath <- directoryPathToAbsPath dirPath
-  (namesOrErr :: Either IOError [FilePath]) <- tryIO $ listDirectory absDirPath
+  (namesOrErr :: Either IOError [FilePath]) <- liftIO $ tryIO $ listDirectory absDirPath
   case namesOrErr of
     Left err | err.ioe_type == InappropriateType -> do
       putLog Warning $ "What we thought was a directory turned out not to be: " ++ absDirPath
@@ -399,12 +400,7 @@ updateDirectoryFromDisk dirPath dir = do
       putLog Warning $ "Root folder not found: " ++ absDirPath
       pure DirectoryNotFoundRoot
     Left err -> do
-      putLog Error $
-        "IO error while trying to update directory "
-          ++ absDirPath
-          ++ ": "
-          ++ displayException err
-      throwIO err
+      failE ("Updating directory " ++ absDirPath) err
     Right names -> do
       let typeGuesses = guessType <$> names
       let (subDirGuesses, videoGuesses, imageGuesses, _ignored) = partitionPathTypes typeGuesses
@@ -421,7 +417,7 @@ updateDirectoryFromDisk dirPath dir = do
               DirectoryUnchanged -> pure (name : un, ch, nd)
               DirectoryChanged d -> pure (un, (name, d) : ch, nd)
               DirectoryNotADirectory -> pure (un, ch, name : nd)
-              DirectoryNotFoundRoot -> throwIO $ errorCallException "This should only happen on roots, and thus should be impossible here."
+              DirectoryNotFoundRoot -> impossible "This should only happen on roots, and thus should be impossible here."
           )
           ([], [], [])
           subDirUpdates
@@ -450,7 +446,7 @@ updateDirectoryFromDisk dirPath dir = do
           -- Step 2: Add new videos
           newVideos <- forM newVideoNames $ \newVideoName -> do
             let fullFilePath = absDirPath ++ "/" ++ T.unpack newVideoName.unVideoFileName
-            modTime <- getModificationTime fullFilePath
+            modTime <- liftIO $ getModificationTime fullFilePath
             pure
               ( newVideoName,
                 VideoFileData

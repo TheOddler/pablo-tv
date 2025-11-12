@@ -4,7 +4,6 @@ import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Logger qualified as MonadLogger
 import Data.ByteString qualified as BS
 import Data.ByteString.UTF8 qualified as BS
-import Util (withDuration)
 
 data LogLevel
   = Debug
@@ -19,12 +18,6 @@ class (Monad m) => Logger m where
 
 instance Logger IO where
   putLogBS = putLogIO
-
-logDuration :: (Logger m, MonadIO m) => String -> m a -> m a
-logDuration label action = do
-  (result, duration) <- withDuration action
-  putLog Info $ label ++ " (" ++ show duration ++ ")"
-  pure result
 
 logLevelColour :: LogLevel -> BS.ByteString
 logLevelColour = \case

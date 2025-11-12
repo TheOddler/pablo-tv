@@ -15,9 +15,9 @@ import Actions
     KeyboardButton (..),
     MouseButton (..),
     actionsWebSocket,
+    markDirOrFileAsWatched,
     mkInputDevice,
     performAction,
-    performActionIO,
   )
 import Control.Monad (when)
 import Data.Aeson qualified as Aeson
@@ -64,7 +64,7 @@ import Foundation
 import GHC.Conc (newTVarIO)
 import GHC.Utils.Misc (sortWith)
 import IsDevelopment (isDevelopment)
-import Logging (LogLevel (..), logDuration, putLog, runLoggingT)
+import Logging (LogLevel (..), putLog, runLoggingT)
 import Mpris (MprisAction (..), mediaListener)
 import Network.Info (NetworkInterface (..), getNetworkInterfaces)
 import Network.Wai.Handler.Warp (run)
@@ -76,12 +76,14 @@ import System.Random (initStdGen, mkStdGen)
 import TVDB (TVDBApiKey (..), getToken)
 import TVState (startingTVState, tvStateWebSocket)
 import Util
-  ( networkInterfaceWorthiness,
+  ( logDuration,
+    networkInterfaceWorthiness,
     raceAll,
     shuffle,
     widgetFile,
   )
 import Yesod hiding (defaultLayout, replace)
+import Yesod.Core.Types (unHandlerFor)
 import Yesod.WebSockets (race_, webSockets)
 
 mkYesodDispatch "App" resourcesApp
@@ -357,7 +359,7 @@ main = do
     -- This is function returns instantly, but in the background it's still running, so no need to race
     _ <- mediaListener $ \path -> do
       putLog Info $ "Heard file playing: " ++ show path
-      performActionIO app $ ActionMarkAsWatched $ File path
+      markDirOrFileAsWatched app $ File path
 
     putLog Info "Starting server..."
     raceAll [appThread]

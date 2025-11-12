@@ -66,12 +66,11 @@ library
       , dbus
       , directory
       , evdev
+      , exceptions
       , extra
       , filepath
       , ghc
-      , http-api-data
       , http-client
-      , microlens
       , modern-uri
       , monad-logger
       , natural-sort
@@ -97,6 +96,7 @@ library
       , warp
       , websockets
       , yesod
+      , yesod-core
       , yesod-static
       , yesod-websockets
 

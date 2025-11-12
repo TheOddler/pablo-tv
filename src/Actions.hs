@@ -30,7 +30,7 @@ import Evdev.Uinput
 import Foundation (App (..), Handler)
 import GHC.Conc (atomically, readTVar, writeTVar)
 import GHC.Generics (Generic)
-import Logging (LogLevel (..), logDuration, putLog)
+import Logging (LogLevel (..), putLog)
 import Mpris qualified
 import Network.WebSockets qualified as WS
 import PVar (modifyPVar_, tryModifyPVar)
@@ -40,7 +40,7 @@ import TVState (TVState (..))
 import Text.Blaze qualified as Blaze
 import Text.Julius (ToJavascript (..))
 import UnliftIO.Exception (catch)
-import Util (ourAesonOptions)
+import Util (fail404, impossible, logDuration, ourAesonOptions)
 import Yesod (getYesod, lift, liftIO)
 import Yesod.WebSockets (WebSocketsT, receiveData)
 
@@ -156,17 +156,13 @@ actionsWebSocket =
 performAction :: Action -> Handler ()
 performAction action = do
   app <- getYesod
-  liftIO $ performActionIO app action
-
-performActionIO :: App -> Action -> IO ()
-performActionIO app action = do
   liftIO $ putLog Debug $ "Performing action: " <> show action
   case action of
     ActionClickMouse btn' ->
       let btn = mouseButtonToEvdevKey btn'
        in liftIO $
             writeBatch
-              inputDevice
+              app.appInputDevice
               [ KeyEvent btn Pressed,
                 SyncEvent SynReport,
                 KeyEvent btn Released
@@ -176,7 +172,7 @@ performActionIO app action = do
       let key = keyboardButtonToEvdevKey key'
        in liftIO $
             writeBatch
-              inputDevice
+              app.appInputDevice
               [ KeyEvent key Pressed,
                 SyncEvent SynReport,
                 KeyEvent key Released
@@ -185,7 +181,7 @@ performActionIO app action = do
     ActionMoveMouse x y ->
       liftIO $
         writeBatch
-          inputDevice
+          app.appInputDevice
           [ RelativeEvent RelX $ EventValue x,
             RelativeEvent RelY $ EventValue y
           ]
@@ -199,19 +195,19 @@ performActionIO app action = do
           pointerY = floor $ centerY + ud * screenHalfSize
       liftIO $
         writeBatch
-          inputDevice
+          app.appInputDevice
           [ AbsoluteEvent AbsX $ EventValue pointerX,
             AbsoluteEvent AbsY $ EventValue pointerY
           ]
     ActionMouseScroll amount ->
       liftIO $
         writeBatch
-          inputDevice
+          app.appInputDevice
           [ RelativeEvent RelWheel $ EventValue amount
           ]
     ActionWrite text -> do
       let events = concatMap (clickKeyCombo . charToKey) text
-      liftIO $ writeBatch inputDevice events
+      liftIO $ writeBatch app.appInputDevice events
     ActionPlayPath dirOrFile -> liftIO $ do
       defaultVideoPlayer' <- readProcess "xdg-mime" ["query", "default", "video/x-msvideo"] ""
       let defaultVideoPlayer = dropWhileEnd isSpace defaultVideoPlayer'
@@ -222,14 +218,14 @@ performActionIO app action = do
           absPath
         ]
     ActionMarkAsWatched dirOrFile ->
-      markDirOrFileAsWatched dirOrFile
+      liftIO $ markDirOrFileAsWatched app dirOrFile
     ActionMarkAsUnwatched dirOrFile ->
-      markDirOrFileAsUnwatched dirOrFile
+      liftIO $ markDirOrFileAsUnwatched app dirOrFile
     ActionOpenUrlOnTV url ->
       liftIO $ atomically $ do
-        tvState <- readTVar tvStateTVar
-        writeTVar tvStateTVar $ tvState {tvPage = url}
-    ActionRefreshDirectoryData dirPath -> liftIO $ do
+        tvState <- readTVar app.appTVState
+        writeTVar app.appTVState $ tvState {tvPage = url}
+    ActionRefreshDirectoryData dirPath -> do
       -- To prevent spamming this, we only try to update
       -- This action can be slow, but that's fine, Yesod calls are run in their own thread anyway, and that way we have a nice way of letter the frontend know when the refresh is done.
       absDirPath <- directoryPathToAbsPath dirPath
@@ -238,15 +234,14 @@ performActionIO app action = do
         let mCurrentKnownData = getDirectoryAtPath roots dirPath
         case mCurrentKnownData of
           Nothing -> do
-            putLog Error "Trying to refresh a directory we don't actually know about. This should only be used on already known dirs for updating them."
-            pure roots
+            fail404 "Trying to refresh a directory we don't actually know about. This should only be used on already known dirs for updating them."
           Just currentKnownData -> do
             updatedData <- updateDirectoryFromDisk dirPath currentKnownData
-            pure $ case updatedData of
-              DirectoryChanged d -> updateDirectoryAtPath roots dirPath (const d)
-              DirectoryUnchanged -> roots
-              DirectoryNotADirectory -> roots
-              DirectoryNotFoundRoot -> roots
+            case updatedData of
+              DirectoryChanged d -> pure $ updateDirectoryAtPath roots dirPath (const d)
+              DirectoryUnchanged -> pure roots
+              DirectoryNotFoundRoot -> impossible "We already checked this dir should exist."
+              DirectoryNotADirectory -> impossible "We already checked this dir should exist."
 
       case mUpdatedRoots of
         Nothing -> putLog Warning "Already refreshing"
@@ -262,64 +257,61 @@ performActionIO app action = do
     ActionMedia a ->
       liftIO $ Mpris.performAction a
   where
-    inputDevice = app.appInputDevice
-    tvStateTVar = app.appTVState
-
     clickKeyCombo keys =
       map (`KeyEvent` Pressed) keys
         ++ [SyncEvent SynReport]
         ++ map (`KeyEvent` Released) (reverse keys)
         ++ [SyncEvent SynReport]
 
-    markDirOrFileAsWatched :: DirOrFile -> IO ()
-    markDirOrFileAsWatched dirOrFile = modifyPVar_ app.appRootDirs $ \roots -> do
-      let dirPath = case dirOrFile of
-            Dir p -> p
-            File (VideoFilePath r p _) -> DirectoryPath r p
-      now <- liftIO getCurrentTime
-      let applyWatched fileData =
-            case fileData.videoFileWatched of
-              Just _ -> fileData
-              Nothing -> fileData {videoFileWatched = Just now}
-      pure $ updateDirectoryAtPath roots dirPath $ \dir ->
-        case dirOrFile of
-          Dir _ ->
-            dir
-              { directoryVideoFiles =
-                  Map.map applyWatched dir.directoryVideoFiles
-              }
-          File (VideoFilePath _ _ fileName) ->
-            dir
-              { directoryVideoFiles =
-                  Map.adjust applyWatched fileName dir.directoryVideoFiles
-              }
-
-    markDirOrFileAsUnwatched :: DirOrFile -> IO ()
-    markDirOrFileAsUnwatched dirOrFile = modifyPVar_ app.appRootDirs $ \roots -> do
-      let dirPath = case dirOrFile of
-            Dir p -> p
-            File (VideoFilePath r p _) -> DirectoryPath r p
-      let applyUnwatched fileData =
-            case fileData.videoFileWatched of
-              Just _ -> fileData {videoFileWatched = Nothing}
-              Nothing -> fileData
-      pure $ updateDirectoryAtPath roots dirPath $ \dir ->
-        case dirOrFile of
-          Dir _ ->
-            dir
-              { directoryVideoFiles =
-                  Map.map applyUnwatched dir.directoryVideoFiles
-              }
-          File (VideoFilePath _ _ fileName) ->
-            dir
-              { directoryVideoFiles =
-                  Map.adjust applyUnwatched fileName dir.directoryVideoFiles
-              }
-
     dirOrFileToAbsPath :: DirOrFile -> IO FilePath
     dirOrFileToAbsPath = \case
       Dir d -> directoryPathToAbsPath d
       File f -> videoFilePathToAbsPath f
+
+markDirOrFileAsWatched :: App -> DirOrFile -> IO ()
+markDirOrFileAsWatched app dirOrFile = modifyPVar_ app.appRootDirs $ \roots -> do
+  let dirPath = case dirOrFile of
+        Dir p -> p
+        File (VideoFilePath r p _) -> DirectoryPath r p
+  now <- liftIO getCurrentTime
+  let applyWatched fileData =
+        case fileData.videoFileWatched of
+          Just _ -> fileData
+          Nothing -> fileData {videoFileWatched = Just now}
+  pure $ updateDirectoryAtPath roots dirPath $ \dir ->
+    case dirOrFile of
+      Dir _ ->
+        dir
+          { directoryVideoFiles =
+              Map.map applyWatched dir.directoryVideoFiles
+          }
+      File (VideoFilePath _ _ fileName) ->
+        dir
+          { directoryVideoFiles =
+              Map.adjust applyWatched fileName dir.directoryVideoFiles
+          }
+
+markDirOrFileAsUnwatched :: App -> DirOrFile -> IO ()
+markDirOrFileAsUnwatched app dirOrFile = modifyPVar_ app.appRootDirs $ \roots -> do
+  let dirPath = case dirOrFile of
+        Dir p -> p
+        File (VideoFilePath r p _) -> DirectoryPath r p
+  let applyUnwatched fileData =
+        case fileData.videoFileWatched of
+          Just _ -> fileData {videoFileWatched = Nothing}
+          Nothing -> fileData
+  pure $ updateDirectoryAtPath roots dirPath $ \dir ->
+    case dirOrFile of
+      Dir _ ->
+        dir
+          { directoryVideoFiles =
+              Map.map applyUnwatched dir.directoryVideoFiles
+          }
+      File (VideoFilePath _ _ fileName) ->
+        dir
+          { directoryVideoFiles =
+              Map.adjust applyUnwatched fileName dir.directoryVideoFiles
+          }
 
 charToKey :: Char -> [Key]
 charToKey = \case

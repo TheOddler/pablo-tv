@@ -1,7 +1,9 @@
 module Util where
 
 import Control.Concurrent (MVar, takeMVar)
+import Control.Exception (Exception, displayException)
 import Control.Monad (when)
+import Control.Monad.Catch (MonadThrow (..))
 import Data.Aeson qualified as Aeson
 import Data.Default (def)
 import Data.List (foldl', isPrefixOf)
@@ -12,8 +14,11 @@ import Data.Ord (Down)
 import Data.String (fromString)
 import Data.Time (NominalDiffTime, diffUTCTime, getCurrentTime)
 import GHC.Conc (TVar, atomically, readTVar, readTVarIO, retry)
+import GHC.Exception (errorCallWithCallStackException)
+import GHC.Stack (HasCallStack, callStack, prettyCallStack, withFrozenCallStack)
 import IsDevelopment (isDevelopment)
 import Language.Haskell.TH.Syntax (Exp, Q)
+import Logging (LogLevel (..), Logger (..))
 import Network.Info (IPv4 (..), NetworkInterface (..))
 import System.FilePath (takeExtension)
 import System.Random (RandomGen)
@@ -133,3 +138,42 @@ getImageContentType filePath = case takeExtension filePath of
             '.' : e -> e
             e -> e
      in "image/" <> fromString cleanedExt
+
+logDuration :: (Logger m, MonadIO m) => String -> m a -> m a
+logDuration label action = do
+  (result, duration) <- withDuration action
+  putLog Info $ label ++ " (" ++ show duration ++ ")"
+  pure result
+
+impossible :: (Logger m, MonadThrow m, HasCallStack) => String -> m a
+impossible msg = withFrozenCallStack $ do
+  let fullMsg = "Reached the impossible: " ++ msg
+  putLog Error $
+    concat
+      [ fullMsg,
+        "\n",
+        prettyCallStack callStack
+      ]
+  throwM $ errorCallWithCallStackException fullMsg callStack
+
+fail404 :: (Logger m, MonadHandler m, HasCallStack) => String -> m a
+fail404 msg = do
+  putLog Error $
+    concat
+      [ msg,
+        "\n",
+        prettyCallStack callStack
+      ]
+  notFound
+
+failE :: (Logger m, MonadThrow m, HasCallStack, Exception e) => String -> e -> m a
+failE label e = do
+  putLog Error $
+    concat
+      [ label,
+        " failed with exception: ",
+        displayException e,
+        "\n",
+        prettyCallStack callStack
+      ]
+  throwM e

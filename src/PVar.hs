@@ -11,6 +11,7 @@ where
 
 import Control.Concurrent.STM (TVar, atomically, newTVarIO, readTVar, readTVarIO, retry, writeTVar)
 import Control.Monad (when)
+import Yesod (MonadIO (..))
 
 data PVarState
   = PVarReady
@@ -19,29 +20,29 @@ data PVarState
 
 newtype PVar a = PVar (TVar (PVarState, a))
 
-newPVar :: a -> IO (PVar a)
-newPVar initialState = PVar <$> newTVarIO (PVarReady, initialState)
+newPVar :: (MonadIO m) => a -> m (PVar a)
+newPVar initialState = PVar <$> liftIO (newTVarIO (PVarReady, initialState))
 
-readPVar :: PVar a -> IO a
-readPVar (PVar inner) = snd <$> readTVarIO inner
+readPVar :: (MonadIO m) => PVar a -> m a
+readPVar (PVar inner) = snd <$> liftIO (readTVarIO inner)
 
 -- | Modify the PVar, for the duration of the IO, any other calls to modify the PVar will wait.
 -- Reading the PVar is still possible though, and will return the original value immediately.
-modifyPVar_ :: PVar a -> (a -> IO a) -> IO ()
+modifyPVar_ :: (MonadIO m) => PVar a -> (a -> m a) -> m ()
 modifyPVar_ (PVar inner) update = do
-  value <- atomically $ do
+  value <- liftIO $ atomically $ do
     (state, val) <- readTVar inner
     when (state /= PVarReady) retry
     writeTVar inner (PVarUpdating, val)
     pure val
   newValue <- update value
-  atomically $ writeTVar inner (PVarReady, newValue)
+  liftIO $ atomically $ writeTVar inner (PVarReady, newValue)
 
 -- | Tries to modify the PVar, but won't if it's already being updated, rather than wait.
 -- Returns whether it did an update or not.
-tryModifyPVar :: PVar a -> (a -> IO a) -> IO (Maybe a)
+tryModifyPVar :: (MonadIO m) => PVar a -> (a -> m a) -> m (Maybe a)
 tryModifyPVar (PVar inner) update = do
-  mValue <- atomically $ do
+  mValue <- liftIO $ atomically $ do
     (state, val) <- readTVar inner
     case state of
       PVarReady -> do
@@ -53,5 +54,5 @@ tryModifyPVar (PVar inner) update = do
     Nothing -> pure Nothing
     Just value -> do
       newValue <- update value
-      atomically $ writeTVar inner (PVarReady, newValue)
+      liftIO $ atomically $ writeTVar inner (PVarReady, newValue)
       pure $ Just newValue
