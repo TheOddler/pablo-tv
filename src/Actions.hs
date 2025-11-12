@@ -238,13 +238,13 @@ performActionIO app action = do
         let mCurrentKnownData = getDirectoryAtPath roots dirPath
         case mCurrentKnownData of
           Nothing -> do
-            putLog Error "Trying to refresh a drive we don't actually know about. This should only be used on already known dirs for updating them."
+            putLog Error "Trying to refresh a directory we don't actually know about. This should only be used on already known dirs for updating them."
             pure roots
           Just currentKnownData -> do
             updatedData <- updateDirectoryFromDisk dirPath currentKnownData
             pure $ case updatedData of
-              DirectoryUnchanged -> roots
               DirectoryChanged d -> updateDirectoryAtPath roots dirPath (const d)
+              DirectoryUnchanged -> roots
               DirectoryNotADirectory -> roots
               DirectoryNotFoundRoot -> roots
 
