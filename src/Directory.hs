@@ -656,86 +656,92 @@ niceFileNameT (VideoFileName file) =
   T.replace "." " " $ T.pack $ takeBaseName $ T.unpack file
 
 isVideoFileExt :: String -> Bool
-isVideoFileExt ext =
-  ext
-    `Set.member` Set.fromList
-      [ ".avi",
-        ".flv",
-        ".m4v",
-        ".mkv",
-        ".mov",
-        ".mp4",
-        ".mpeg",
-        ".mpg",
-        ".webm",
-        ".wmv"
-      ]
+isVideoFileExt ext = ext `Set.member` videoFileExts
+
+videoFileExts :: Set.HashSet String
+videoFileExts =
+  Set.fromList
+    [ ".avi",
+      ".flv",
+      ".m4v",
+      ".mkv",
+      ".mov",
+      ".mp4",
+      ".mpeg",
+      ".mpg",
+      ".webm",
+      ".wmv"
+    ]
 
 isImageFileExt :: String -> Bool
-isImageFileExt ext =
-  ext
-    `Set.member` Set.fromList
-      [ ".bmp",
-        ".gif",
-        ".heic",
-        ".heif",
-        ".jpeg",
-        ".jpg",
-        ".png",
-        ".svg",
-        ".tif",
-        ".tiff",
-        ".webp"
-      ]
+isImageFileExt ext = ext `Set.member` imageFileExts
+
+imageFileExts :: Set.HashSet String
+imageFileExts =
+  Set.fromList
+    [ ".bmp",
+      ".gif",
+      ".heic",
+      ".heif",
+      ".jpeg",
+      ".jpg",
+      ".png",
+      ".svg",
+      ".tif",
+      ".tiff",
+      ".webp"
+    ]
 
 -- | For non-video, non-image ext.
 -- This is used to improve guesses on what are files and what are directories.
 isCommonFileExt :: String -> Bool
-isCommonFileExt ext =
-  ext
-    `Set.member` Set.fromList
-      [ ".7z",
-        ".aac",
-        ".aes",
-        ".apk",
-        ".bat",
-        ".csv",
-        ".db",
-        ".db3-shm",
-        ".db3-wal",
-        ".db3",
-        ".dmg",
-        ".doc",
-        ".docx",
-        ".exe",
-        ".flac",
-        ".gz",
-        ".idx",
-        ".img",
-        ".iso",
-        ".mp3",
-        ".msi",
-        ".odp",
-        ".ods",
-        ".odt",
-        ".ogg",
-        ".pdf",
-        ".ppt",
-        ".pptx",
-        ".rar",
-        ".rtf",
-        ".sh",
-        ".srt",
-        ".sub",
-        ".tar.gz",
-        ".tar",
-        ".txt",
-        ".wav",
-        ".xls",
-        ".xlsx",
-        ".yaml",
-        ".zip"
-      ]
+isCommonFileExt ext = ext `Set.member` commonFileExts
+
+commonFileExts :: Set.HashSet String
+commonFileExts =
+  Set.fromList
+    [ ".7z",
+      ".aac",
+      ".aes",
+      ".apk",
+      ".bat",
+      ".csv",
+      ".db",
+      ".db3-shm",
+      ".db3-wal",
+      ".db3",
+      ".dmg",
+      ".doc",
+      ".docx",
+      ".exe",
+      ".flac",
+      ".gz",
+      ".idx",
+      ".img",
+      ".iso",
+      ".mp3",
+      ".msi",
+      ".odp",
+      ".ods",
+      ".odt",
+      ".ogg",
+      ".pdf",
+      ".ppt",
+      ".pptx",
+      ".rar",
+      ".rtf",
+      ".sh",
+      ".srt",
+      ".sub",
+      ".tar.gz",
+      ".tar",
+      ".txt",
+      ".wav",
+      ".xls",
+      ".xlsx",
+      ".yaml",
+      ".zip"
+    ]
 
 -- | Compares taking into account numbers properly
 naturalCompareBy :: (a -> String) -> a -> a -> Ordering

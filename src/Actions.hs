@@ -1,14 +1,19 @@
+{-# LANGUAGE OverloadedStrings #-}
+
 module Actions where
 
 import Control.Exception (Exception (..))
 import Control.Monad (forever)
-import Data.Aeson (FromJSON (..), ToJSON (..), eitherDecode, encode, genericParseJSON, genericToEncoding)
+import Data.Aeson (Encoding, FromJSON (..), Object, ToJSON (..), eitherDecode, encode, genericParseJSON, genericToEncoding, pairs, withObject, (.:), (.=))
+import Data.Aeson.Key qualified as Aeson
+import Data.Aeson.Types (Parser)
 import Data.Char (isSpace)
 import Data.Int (Int32)
 import Data.List (dropWhileEnd, nub)
 import Data.Map.Strict qualified as Map
 import Data.Scientific (Scientific, scientific)
 import Data.Text (Text)
+import Data.Text qualified as T
 import Data.Text.Lazy.Encoding qualified as T
 import Data.Time (getCurrentTime)
 import Directory
@@ -40,7 +45,7 @@ import TVState (TVState (..))
 import Text.Blaze qualified as Blaze
 import Text.Julius (ToJavascript (..))
 import UnliftIO.Exception (catch)
-import Util (fail404, impossible, logDuration, ourAesonOptions)
+import Util (fail404, impossible, logDuration, ourAesonOptions, ourAesonOptionsPrefix)
 import Yesod (MonadIO, getYesod, lift, liftIO)
 import Yesod.WebSockets (WebSocketsT, receiveData)
 
@@ -68,7 +73,7 @@ data Action
     -- It's meant to be used with the mouse pointer tool
     ActionPointMouse Scientific Scientific -- leftRight, upDown
   | ActionMouseScroll Int32
-  | ActionWrite String
+  | ActionWrite {text :: String}
   | ActionPlayPath DirOrFile
   | ActionMarkAsWatched DirOrFile
   | ActionMarkAsUnwatched DirOrFile
@@ -79,10 +84,58 @@ data Action
   deriving (Show, Eq, Generic)
 
 instance ToJSON Action where
-  toEncoding = genericToEncoding ourAesonOptions
+  toEncoding = \case
+    ActionClickMouse button -> oneField "ClickMouse" "button" button
+    ActionPressKeyboard button -> oneField "PressKeyboard" "button" button
+    ActionMoveMouse x y -> twoFields "MoveMouse" "x" x "y" y
+    ActionPointMouse leftRight upDown -> twoFields "PointMouse" "leftRight" leftRight "upDown" upDown
+    ActionMouseScroll amount -> oneField "MouseScroll" "amount" amount
+    ActionWrite text -> oneField "Write" "text" text
+    ActionPlayPath path -> oneField "PlayPath" "path" path
+    ActionMarkAsWatched path -> oneField "MarkAsWatched" "path" path
+    ActionMarkAsUnwatched path -> oneField "MarkAsUnwatched" "path" path
+    ActionOpenUrlOnTV url -> oneField "OpenUrlOnTV" "url" url
+    ActionRefreshAllDirectoryData -> noFields "RefreshAllDirectoryData"
+    ActionRefreshDirectoryData path -> oneField "RefreshDirectoryData" "path" path
+    ActionMedia mpris -> oneField "Media" "action" mpris
+    where
+      noFields :: Text -> Encoding
+      noFields tag = pairs ("tag" .= tag)
+      oneField :: (ToJSON a) => Text -> Aeson.Key -> a -> Encoding
+      oneField tag field value = pairs ("tag" .= tag <> field .= value)
+      twoFields :: (ToJSON a, ToJSON b) => Text -> Aeson.Key -> a -> Aeson.Key -> b -> Encoding
+      twoFields tag f1 v1 f2 v2 = pairs ("tag" .= tag <> f1 .= v1 <> f2 .= v2)
 
 instance FromJSON Action where
-  parseJSON = genericParseJSON ourAesonOptions
+  parseJSON = withObject "Action" $ \obj -> do
+    tag <- obj .: "tag"
+    case tag of
+      "ClickMouse" -> oneField obj ActionClickMouse "button"
+      "PressKeyboard" -> oneField obj ActionPressKeyboard "button"
+      "MoveMouse" -> twoFields obj ActionMoveMouse "x" "y"
+      "PointMouse" -> twoFields obj ActionPointMouse "leftRight" "upDown"
+      "MouseScroll" -> oneField obj ActionMouseScroll "amount"
+      "Write" -> oneField obj ActionWrite "text"
+      "PlayPath" -> oneField obj ActionPlayPath "path"
+      "MarkAsWatched" -> oneField obj ActionMarkAsWatched "path"
+      "MarkAsUnwatched" -> oneField obj ActionMarkAsUnwatched "path"
+      "OpenUrlOnTV" -> oneField obj ActionOpenUrlOnTV "url"
+      "RefreshAllDirectoryData" -> noFields ActionRefreshAllDirectoryData
+      "RefreshDirectoryData" -> oneField obj ActionRefreshDirectoryData "path"
+      "Media" -> oneField obj ActionMedia "action"
+      unknownTag -> fail $ "Unknown Action tag: " ++ T.unpack unknownTag
+    where
+      noFields :: Action -> Parser Action
+      noFields = pure
+      oneField :: (FromJSON a) => Object -> (a -> Action) -> Aeson.Key -> Parser Action
+      oneField obj constructor field = do
+        value <- obj .: field
+        pure $ constructor value
+      twoFields :: (FromJSON a, FromJSON b) => Object -> (a -> b -> Action) -> Aeson.Key -> Aeson.Key -> Parser Action
+      twoFields obj constructor f1 f2 = do
+        v1 <- obj .: f1
+        v2 <- obj .: f2
+        pure $ constructor v1 v2
 
 instance ToJavascript Action where
   toJavascript = toJavascript . toJSON
@@ -94,10 +147,10 @@ data MouseButton = MouseButtonLeft | MouseButtonRight
   deriving (Show, Eq, Bounded, Enum, Generic)
 
 instance ToJSON MouseButton where
-  toEncoding = genericToEncoding ourAesonOptions
+  toEncoding = genericToEncoding $ ourAesonOptionsPrefix "MouseButton"
 
 instance FromJSON MouseButton where
-  parseJSON = genericParseJSON ourAesonOptions
+  parseJSON = genericParseJSON $ ourAesonOptionsPrefix "MouseButton"
 
 data KeyboardButton
   = KeyboardBackspace
@@ -112,10 +165,10 @@ data KeyboardButton
   deriving (Show, Eq, Bounded, Enum, Generic)
 
 instance ToJSON KeyboardButton where
-  toEncoding = genericToEncoding ourAesonOptions
+  toEncoding = genericToEncoding $ ourAesonOptionsPrefix "Keyboard"
 
 instance FromJSON KeyboardButton where
-  parseJSON = genericParseJSON ourAesonOptions
+  parseJSON = genericParseJSON $ ourAesonOptionsPrefix "Keyboard"
 
 mouseButtonToEvdevKey :: MouseButton -> Key
 mouseButtonToEvdevKey = \case

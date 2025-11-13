@@ -7,6 +7,7 @@ import Control.Monad.Catch (MonadThrow (..))
 import Data.Aeson qualified as Aeson
 import Data.Default (def)
 import Data.List (foldl', isPrefixOf)
+import Data.List.Extra (dropPrefix)
 import Data.List.NonEmpty qualified as NE
 import Data.List.NonEmpty.Extra qualified as NE
 import Data.Ord (Down)
@@ -29,6 +30,12 @@ ourAesonOptions =
   Aeson.defaultOptions
     { Aeson.unwrapUnaryRecords = True,
       Aeson.omitNothingFields = True
+    }
+
+ourAesonOptionsPrefix :: String -> Aeson.Options
+ourAesonOptionsPrefix prefix =
+  ourAesonOptions
+    { Aeson.constructorTagModifier = dropPrefix prefix
     }
 
 -- | Load a widget file, automatically reloading it in development.

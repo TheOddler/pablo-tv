@@ -117,11 +117,13 @@ test-suite pablo-tv-test
         Orphanage
         TestUtils
     build-depends:
-        bytestring
+        aeson
+      , bytestring
       , generic-random
       , pablo-tv
-      , path
       , QuickCheck
       , quickcheck-instances
       , sydtest
       , sydtest-discover
+      , text
+      , unordered-containers

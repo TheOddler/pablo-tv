@@ -3,43 +3,42 @@
 module Orphanage where
 
 import Actions (Action (..), DirOrFile (..), KeyboardButton (..), MouseButton (..))
-import GHC.Generics (Generic)
+import Data.Text as T
+import Directory (DirectoryName (..), DirectoryPath, RootDirectoryLocation, VideoFileName (..), VideoFilePath, videoFileExts)
 import Generic.Random (genericArbitrary, uniform)
 import Mpris qualified
-import Path qualified
-import Test.QuickCheck (Arbitrary (..), elements, listOf)
+import Samba (SmbServer (..), SmbShare (..))
+import Test.QuickCheck (Arbitrary (..), elements, listOf1)
 import Test.QuickCheck.Instances ()
-import TestUtils (forcePath, genDirName, genDirRoot, genFileName)
+import TestUtils (genFileNameWithExt)
 
-deriving instance Generic Action
-
-deriving instance Generic DirOrFile
-
-deriving instance Generic MouseButton
-
-deriving instance Generic KeyboardButton
-
-deriving instance Generic Mpris.MprisAction
-
-instance Arbitrary (Path.Path Path.Abs Path.Dir) where
+instance Arbitrary SmbServer where
   arbitrary = do
-    root <- genDirRoot
-    rest <- listOf genDirName
-    pure $ foldl (Path.</>) root rest
-  shrink a =
-    let parent = Path.parent a
-     in [parent | parent /= a]
+    a <- elements ['0' .. '9']
+    b <- elements ['0' .. '9']
+    pure $ SmbServer $ "192.168.0." ++ [a, b]
 
-instance Arbitrary (Path.Path Path.Abs Path.File) where
+instance Arbitrary SmbShare where
   arbitrary = do
-    root <- arbitrary
-    fileNameNoExt <- genFileName
-    ext <- elements [".avi", ".mp4", ".mkv"]
-    let fileName = forcePath $ Path.addExtension ext fileNameNoExt
-    pure $ root Path.</> fileName
-  shrink a = do
-    dir <- shrink $ Path.parent a
-    pure $ dir Path.</> Path.filename a
+    letters <- listOf1 $ elements ['a' .. 'z']
+    pure $ SmbShare letters
+
+instance Arbitrary DirectoryName where
+  arbitrary = do
+    letters <- listOf1 $ elements ['a' .. 'z']
+    pure $ DirectoryName $ T.pack letters
+
+instance Arbitrary RootDirectoryLocation where
+  arbitrary = genericArbitrary uniform
+
+instance Arbitrary DirectoryPath where
+  arbitrary = genericArbitrary uniform
+
+instance Arbitrary VideoFileName where
+  arbitrary = VideoFileName <$> genFileNameWithExt videoFileExts
+
+instance Arbitrary VideoFilePath where
+  arbitrary = genericArbitrary uniform
 
 instance Arbitrary DirOrFile where
   arbitrary = genericArbitrary uniform

@@ -1,5 +1,3 @@
-{-# LANGUAGE TemplateHaskell #-}
-
 module Mpris where
 
 import Control.Monad.Catch (MonadThrow)
@@ -18,17 +16,18 @@ import DBus
     methodCall,
   )
 import DBus.Client (Client, MatchRule (..), SignalHandler, addMatch, call, connectSession, matchAny)
-import Data.Aeson.TH (deriveJSON)
+import Data.Aeson (FromJSON (..), ToJSON (..), genericParseJSON, genericToEncoding)
 import Data.Int (Int64)
 import Data.List (isPrefixOf)
 import Data.Map qualified as Map
 import Data.Maybe (listToMaybe)
 import Data.String (IsString (..))
 import Directory (VideoFilePath)
+import GHC.Generics (Generic)
 import Logging (LogLevel (..), Logger, putLog)
 import Network.URI (unEscapeString)
 import UnliftIO (MonadIO (..), MonadUnliftIO (..))
-import Util (fail500, ourAesonOptions)
+import Util (fail500, ourAesonOptionsPrefix)
 
 data MprisAction
   = MprisQuit
@@ -42,7 +41,13 @@ data MprisAction
   | MprisBackwardJump
   | MprisGoFullscreen
   | MprisGoWindowed
-  deriving (Show, Eq, Bounded, Enum)
+  deriving (Show, Eq, Bounded, Enum, Generic)
+
+instance ToJSON MprisAction where
+  toEncoding = genericToEncoding $ ourAesonOptionsPrefix "Mpris"
+
+instance FromJSON MprisAction where
+  parseJSON = genericParseJSON $ ourAesonOptionsPrefix "Mpris"
 
 newtype MediaPlayer = MediaPlayer {unMediaPlayer :: BusName}
 
@@ -225,5 +230,3 @@ expectSingleValue = \case
 
 fromVariant2 :: (IsVariant a) => Variant -> Maybe a
 fromVariant2 v = fromVariant v >>= fromVariant
-
-$(deriveJSON ourAesonOptions ''Mpris.MprisAction)

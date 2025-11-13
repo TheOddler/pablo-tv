@@ -1,31 +1,47 @@
 module ActionsSpec where
 
 import Actions
-import Autodocodec (eitherDecodeJSONViaCodec, encodeJSONViaCodec)
+import Data.Aeson (Value, eitherDecode, encode)
 import Data.ByteString.Lazy.Char8 qualified as BS
+import Directory (DirectoryName (..), DirectoryPath (..), RootDirectoryLocation (..))
 import Orphanage ()
 import Test.QuickCheck (property)
 import Test.QuickCheck.Instances ()
 import Test.Syd
-import TestUtils (forceAbsDir)
 
 spec :: Spec
 spec = do
   describe "Decoding from json" $ do
-    mapM_ decodeSpec decodeExamples
+    mapM_ decodeSpec encodingExamples
+
+  describe "Encoding to json" $ do
+    mapM_ encodeSpec encodingExamples
 
   it "can roundtrip JSON" $ property $ \(action :: Action) ->
-    let encoded = encodeJSONViaCodec action
-     in eitherDecodeJSONViaCodec encoded `shouldBe` Right action
+    let encoded = encode action
+     in eitherDecode encoded `shouldBe` Right action
 
 decodeSpec :: (BS.ByteString, Action) -> Spec
 decodeSpec (json, action) =
   it ("can decode " <> BS.unpack json) $
-    eitherDecodeJSONViaCodec json `shouldBe` Right action
+    eitherDecode json `shouldBe` Right action
 
-decodeExamples :: [(BS.ByteString, Action)]
-decodeExamples =
-  [ ( "{\"tag\":\"ClickMouse\", \"button\": \"left\"}",
+encodeSpec :: (BS.ByteString, Action) -> Spec
+encodeSpec (json, action) =
+  it ("can encode " <> BS.unpack json) $ do
+    -- The ordering of fields can differ, so we decode/encode through Value to normalise the examples
+    (jsonValue :: Value) <- case eitherDecode json of
+      Left err -> expectationFailure err
+      Right v -> pure v
+    (actionValue :: Value) <- case eitherDecode (encode action) of
+      Left err -> expectationFailure err
+      Right v -> pure v
+    -- And another encode for nicer error messages
+    encode actionValue `shouldBe` encode jsonValue
+
+encodingExamples :: [(BS.ByteString, Action)]
+encodingExamples =
+  [ ( "{\"tag\":\"ClickMouse\", \"button\": \"Left\"}",
       ActionClickMouse MouseButtonLeft
     ),
     ( "{\"tag\":\"MoveMouse\",\"x\":1,\"y\":2}",
@@ -47,6 +63,12 @@ decodeExamples =
       ActionWrite "w () r |_ |}"
     ),
     ( "{\"tag\":\"PlayPath\",\"path\":\"/path/to/file/or/folder/\"}",
-      ActionPlayPath $ Dir $ forceAbsDir "/path/to/file/or/folder/"
+      ActionPlayPath . Dir $
+        DirectoryPath
+          RootLocalVideos
+          [ DirectoryName "path",
+            DirectoryName "to",
+            DirectoryName "folder"
+          ]
     )
   ]
