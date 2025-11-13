@@ -42,6 +42,7 @@ import Directory
     VideoFileName,
     VideoFilePath (..),
     getDirectoryAtPath,
+    getImageContentType,
     getSubDirAggInfo,
     loadRootsFromDisk,
     niceDirNameT,
@@ -218,12 +219,12 @@ getDirectoryHomeR = do
   defaultLayout title $(widgetFile "directory")
 
 getDirectoryR :: RootDirectoryLocation -> [DirectoryName] -> Handler Html
-getDirectoryR rootType dirNames = do
+getDirectoryR rootLoc dirNames = do
   roots <- liftIO . readPVar =<< getsYesod appRootDirs
   dirNamesNE <- case dirNames of
     [] -> redirect DirectoryHomeR
     f : r -> pure $ f NE.:| r
-  let dirPath = DirectoryPath rootType dirNames
+  let dirPath = DirectoryPath rootLoc dirNames
   let mDir = getDirectoryAtPath roots dirPath
   dir <- case mDir of
     Nothing -> redirect DirectoryHomeR
@@ -254,12 +255,15 @@ getDirectoryR rootType dirNames = do
   defaultLayout title $(widgetFile "directory")
 
 getImageR :: RootDirectoryLocation -> [DirectoryName] -> Handler TypedContent
-getImageR root dirNames = notFound -- TODO
--- runDB (getImageQ absPath) >>= \case
---   Nothing -> notFound
---   Just (imgContentType, imgBytes) -> do
---     addHeader "Cache-Control" "max-age=604800, public" -- Cache 1 week
---     sendResponse (imgContentType, toContent imgBytes)
+getImageR rootLoc dirNames = do
+  roots <- liftIO . readPVar =<< getsYesod appRootDirs
+  let dirPath = DirectoryPath rootLoc dirNames
+  let mImg = getDirectoryAtPath roots dirPath >>= directoryImage
+  case mImg of
+    Nothing -> notFound
+    Just (imgName, imgBytes) -> do
+      addHeader "Cache-Control" "max-age=604800, public" -- Cache 1 week
+      sendResponse (getImageContentType imgName, toContent imgBytes)
 
 getRemoteR :: Handler Html
 getRemoteR = do

@@ -82,8 +82,7 @@
   # Does unexpected things, see
   # https://github.com/NorfairKing/haskell-WAT#real-double
   - name: realToFrac
-    within:
-      SafeMaths
+    within: []
 
   # Constructs rationals, which is either wrong or a bad idea.
   - {name: 'Data.Ratio.%', within: []}
@@ -114,7 +113,8 @@
   - {name: Data.Text.IO.readFile, within: []}
   - {name: Data.Text.IO.Lazy.readFile, within: []}
 
-  - {name: Data.Text.Encoding.decodeUtf8, within: []} # Throws on invalid UTF8
+  - name: Data.Text.Encoding.decodeUtf8  # Throws on invalid UTF8
+    within: SafeConvert
 
   - {name: fromJust, within: [], message: 'Partial'} # Partial
 
@@ -122,8 +122,7 @@
   # > fromIntegral (300 :: Word) :: Word8
   # 44
   - name: fromIntegral
-    within: 
-      - SafeMaths
+    within: SafeConvert
   - {name: fromInteger, within: []}
 
   - name: 'read'

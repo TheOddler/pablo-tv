@@ -34,7 +34,7 @@ import Logging (LogLevel (..), putLog)
 import Mpris qualified
 import Network.WebSockets qualified as WS
 import PVar (modifyPVar_, tryModifyPVar)
-import SafeMaths (int32ToInteger)
+import SafeConvert (int32ToInteger)
 import System.Process (callProcess, readProcess)
 import TVState (TVState (..))
 import Text.Blaze qualified as Blaze

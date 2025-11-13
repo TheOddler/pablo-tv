@@ -5,6 +5,9 @@ import Control.Applicative ((<|>))
 import Control.Monad (forM, when)
 import Control.Monad.Catch (MonadThrow)
 import Data.Aeson (FromJSON (..), FromJSONKey, ToJSON (..), ToJSONKey, eitherDecodeFileStrict, encodeFile, genericParseJSON, genericToEncoding)
+import Data.ByteString qualified as BS
+import Data.ByteString.Base64 qualified as B64
+import Data.ByteString.Char8 qualified as BS8
 import Data.Foldable (foldrM)
 import Data.HashSet qualified as Set
 import Data.List (intercalate, sortBy, (\\))
@@ -14,6 +17,7 @@ import Data.Map.Strict qualified as Map
 import Data.Maybe (isJust, listToMaybe, mapMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
+import Data.Text.Encoding qualified as TE
 import Data.Time (UTCTime)
 import Data.Time.Clock.POSIX (posixSecondsToUTCTime)
 import GHC.Data.Maybe (firstJusts, orElse)
@@ -24,6 +28,7 @@ import GHC.IO.Exception (IOErrorType (..), IOException (..))
 import GHC.Read (Read (..))
 import GHC.Utils.Exception (displayException, tryIO)
 import Logging (LogLevel (..), Logger, putLog)
+import SafeConvert (bsToBase64Text)
 import Samba (SmbServer (..), SmbShare (..))
 import Samba qualified
 import System.Directory (XdgDirectory (..), createDirectoryIfMissing, getHomeDirectory, getModificationTime, getXdgDirectory, listDirectory)
@@ -31,7 +36,7 @@ import System.FilePath (dropTrailingPathSeparator, takeBaseName, takeExtension, 
 import Text.Read (readMaybe)
 import Text.Regex.TDFA ((=~))
 import Util (failE, impossible, logDuration, ourAesonOptions, safeMinimumOn)
-import Yesod (MonadIO (..), PathPiece (..))
+import Yesod (ContentType, MonadIO (..), PathPiece (..), ToContent, typeOctet)
 
 newtype DirectoryName = DirectoryName {unDirectoryName :: Text}
   deriving (Eq, Ord, Generic, PathPiece)
@@ -68,7 +73,7 @@ instance ToJSONKey VideoFileName
 
 instance FromJSONKey VideoFileName
 
-newtype ImageFileName = ImageFileName Text
+newtype ImageFileName = ImageFileName {unImageFileName :: Text}
   deriving (Eq, Generic)
 
 instance ToJSON ImageFileName where
@@ -76,6 +81,29 @@ instance ToJSON ImageFileName where
 
 instance FromJSON ImageFileName where
   parseJSON = genericParseJSON ourAesonOptions
+
+getImageContentType :: ImageFileName -> ContentType
+getImageContentType (ImageFileName imgName) =
+  case takeExtension $ T.unpack imgName of
+    "" -> typeOctet -- What would be the best fallback?
+    ext ->
+      let cleanedExt = lower $
+            case ext of
+              '.' : e -> e
+              e -> e
+       in "image/" <> BS8.pack cleanedExt
+
+newtype ImageFileData = ImageFileData {unImageFileData :: BS.ByteString}
+  deriving (ToContent)
+
+instance ToJSON ImageFileData where
+  toJSON imgData = toJSON $ bsToBase64Text imgData.unImageFileData
+  toEncoding imgData = toEncoding $ bsToBase64Text imgData.unImageFileData
+
+instance FromJSON ImageFileData where
+  parseJSON jsonValue = do
+    t <- parseJSON jsonValue
+    pure $ ImageFileData $ B64.decodeLenient $ TE.encodeUtf8 t
 
 newtype IgnoredFileName = IgnoredFileName Text
 
@@ -92,7 +120,7 @@ instance FromJSON VideoFileData where
   parseJSON = genericParseJSON ourAesonOptions
 
 data DirectoryData = DirectoryData
-  { directoryImage :: Maybe ImageFileName,
+  { directoryImage :: Maybe (ImageFileName, ImageFileData),
     directorySubDirs :: Map.Map DirectoryName DirectoryData,
     directoryVideoFiles :: Map.Map VideoFileName VideoFileData
   }
@@ -458,14 +486,26 @@ updateDirectoryFromDisk dirPath dir = do
 
       -- We only care about the best image, other images ignore, even if there are new ones that aren't the best
       let bestImage = bestImageFile imageGuesses
+          newImageName =
+            case (bestImage, fst <$> dir.directoryImage) of
+              (Nothing, _) -> Nothing
+              (Just i, Nothing) -> Just i
+              (Just i, Just di) | i == di -> Nothing
+              (Just i, Just _) -> Just i
+      newImage <- case newImageName of
+        Nothing -> pure Nothing
+        Just imgName -> do
+          imgFile <- liftIO $ BS.readFile $ absDirPath </> T.unpack imgName.unImageFileName
+          pure $ Just (imgName, ImageFileData imgFile)
+
       -- TODO: If we don't have an image, see if we can download one using TVDB. Or perhaps we do that in a separate function
 
-      pure $ case (updatedSubDirs, updatedVideoFiles, bestImage) of
-        (Nothing, Nothing, _) | bestImage == dir.directoryImage -> DirectoryUnchanged
-        _ ->
-          DirectoryChanged $
+      case (updatedSubDirs, updatedVideoFiles, newImage) of
+        (Nothing, Nothing, Nothing) -> pure DirectoryUnchanged
+        _ -> do
+          pure . DirectoryChanged $
             DirectoryData
-              { directoryImage = bestImage,
+              { directoryImage = newImage,
                 directoryVideoFiles =
                   updatedVideoFiles `orElse` dir.directoryVideoFiles,
                 directorySubDirs =

@@ -7,11 +7,9 @@ import Control.Monad.Catch (MonadThrow (..))
 import Data.Aeson qualified as Aeson
 import Data.Default (def)
 import Data.List (foldl', isPrefixOf)
-import Data.List.Extra (lower)
 import Data.List.NonEmpty qualified as NE
 import Data.List.NonEmpty.Extra qualified as NE
 import Data.Ord (Down)
-import Data.String (fromString)
 import Data.Time (NominalDiffTime, diffUTCTime, getCurrentTime)
 import GHC.Conc (TVar, atomically, readTVar, readTVarIO, retry)
 import GHC.Exception (errorCallException, errorCallWithCallStackException)
@@ -20,7 +18,6 @@ import IsDevelopment (isDevelopment)
 import Language.Haskell.TH.Syntax (Exp, Q)
 import Logging (LogLevel (..), Logger, putLog)
 import Network.Info (IPv4 (..), NetworkInterface (..))
-import System.FilePath (takeExtension)
 import System.Random (RandomGen)
 import System.Random.Shuffle (shuffle')
 import Yesod
@@ -128,16 +125,6 @@ safeMinimumOn scale as = case NE.nonEmpty as of
 
 uncurry5 :: (a -> b -> c -> d -> e -> f) -> (a, b, c, d, e) -> f
 uncurry5 f (a, b, c, d, e) = f a b c d e
-
-getImageContentType :: String -> ContentType
-getImageContentType filePath = case takeExtension filePath of
-  "" -> typeOctet -- What would be the best fallback?
-  ext ->
-    let cleanedExt = lower $
-          case ext of
-            '.' : e -> e
-            e -> e
-     in "image/" <> fromString cleanedExt
 
 logDuration :: (Logger m, MonadIO m) => String -> m a -> m a
 logDuration label action = do
