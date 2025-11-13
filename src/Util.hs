@@ -14,11 +14,11 @@ import Data.Ord (Down)
 import Data.String (fromString)
 import Data.Time (NominalDiffTime, diffUTCTime, getCurrentTime)
 import GHC.Conc (TVar, atomically, readTVar, readTVarIO, retry)
-import GHC.Exception (errorCallWithCallStackException)
+import GHC.Exception (errorCallException, errorCallWithCallStackException)
 import GHC.Stack (HasCallStack, callStack, prettyCallStack, withFrozenCallStack)
 import IsDevelopment (isDevelopment)
 import Language.Haskell.TH.Syntax (Exp, Q)
-import Logging (LogLevel (..), Logger (..))
+import Logging (LogLevel (..), Logger, putLog)
 import Network.Info (IPv4 (..), NetworkInterface (..))
 import System.FilePath (takeExtension)
 import System.Random (RandomGen)
@@ -165,6 +165,16 @@ fail404 msg = do
         prettyCallStack callStack
       ]
   notFound
+
+fail500 :: (Logger m, MonadThrow m, HasCallStack) => String -> m a
+fail500 msg = do
+  putLog Error $
+    concat
+      [ msg,
+        "\n",
+        prettyCallStack callStack
+      ]
+  throwM $ errorCallException msg
 
 failE :: (Logger m, MonadThrow m, HasCallStack, Exception e) => String -> e -> m a
 failE label e = do

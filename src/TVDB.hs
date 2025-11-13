@@ -21,7 +21,7 @@ import Data.Maybe (listToMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding (decodeUtf8Lenient, encodeUtf8)
-import Logging (LogLevel (..), Logger (..))
+import Logging (LogLevel (..), Logger, putLog)
 import Network.HTTP.Client (responseHeaders)
 import Network.HTTP.Req
   ( GET (GET),

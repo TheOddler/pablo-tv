@@ -41,7 +41,7 @@ import Text.Blaze qualified as Blaze
 import Text.Julius (ToJavascript (..))
 import UnliftIO.Exception (catch)
 import Util (fail404, impossible, logDuration, ourAesonOptions)
-import Yesod (getYesod, lift, liftIO)
+import Yesod (MonadIO, getYesod, lift, liftIO)
 import Yesod.WebSockets (WebSocketsT, receiveData)
 
 data DirOrFile
@@ -142,21 +142,21 @@ actionsWebSocket =
       forever $ do
         d <- receiveData
         case eitherDecode d of
-          Left err -> liftIO $ putLog Error $ "Error decoding action: " <> err
+          Left err -> putLog Error $ "Error decoding action: " <> err
           Right action -> lift $ performAction action
 
     errorHandler = \case
       WS.CloseRequest code reason -> do
-        liftIO $ putLog Info $ "Received Websocket Close Request, code: " ++ show code ++ ", reason: " ++ show reason
+        putLog Info $ "Received Websocket Close Request, code: " ++ show code ++ ", reason: " ++ show reason
       WS.ConnectionClosed -> do
-        liftIO $ putLog Info "Websocket closed"
+        putLog Info "Websocket closed"
       err -> do
-        liftIO $ putLog Error $ "Got some websocket error: " ++ displayException err
+        putLog Error $ "Got some websocket error: " ++ displayException err
 
 performAction :: Action -> Handler ()
 performAction action = do
   app <- getYesod
-  liftIO $ putLog Debug $ "Performing action: " <> show action
+  putLog Debug $ "Performing action: " <> show action
   case action of
     ActionClickMouse btn' ->
       let btn = mouseButtonToEvdevKey btn'
@@ -218,9 +218,9 @@ performAction action = do
           absPath
         ]
     ActionMarkAsWatched dirOrFile ->
-      liftIO $ markDirOrFileAsWatched app dirOrFile
+      markDirOrFileAsWatched app dirOrFile
     ActionMarkAsUnwatched dirOrFile ->
-      liftIO $ markDirOrFileAsUnwatched app dirOrFile
+      markDirOrFileAsUnwatched app dirOrFile
     ActionOpenUrlOnTV url ->
       liftIO $ atomically $ do
         tvState <- readTVar app.appTVState
@@ -246,7 +246,7 @@ performAction action = do
       case mUpdatedRoots of
         Nothing -> putLog Warning "Already refreshing"
         Just updatedRoots -> saveRootsToDisk updatedRoots
-    ActionRefreshAllDirectoryData -> liftIO $ do
+    ActionRefreshAllDirectoryData -> do
       -- To prevent spamming this, we only try to update
       -- This action can be slow, but that's fine, Yesod calls are run in their own thread anyway, and that way we have a nice way of letter the frontend know when the refresh is done.
       mUpdatedRoots <- tryModifyPVar app.appRootDirs $ \roots ->
@@ -255,7 +255,7 @@ performAction action = do
         Nothing -> putLog Warning "Already refreshing"
         Just updatedRoots -> saveRootsToDisk updatedRoots
     ActionMedia a ->
-      liftIO $ Mpris.performAction a
+      Mpris.performAction a
   where
     clickKeyCombo keys =
       map (`KeyEvent` Pressed) keys
@@ -268,7 +268,7 @@ performAction action = do
       Dir d -> directoryPathToAbsPath d
       File f -> videoFilePathToAbsPath f
 
-markDirOrFileAsWatched :: App -> DirOrFile -> IO ()
+markDirOrFileAsWatched :: (MonadIO m) => App -> DirOrFile -> m ()
 markDirOrFileAsWatched app dirOrFile = modifyPVar_ app.appRootDirs $ \roots -> do
   let dirPath = case dirOrFile of
         Dir p -> p
@@ -291,7 +291,7 @@ markDirOrFileAsWatched app dirOrFile = modifyPVar_ app.appRootDirs $ \roots -> d
               Map.adjust applyWatched fileName dir.directoryVideoFiles
           }
 
-markDirOrFileAsUnwatched :: App -> DirOrFile -> IO ()
+markDirOrFileAsUnwatched :: (MonadIO m) => App -> DirOrFile -> m ()
 markDirOrFileAsUnwatched app dirOrFile = modifyPVar_ app.appRootDirs $ \roots -> do
   let dirPath = case dirOrFile of
         Dir p -> p

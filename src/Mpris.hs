@@ -2,6 +2,7 @@
 
 module Mpris where
 
+import Control.Monad.Catch (MonadThrow)
 import Control.Monad.Trans.Except (Except, ExceptT (..), runExcept)
 import DBus
   ( BusName,
@@ -24,9 +25,10 @@ import Data.Map qualified as Map
 import Data.Maybe (listToMaybe)
 import Data.String (IsString (..))
 import Directory (VideoFilePath)
-import Logging (LogLevel (..), Logger (..))
+import Logging (LogLevel (..), Logger, putLog)
 import Network.URI (unEscapeString)
-import Util (ourAesonOptions)
+import UnliftIO (MonadIO (..), MonadUnliftIO (..))
+import Util (fail500, ourAesonOptions)
 
 data MprisAction
   = MprisQuit
@@ -47,14 +49,15 @@ newtype MediaPlayer = MediaPlayer {unMediaPlayer :: BusName}
 instance Show MediaPlayer where
   show = formatBusName . unMediaPlayer
 
-allMediaPlayers :: Client -> IO [MediaPlayer]
+allMediaPlayers :: (Logger m, MonadIO m, MonadThrow m) => Client -> m [MediaPlayer]
 allMediaPlayers client = do
   reply <-
-    call
-      client
-      (methodCall "/org/freedesktop/DBus" "org.freedesktop.DBus" "ListNames")
-        { methodCallDestination = Just "org.freedesktop.DBus"
-        }
+    liftIO $
+      call
+        client
+        (methodCall "/org/freedesktop/DBus" "org.freedesktop.DBus" "ListNames")
+          { methodCallDestination = Just "org.freedesktop.DBus"
+          }
   case reply of
     Left err -> do
       putLog Error $ "Error when trying to get all DBus names: " ++ show err
@@ -64,7 +67,7 @@ allMediaPlayers client = do
       let mediaPlayers = filter ("org.mpris.MediaPlayer2" `isPrefixOf`) names
       pure $ MediaPlayer . fromString <$> mediaPlayers
 
-firstMediaPlayer :: Client -> IO (Maybe MediaPlayer)
+firstMediaPlayer :: (Logger m, MonadIO m, MonadThrow m) => Client -> m (Maybe MediaPlayer)
 firstMediaPlayer client = listToMaybe <$> allMediaPlayers client
 
 mprisObject :: ObjectPath
@@ -88,9 +91,9 @@ mprisMethodCall destination interface member body =
 
 -- | This instantly returns, and shouldn't be run in a race.
 -- This is essentially a wrapper around `addMatch` so can be stopped by using the returned SignalHandler.
-mediaListener :: (VideoFilePath -> IO ()) -> IO SignalHandler
+mediaListener :: (Logger m, MonadUnliftIO m) => (VideoFilePath -> m ()) -> m SignalHandler
 mediaListener onFilePlayed = do
-  client <- connectSession
+  client <- liftIO connectSession
 
   -- Add a match rule for PropertiesChanged signals on the Player interface
   let match =
@@ -101,7 +104,7 @@ mediaListener onFilePlayed = do
           }
 
   -- Register signal handler
-  addMatch client match $ \signal -> do
+  withRunInIO $ \runInIO -> liftIO $ addMatch client match $ \signal -> do
     let justOrErr :: String -> Maybe a -> Except String a
         justOrErr err =
           ExceptT . \case
@@ -135,15 +138,15 @@ mediaListener onFilePlayed = do
                       undefined path
                     _ -> Nothing
               justOrErr "file path failed parsing" mFile
-         in case errOrPath of
+         in runInIO $ case errOrPath of
               Left err -> putLog Debug $ "Ignoring property changes because " ++ err ++ "; " ++ show body
               Right path -> onFilePlayed path
       _ ->
-        putLog Error $ "Incorrect body shape for PropertiesChanged signal: " ++ show body
+        runInIO $ putLog Error $ "Incorrect body shape for PropertiesChanged signal: " ++ show body
 
-performAction :: MprisAction -> IO ()
+performAction :: (Logger m, MonadIO m, MonadThrow m) => MprisAction -> m ()
 performAction action = do
-  client <- connectSession
+  client <- liftIO connectSession
   -- Request a list of connected clients from the bus
   mPlayer <- firstMediaPlayer client
   case mPlayer of
@@ -188,7 +191,7 @@ performAction action = do
             MprisGoFullscreen -> baseSetProp "Fullscreen" True
             MprisGoWindowed -> baseSetProp "Fullscreen" False
 
-      errOrResult <- call client methodCall'
+      errOrResult <- liftIO $ call client methodCall'
       case errOrResult of
         Right result ->
           putLog Info $
@@ -212,13 +215,13 @@ performAction action = do
               ]
 
 -- | Some helpers to parse dbus replies
-expectSingleValue :: (MonadFail m, IsVariant a) => [Variant] -> m a
+expectSingleValue :: (MonadThrow m, Logger m, IsVariant a) => [Variant] -> m a
 expectSingleValue = \case
-  [] -> fail "Expected single value, but got none"
+  [] -> fail500 "Expected single value, but got none"
   [val] -> case fromVariant val of
-    Nothing -> fail "Failed parsing single variant"
+    Nothing -> fail500 "Failed parsing single variant"
     Just a -> pure a
-  _ -> fail "Expected single value, but got multiple"
+  _ -> fail500 "Expected single value, but got multiple"
 
 fromVariant2 :: (IsVariant a) => Variant -> Maybe a
 fromVariant2 v = fromVariant v >>= fromVariant

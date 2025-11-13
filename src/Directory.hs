@@ -370,15 +370,14 @@ saveRootsToDisk roots = logDuration "Saved roots to disk" $ do
     createDirectoryIfMissing True memoryDir
     encodeFile (memoryDir </> memoryFileName) roots
 
-loadRootsFromDisk :: IO (Maybe RootDirectories)
+loadRootsFromDisk :: (Logger m, MonadIO m) => m (Maybe RootDirectories)
 loadRootsFromDisk = do
   memoryDir <- getMemoryFileDir
   let memoryFile = memoryDir </> memoryFileName
-  rootsOrErr <-
-    logDuration
-      "Loaded roots from disk"
-      (eitherDecodeFileStrict memoryFile)
-      `catchAny` \e -> pure $ Left $ displayException e
+  let safeDecode =
+        eitherDecodeFileStrict memoryFile
+          `catchAny` \e -> pure $ Left $ displayException e
+  rootsOrErr <- logDuration "Loaded roots from disk" $ liftIO safeDecode
   case rootsOrErr of
     Right roots -> pure $ Just roots
     Left err -> do

@@ -64,7 +64,7 @@ import Foundation
 import GHC.Conc (newTVarIO)
 import GHC.Utils.Misc (sortWith)
 import IsDevelopment (isDevelopment)
-import Logging (LogLevel (..), putLog, runLoggingT)
+import Logging (LogLevel (..), Logger, putLog, putLogIO, runLoggerT)
 import Mpris (MprisAction (..), mediaListener)
 import Network.Info (NetworkInterface (..), getNetworkInterfaces)
 import Network.Wai.Handler.Warp (run)
@@ -83,7 +83,6 @@ import Util
     widgetFile,
   )
 import Yesod hiding (defaultLayout, replace)
-import Yesod.Core.Types (unHandlerFor)
 import Yesod.WebSockets (race_, webSockets)
 
 mkYesodDispatch "App" resourcesApp
@@ -160,7 +159,7 @@ postHomeR :: Handler ()
 postHomeR =
   parseCheckJsonBody >>= \case
     Aeson.Error s -> do
-      liftIO $ putLog Error $ "Failed parsing action: " ++ s
+      putLog Error $ "Failed parsing action: " ++ s
       invalidArgs [Text.pack s]
     Aeson.Success action -> do
       performAction action
@@ -283,7 +282,7 @@ getAllIPsR = do
         then ""
         else show a
 
-mountAllSambaShares :: RootDirectories -> IO ()
+mountAllSambaShares :: (MonadIO m, Logger m) => RootDirectories -> m ()
 mountAllSambaShares roots = do
   let sambaShares =
         mapMaybe
@@ -308,11 +307,6 @@ main = do
         Nothing -> Nothing
         Just str | all isSpace str -> Nothing
         Just str -> Just $ TVDBApiKey str
-  tvdbToken <- case tvdbApiKey of
-    Nothing -> pure Nothing
-    Just key -> getToken key
-  when (isNothing tvdbToken) $
-    putLog Info "No tvdb token found, so running in read-only mode."
 
   inputDevice <- mkInputDevice
   tvState <- newTVarIO startingTVState
@@ -320,26 +314,33 @@ main = do
   let port = 8080
   let (homePath, _params) = renderRoute HomeR
   let url = "http://localhost:" ++ show port ++ "/" ++ unpack (Text.intercalate "/" homePath)
-  putLog Info $ "Running on port " ++ show port ++ " - " ++ url
-  putLog Info $ "Development mode: " ++ show isDevelopment
 
   -- Only open the browser automatically in production because it;s annoying in
   -- development as it opens a new tab every time the server restarts.
   when (not isDevelopment) $ do
     callProcess "xdg-open" [url]
 
-  mRootDirs <- loadRootsFromDisk
-  let emptyRootData = RootDirectoryData Map.empty Map.empty
-  let rootDirsDefault =
-        Map.fromList
-          [ (RootLocalVideos, emptyRootData),
-            -- TODO: I'll have to add an interface somewhere to add these
-            (RootSamba (SmbServer "192.168.0.99") (SmbShare "videos"), emptyRootData)
-          ]
-  let rootDirs = fromMaybe rootDirsDefault mRootDirs
-  rootDirsPVar <- newPVar rootDirs
+  runLoggerT $ do
+    mRootDirs <- loadRootsFromDisk
+    let emptyRootData = RootDirectoryData Map.empty Map.empty
+    let rootDirsDefault =
+          Map.fromList
+            [ (RootLocalVideos, emptyRootData),
+              -- TODO: I'll have to add an interface somewhere to add these
+              (RootSamba (SmbServer "192.168.0.99") (SmbShare "videos"), emptyRootData)
+            ]
+    let rootDirs = fromMaybe rootDirsDefault mRootDirs
+    rootDirsPVar <- newPVar rootDirs
 
-  runLoggingT $ liftIO $ do
+    tvdbToken <- case tvdbApiKey of
+      Nothing -> pure Nothing
+      Just key -> getToken key
+    when (isNothing tvdbToken) $
+      putLogIO Info "No tvdb token found, so running in read-only mode."
+
+    putLog Info $ "Running on port " ++ show port ++ " - " ++ url
+    putLog Info $ "Development mode: " ++ show isDevelopment
+
     -- Open samba shares. TODO: Make some way of checking and re-mounting the broken ones at runtime
     mountAllSambaShares rootDirs
 
@@ -347,6 +348,7 @@ main = do
     let app =
           App
             { appPort = port,
+              appMinLogLevel = Info,
               appTVDBToken = tvdbToken,
               appInputDevice = inputDevice,
               appTVState = tvState,
@@ -362,6 +364,6 @@ main = do
       markDirOrFileAsWatched app $ File path
 
     putLog Info "Starting server..."
-    raceAll [appThread]
+    liftIO $ raceAll [appThread]
 
-  putLog Debug "Server quit."
+    putLog Debug "Server quit."

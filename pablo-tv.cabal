@@ -72,7 +72,6 @@ library
       , ghc
       , http-client
       , modern-uri
-      , monad-logger
       , natural-sort
       , network-info
       , network-uri
@@ -96,7 +95,6 @@ library
       , warp
       , websockets
       , yesod
-      , yesod-core
       , yesod-static
       , yesod-websockets
 

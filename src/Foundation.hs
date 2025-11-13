@@ -16,19 +16,20 @@ import Evdev.Uinput (Device)
 import GHC.Conc (TVar)
 import GHC.Utils.Misc (sortWith)
 import IsDevelopment (isDevelopment)
-import Logging (Logger (..))
+import Logging (LogLevel (..), Logger (..), putLogIO)
 import Network.Info (getNetworkInterfaces)
 import PVar (PVar)
 import TVDB (TVDBToken)
 import TVState (TVState)
 import Text.Hamlet (hamletFile)
 import Util (networkInterfaceWorthiness, showIpV4OrV6WithPort, widgetFile)
-import Yesod hiding (defaultLayout, replace)
+import Yesod hiding (LogLevel, defaultLayout, replace)
 import Yesod qualified
 import Yesod.EmbeddedStatic
 
 data App = App
   { appPort :: Int,
+    appMinLogLevel :: LogLevel,
     appTVDBToken :: Maybe TVDBToken,
     appInputDevice :: Device,
     appGetStatic :: EmbeddedStatic,
@@ -120,4 +121,8 @@ defaultLayout title widget = Yesod.defaultLayout $ do
   widget
 
 instance Logger Handler where
-  putLogBS l = liftIO . putLogBS l
+  putLogBS lvl msg = do
+    minLogLevel <- getsYesod appMinLogLevel
+    if minLogLevel < lvl
+      then pure ()
+      else putLogIO lvl msg
