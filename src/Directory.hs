@@ -8,6 +8,7 @@ import Data.Aeson (FromJSON (..), FromJSONKey, ToJSON (..), ToJSONKey, eitherDec
 import Data.ByteString qualified as BS
 import Data.ByteString.Base64 qualified as B64
 import Data.ByteString.Char8 qualified as BS8
+import Data.ByteString.UTF8 qualified as BS
 import Data.Foldable (foldrM)
 import Data.HashSet qualified as Set
 import Data.List (intercalate, sortBy, (\\))
@@ -27,6 +28,7 @@ import GHC.IO (catchAny)
 import GHC.IO.Exception (IOErrorType (..), IOException (..))
 import GHC.Read (Read (..))
 import GHC.Utils.Exception (displayException, tryIO)
+import ImageScraper (ImageSearchFailure (..), tryFindImage)
 import Logging (LogLevel (..), Logger, putLog)
 import SafeConvert (bsToBase64Text)
 import Samba (SmbServer (..), SmbShare (..))
@@ -92,6 +94,12 @@ getImageContentType (ImageFileName imgName) =
               '.' : e -> e
               e -> e
        in "image/" <> BS8.pack cleanedExt
+
+imageFileNameForContentType :: ContentType -> ImageFileName
+imageFileNameForContentType ct = ImageFileName . T.pack $
+  case BS.toString ct of
+    'i' : 'm' : 'a' : 'g' : 'e' : '/' : ext -> "poster." ++ ext
+    _ -> "poster.jpg"
 
 newtype ImageFileData = ImageFileData {unImageFileData :: BS.ByteString}
   deriving (ToContent)
@@ -417,100 +425,135 @@ loadRootsFromDisk = do
 -- It leaves watched or added information for files in tact.
 updateDirectoryFromDisk :: (MonadIO m, MonadThrow m, Logger m) => DirectoryPath -> DirectoryData -> m DirectoryUpdateResult
 updateDirectoryFromDisk dirPath dir = do
-  absDirPath <- directoryPathToAbsPath dirPath
-  (namesOrErr :: Either IOError [FilePath]) <- liftIO $ tryIO $ listDirectory absDirPath
-  case namesOrErr of
-    Left err | err.ioe_type == InappropriateType -> do
-      putLog Warning $ "What we thought was a directory turned out not to be: " ++ absDirPath
-      pure DirectoryNotADirectory
-    Left err | err.ioe_type == NoSuchThing && null dirPath.directoryPathNames -> do
-      putLog Warning $ "Root folder not found: " ++ absDirPath
-      pure DirectoryNotFoundRoot
-    Left err -> do
-      failE ("Updating directory " ++ absDirPath) err
-    Right names -> do
-      let typeGuesses = guessType <$> names
-      let (subDirGuesses, videoGuesses, imageGuesses, _ignored) = partitionPathTypes typeGuesses
-      -- Recursively check for directory updates
-      subDirUpdates <- forM subDirGuesses $ \dirName -> do
-        let knownDir = Map.lookup dirName dir.directorySubDirs
-        let newDir = DirectoryData Nothing Map.empty Map.empty
-        let fullPath = addSubDir dirPath dirName
-        upd <- updateDirectoryFromDisk fullPath $ knownDir `orElse` newDir
-        pure (dirName, upd)
-      (unchanged, changed, notDirs) <-
-        foldrM
-          ( \(name, upd) (un, ch, nd) -> case upd of
-              DirectoryUnchanged -> pure (name : un, ch, nd)
-              DirectoryChanged d -> pure (un, (name, d) : ch, nd)
-              DirectoryNotADirectory -> pure (un, ch, name : nd)
-              DirectoryNotFoundRoot -> impossible "This should only happen on roots, and thus should be impossible here."
-          )
-          ([], [], [])
-          subDirUpdates
-      let actualSubDirs = subDirGuesses \\ notDirs
-      let noLongerExist = Map.keys dir.directorySubDirs \\ actualSubDirs
-      let updatedSubDirs :: Maybe (Map.Map DirectoryName DirectoryData)
-          updatedSubDirs = case (unchanged, changed, noLongerExist) of
-            (_, [], []) -> Nothing -- Nothing indicates no changes were found
-            _ -> do
-              -- Step 1: Remove dirs that that no longer exist
-              let step1 = foldr Map.delete dir.directorySubDirs noLongerExist
-              -- Step 2: Update the updated dirs (insert overwrites)
-              let step2 = foldr (uncurry Map.insert) step1 changed
-              Just step2
+  dirAbsPath <- directoryPathToAbsPath dirPath
+  logDuration ("Updated directory " ++ dirAbsPath) $ do
+    absDirPath <- directoryPathToAbsPath dirPath
+    (namesOrErr :: Either IOError [FilePath]) <- liftIO $ tryIO $ listDirectory absDirPath
+    case namesOrErr of
+      Left err | err.ioe_type == InappropriateType -> do
+        putLog Warning $ "What we thought was a directory turned out not to be: " ++ absDirPath
+        pure DirectoryNotADirectory
+      Left err | err.ioe_type == NoSuchThing && null dirPath.directoryPathNames -> do
+        putLog Warning $ "Root folder not found: " ++ absDirPath
+        pure DirectoryNotFoundRoot
+      Left err -> do
+        failE ("Updating directory " ++ absDirPath) err
+      Right names -> do
+        let typeGuesses = guessType <$> names
+        let (subDirGuesses, videoGuesses, imageGuesses, _ignored) = partitionPathTypes typeGuesses
+        -- Recursively check for directory updates
+        subDirUpdates <- forM subDirGuesses $ \subDirName -> do
+          let knownDir = Map.lookup subDirName dir.directorySubDirs
+          let newDir = DirectoryData Nothing Map.empty Map.empty
+          let fullPath = addSubDir dirPath subDirName
+          upd <- updateDirectoryFromDisk fullPath $ knownDir `orElse` newDir
+          pure (subDirName, upd)
+        (unchanged, changed, notDirs) <-
+          foldrM
+            ( \(name, upd) (un, ch, nd) -> case upd of
+                DirectoryUnchanged -> pure (name : un, ch, nd)
+                DirectoryChanged d -> pure (un, (name, d) : ch, nd)
+                DirectoryNotADirectory -> pure (un, ch, name : nd)
+                DirectoryNotFoundRoot -> impossible "This should only happen on roots, and thus should be impossible here."
+            )
+            ([], [], [])
+            subDirUpdates
+        let actualSubDirs = subDirGuesses \\ notDirs
+        let noLongerExist = Map.keys dir.directorySubDirs \\ actualSubDirs
+        let updatedSubDirs :: Maybe (Map.Map DirectoryName DirectoryData)
+            updatedSubDirs = case (unchanged, changed, noLongerExist) of
+              (_, [], []) -> Nothing -- Nothing indicates no changes were found
+              _ -> do
+                -- Step 1: Remove dirs that that no longer exist
+                let step1 = foldr Map.delete dir.directorySubDirs noLongerExist
+                -- Step 2: Update the updated dirs (insert overwrites)
+                let step2 = foldr (uncurry Map.insert) step1 changed
+                Just step2
 
-      -- Check if there are any new files or remove files
-      -- Files we already knew about, we won't check again so we don't do unneeded IO
-      let knownVideoNames = Map.keys dir.directoryVideoFiles
-      let newVideoNames = videoGuesses \\ knownVideoNames
-      let removedVideoNames = knownVideoNames \\ videoGuesses
-      updatedVideoFiles <- case (newVideoNames, removedVideoNames) of
-        ([], []) -> pure Nothing
-        _ -> do
-          -- Step 1: Remove files that no longer exist
-          let step1 = foldr Map.delete dir.directoryVideoFiles removedVideoNames
-          -- Step 2: Add new videos
-          newVideos <- forM newVideoNames $ \newVideoName -> do
-            let fullFilePath = absDirPath ++ "/" ++ T.unpack newVideoName.unVideoFileName
-            modTime <- liftIO $ getModificationTime fullFilePath
-            pure
-              ( newVideoName,
-                VideoFileData
-                  { videoFileAdded = modTime,
-                    videoFileWatched = Nothing
-                  }
-              )
-          let step2 = foldr (uncurry Map.insert) step1 newVideos
-          pure $ Just step2
+        -- Check if there are any new files or remove files
+        -- Files we already knew about, we won't check again so we don't do unneeded IO
+        let knownVideoNames = Map.keys dir.directoryVideoFiles
+        let newVideoNames = videoGuesses \\ knownVideoNames
+        let removedVideoNames = knownVideoNames \\ videoGuesses
+        updatedVideoFiles <- case (newVideoNames, removedVideoNames) of
+          ([], []) -> pure Nothing
+          _ -> do
+            -- Step 1: Remove files that no longer exist
+            let step1 = foldr Map.delete dir.directoryVideoFiles removedVideoNames
+            -- Step 2: Add new videos
+            newVideos <- forM newVideoNames $ \newVideoName -> do
+              let fullFilePath = absDirPath ++ "/" ++ T.unpack newVideoName.unVideoFileName
+              modTime <- liftIO $ getModificationTime fullFilePath
+              pure
+                ( newVideoName,
+                  VideoFileData
+                    { videoFileAdded = modTime,
+                      videoFileWatched = Nothing
+                    }
+                )
+            let step2 = foldr (uncurry Map.insert) step1 newVideos
+            pure $ Just step2
 
-      -- We only care about the best image, other images ignore, even if there are new ones that aren't the best
-      let bestImage = bestImageFile imageGuesses
-          newImageName =
-            case (bestImage, fst <$> dir.directoryImage) of
-              (Nothing, _) -> Nothing
-              (Just i, Nothing) -> Just i
-              (Just i, Just di) | i == di -> Nothing
-              (Just i, Just _) -> Just i
-      newImage <- case newImageName of
-        Nothing -> pure Nothing
-        Just imgName -> do
-          imgFile <- liftIO $ BS.readFile $ absDirPath </> T.unpack imgName.unImageFileName
-          pure $ Just (imgName, ImageFileData imgFile)
+        -- We only care about the best image, other images ignore, even if there are new ones that aren't the best
+        let diskImageName = bestImageFile imageGuesses
+            currentImageName = fst <$> dir.directoryImage
+            dirName = case NE.nonEmpty dirPath.directoryPathNames of
+              Nothing -> rootDirectoryLocationName dirPath.directoryPathRoot
+              Just namesNE -> NE.last namesNE
+            dirNameStr = T.unpack dirName.unDirectoryName
 
-      -- TODO: If we don't have an image, see if we can download one using TVDB. Or perhaps we do that in a separate function
+            getImageFromDisk imgName = do
+              putLog Info $ "Getting image from disk for: " ++ dirNameStr
+              imgFile <- liftIO $ BS.readFile $ absDirPath </> dirNameStr
+              pure (imgName, ImageFileData imgFile)
 
-      case (updatedSubDirs, updatedVideoFiles, newImage) of
-        (Nothing, Nothing, Nothing) -> pure DirectoryUnchanged
-        _ -> do
-          pure . DirectoryChanged $
-            DirectoryData
-              { directoryImage = newImage,
-                directoryVideoFiles =
-                  updatedVideoFiles `orElse` dir.directoryVideoFiles,
-                directorySubDirs =
-                  updatedSubDirs `orElse` dir.directorySubDirs
-              }
+            imgFindingErr msg = "Failed finding image for " ++ dirAbsPath ++ ": " ++ msg
+            getImageFromWeb = do
+              mImg <- tryFindImage dirName.unDirectoryName
+              case mImg of
+                Left ImageSearchFailedScraping -> do
+                  putLog Warning $ imgFindingErr "web scraping unsuccessful"
+                  pure Nothing
+                Left (ImageSearchDownloadFailed err) -> do
+                  putLog Warning $ imgFindingErr err
+                  pure Nothing
+                Right (contentType, img) -> do
+                  putLog Info $ "Downloaded image for: " ++ dirNameStr
+                  pure $ Just (imageFileNameForContentType contentType, ImageFileData img)
+        newImage <- case (currentImageName, diskImageName) of
+          (Nothing, Just diskImg) ->
+            -- We currently don't know about an image, but there's one on disk, use that.
+            Just <$> getImageFromDisk diskImg
+          (Just img, Just diskImg)
+            | img /= diskImg ->
+                -- The image we know about is different from the one on disk, update it!
+                Just <$> getImageFromDisk diskImg
+          (Just _img, Just _diskImg) ->
+            -- The image we know about is the same as on disk, so no need to update, save some IO
+            pure Nothing
+          (Just _img, Nothing) ->
+            -- We have an image already, but none on disk. Just keep it, we probably downloaded it previously.
+            pure Nothing
+          (Nothing, Nothing)
+            | any isSeasonDir dirPath.directoryPathNames
+                || null dirPath.directoryPathNames ->
+                -- Do nothing for season dirs or sub-dirs of a season (such as possibly subs folders), otherwise we try and search for "Season X" a lot
+                pure Nothing
+          (Nothing, Nothing) ->
+            -- Nothing known, nothing on disk, try and download one
+            getImageFromWeb
+
+        case (updatedSubDirs, updatedVideoFiles, newImage) of
+          (Nothing, Nothing, Nothing) -> pure DirectoryUnchanged
+          _ -> do
+            pure . DirectoryChanged $
+              DirectoryData
+                { directoryImage = newImage,
+                  directoryVideoFiles =
+                    updatedVideoFiles `orElse` dir.directoryVideoFiles,
+                  directorySubDirs =
+                    updatedSubDirs `orElse` dir.directorySubDirs
+                }
 
 -- Agg data
 data AggDirInfo = AggDirInfo
@@ -598,6 +641,9 @@ expect3Ints = \case
   [a, b, c] ->
     (,,) <$> readInt a <*> readInt b <*> readInt c
   _ -> Nothing
+
+isSeasonDir :: DirectoryName -> Bool
+isSeasonDir = isJust . seasonFromDir
 
 seasonFromDir :: DirectoryName -> Maybe Int
 seasonFromDir (DirectoryName dir) =

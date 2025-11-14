@@ -123,6 +123,5 @@ defaultLayout title widget = Yesod.defaultLayout $ do
 instance Logger Handler where
   putLogBS lvl msg = do
     minLogLevel <- getsYesod appMinLogLevel
-    if minLogLevel < lvl
-      then pure ()
-      else putLogIO lvl msg
+    when (lvl >= minLogLevel) $
+      putLogIO lvl msg

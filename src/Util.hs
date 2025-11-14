@@ -130,9 +130,6 @@ safeMinimumOn scale as = case NE.nonEmpty as of
   Nothing -> Nothing
   Just neA -> Just $ NE.minimumOn1 scale neA
 
-uncurry5 :: (a -> b -> c -> d -> e -> f) -> (a, b, c, d, e) -> f
-uncurry5 f (a, b, c, d, e) = f a b c d e
-
 logDuration :: (Logger m, MonadIO m) => String -> m a -> m a
 logDuration label action = do
   (result, duration) <- withDuration action

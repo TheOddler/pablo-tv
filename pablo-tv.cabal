@@ -44,6 +44,7 @@ library
         Actions
         Directory
         Foundation
+        ImageScraper
         IsDevelopment
         LibMain
         Logging
@@ -72,6 +73,7 @@ library
       , filepath
       , ghc
       , http-client
+      , http-types
       , modern-uri
       , natural-sort
       , network-info
@@ -82,6 +84,7 @@ library
       , random-shuffle
       , regex-tdfa
       , req
+      , scalpel
       , scientific
       , shakespeare
       , stm
