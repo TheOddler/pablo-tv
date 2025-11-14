@@ -15,6 +15,7 @@ import Actions
     performAction,
   )
 import Control.Monad (when)
+import Control.Monad.Trans.Reader (ask)
 import Data.Aeson qualified as Aeson
 import Data.Char (isSpace)
 import Data.List.Extra (intercalate, notNull)
@@ -61,7 +62,7 @@ import Foundation
 import GHC.Conc (newTVarIO)
 import GHC.Utils.Misc (sortWith)
 import IsDevelopment (isDevelopment)
-import Logging (LogLevel (..), Logger, putLog, runLoggerT)
+import Logging (LogLevel (..), Logger, LoggerT (..), putLog, runLoggerT)
 import Mpris (MprisAction (..), mediaListener)
 import Network.Info (NetworkInterface (..), getNetworkInterfaces)
 import Network.Wai.Handler.Warp (run)
@@ -349,11 +350,14 @@ main = do
     -- Open samba shares. TODO: Make some way of checking and re-mounting the broken ones at runtime
     mountAllSambaShares rootDirs
 
+    -- Get the log func
+    logFunc <- LoggerT ask
+
     -- The thread for the app
     let app =
           App
             { appPort = port,
-              appMinLogLevel = minLogLevel,
+              appLogFunc = logFunc,
               appTVDBToken = tvdbToken,
               appInputDevice = inputDevice,
               appTVState = tvState,

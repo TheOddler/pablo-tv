@@ -1,4 +1,12 @@
-module Logging where
+module Logging
+  ( Logger (..),
+    LogFunc,
+    LogLevel (..),
+    LoggerT (..),
+    putLog,
+    runLoggerT,
+  )
+where
 
 import Control.Monad (when)
 import Control.Monad.IO.Class (MonadIO, liftIO)

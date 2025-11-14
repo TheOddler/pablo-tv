@@ -16,7 +16,7 @@ import Evdev.Uinput (Device)
 import GHC.Conc (TVar)
 import GHC.Utils.Misc (sortWith)
 import IsDevelopment (isDevelopment)
-import Logging (LogLevel (..), Logger (..), putLogWithMinLvlIO)
+import Logging (LogFunc, Logger (..))
 import Network.Info (getNetworkInterfaces)
 import PVar (PVar)
 import TVDB (TVDBToken)
@@ -29,7 +29,7 @@ import Yesod.EmbeddedStatic
 
 data App = App
   { appPort :: Int,
-    appMinLogLevel :: LogLevel,
+    appLogFunc :: LogFunc IO,
     appTVDBToken :: Maybe TVDBToken,
     appInputDevice :: Device,
     appGetStatic :: EmbeddedStatic,
@@ -122,5 +122,5 @@ defaultLayout title widget = Yesod.defaultLayout $ do
 
 instance Logger Handler where
   putLogBS lvl msg = do
-    minLogLevel <- getsYesod appMinLogLevel
-    putLogWithMinLvlIO minLogLevel lvl msg
+    logFunc <- getsYesod appLogFunc
+    liftIO $ logFunc lvl msg
