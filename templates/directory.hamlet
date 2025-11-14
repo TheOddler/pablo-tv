@@ -1,5 +1,5 @@
 $maybe imagePath <- imagePath
-  <img src=@{ImageR imagePath.directoryPathRoot imagePath.directoryPathNames} alt="🖼️ Missing poster ☹️" class="header" onerror="this.style.display = 'none'">
+  <img src=@{ImageR imagePath.directoryPathRoot imagePath.directoryPathNames} alt="Poster" class="header" onerror="this.style.display = 'none'">
 <h1>#{title}
 
 <div class="section">

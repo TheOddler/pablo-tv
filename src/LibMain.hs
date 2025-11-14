@@ -41,6 +41,7 @@ import Directory
     VideoFileData (..),
     VideoFileName,
     VideoFilePath (..),
+    findDirWithImageFor,
     getDirectoryAtPath,
     getImageContentType,
     getSubDirAggInfo,
@@ -242,7 +243,7 @@ getDirectoryR rootLoc dirNames = do
           )
           (Map.toList dir.directoryVideoFiles)
 
-  let imagePath = if isJust dir.directoryImage then Just dirPath else Nothing
+  let imagePath = findDirWithImageFor roots dirPath
   let playAllAction = Just $ ActionPlayPath $ Dir dirPath
   let markAllWatchedAction = Just $ ActionMarkAsWatched $ Dir dirPath
   let markAllUnwatchedAction = Just $ ActionMarkAsUnwatched $ Dir dirPath
@@ -258,6 +259,9 @@ getImageR :: RootDirectoryLocation -> [DirectoryName] -> Handler TypedContent
 getImageR rootLoc dirNames = do
   roots <- liftIO . readPVar =<< getsYesod appRootDirs
   let dirPath = DirectoryPath rootLoc dirNames
+  -- We find the directory with the image for a path in the directory endpoint,
+  -- so here we just have to check the directory itself, not its parents.
+  -- This makes sure that the browser gets a consistent path and can do better caching.
   let mImg = getDirectoryAtPath roots dirPath >>= directoryImage
   case mImg of
     Nothing -> notFound
