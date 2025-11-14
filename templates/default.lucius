@@ -114,6 +114,11 @@ pre {
   text-wrap: wrap;
 }
 
+.subTitle {
+  font-size: 80%;
+  opacity: 0.5;
+}
+
 .grow {
   flex-grow: 1;
 }

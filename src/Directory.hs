@@ -34,14 +34,15 @@ import SafeConvert (bsToBase64Text)
 import Samba (SmbServer (..), SmbShare (..))
 import Samba qualified
 import System.Directory (XdgDirectory (..), createDirectoryIfMissing, getHomeDirectory, getModificationTime, getXdgDirectory, listDirectory)
-import System.FilePath (dropTrailingPathSeparator, takeBaseName, takeExtension, (</>))
+import System.FilePath (takeBaseName, takeExtension, (</>))
+import Text.Blaze (ToMarkup)
 import Text.Read (readMaybe)
 import Text.Regex.TDFA ((=~))
 import Util (failE, impossible, logDuration, ourAesonOptions, safeMinimumOn)
 import Yesod (ContentType, MonadIO (..), PathPiece (..), ToContent, typeOctet)
 
 newtype DirectoryName = DirectoryName {unDirectoryName :: Text}
-  deriving (Eq, Ord, Generic, PathPiece)
+  deriving (Eq, Ord, Generic, PathPiece, ToMarkup)
 
 instance ToJSON DirectoryName where
   toEncoding = genericToEncoding ourAesonOptions
@@ -716,11 +717,8 @@ episodeInfoFromFile (VideoFileName file) =
 
 splitTitleFromDir :: DirectoryName -> (Text, Text)
 splitTitleFromDir dirName =
-  let (title, rest) = T.breakOn "(" $ niceDirNameT dirName
+  let (title, rest) = T.breakOn "(" dirName.unDirectoryName
    in (T.strip title, T.strip rest)
-
-niceDirNameT :: DirectoryName -> Text
-niceDirNameT (DirectoryName dir) = T.pack $ dropTrailingPathSeparator $ T.unpack dir
 
 niceFileNameT :: VideoFileName -> Text
 niceFileNameT (VideoFileName file) =

@@ -41,10 +41,10 @@ import Directory
     getImageContentType,
     getSubDirAggInfo,
     loadRootsFromDisk,
-    niceDirNameT,
     niceFileNameT,
     rootDirectoryAsDirectory,
     rootDirectoryPath,
+    splitTitleFromDir,
     videoFilePath,
   )
 import Foundation
@@ -212,6 +212,7 @@ getDirectoryHomeR = do
             ActionRefreshAllDirectoryData
           )
   let title = "Videos"
+  let subTitle = "" :: Text
   defaultLayout title $(widgetFile "directory")
 
 getDirectoryR :: RootDirectoryLocation -> [DirectoryName] -> Handler Html
@@ -247,8 +248,8 @@ getDirectoryR rootLoc dirNames = do
           ( "Refresh this directory" :: String,
             ActionRefreshDirectoryData dirPath
           )
-  let title = toHtml $ niceDirNameT $ NE.last dirNamesNE
-  defaultLayout title $(widgetFile "directory")
+  let (title, subTitle) = splitTitleFromDir $ NE.last dirNamesNE
+  defaultLayout (toHtml title) $(widgetFile "directory")
 
 getImageR :: RootDirectoryLocation -> [DirectoryName] -> Handler TypedContent
 getImageR rootLoc dirNames = do

@@ -1,6 +1,7 @@
 $maybe imagePath <- imagePath
   <img src=@{ImageR imagePath.directoryPathRoot imagePath.directoryPathNames} alt="Poster" class="header" onerror="this.style.display = 'none'">
-<h1>#{title}
+<h1>#{title} 
+  <span class="subTitle">#{subTitle}
 
 <div class="section">
   $if (not $ null files)
@@ -46,7 +47,7 @@ $maybe imagePath <- imagePath
       <div class="row #{watchedClassDir dir}"> 
         <a href=@{DirectoryR dir.aggDirPath.directoryPathRoot dir.aggDirPath.directoryPathNames } class="name">
           <i class="fa-regular fa-folder-open">
-          <span>#{niceDirNameT $ aggDirName dir}
+          <span>#{dir.aggDirName}
         $if isWatchedDir dir
           <i class="fa-solid fa-check">
         $else
