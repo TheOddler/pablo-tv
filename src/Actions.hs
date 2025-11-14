@@ -200,9 +200,9 @@ actionsWebSocket =
 
     errorHandler = \case
       WS.CloseRequest code reason -> do
-        putLog Info $ "Received Websocket Close Request, code: " ++ show code ++ ", reason: " ++ show reason
+        putLog Debug $ "Received Websocket Close Request, code: " ++ show code ++ ", reason: " ++ show reason
       WS.ConnectionClosed -> do
-        putLog Info "Websocket closed"
+        putLog Debug "Websocket closed"
       err -> do
         putLog Error $ "Got some websocket error: " ++ displayException err
 
