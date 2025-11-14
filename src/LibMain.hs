@@ -306,27 +306,34 @@ mountAllSambaShares roots = do
 
 main :: IO ()
 main = do
-  -- To get this token for now you can use your apiKey here https://thetvdb.github.io/v4-api/#/Login/post_login
-  tvdbApiKeyRaw <- lookupEnv "TVDB_API_KEY"
-  let tvdbApiKey = case tvdbApiKeyRaw of
-        Nothing -> Nothing
-        Just str | all isSpace str -> Nothing
-        Just str -> Just $ TVDBApiKey str
-
-  inputDevice <- mkInputDevice
-  tvState <- newTVarIO startingTVState
-
-  let port = 8080
-  let (homePath, _params) = renderRoute HomeR
-  let url = "http://localhost:" ++ show port ++ "/" ++ unpack (Text.intercalate "/" homePath)
-
-  -- Only open the browser automatically in production because it;s annoying in
-  -- development as it opens a new tab every time the server restarts.
-  when (not isDevelopment) $ do
-    callProcess "xdg-open" [url]
-
   let minLogLevel = Info
   runLoggerT minLogLevel $ do
+    -- To get this token for now you can use your apiKey here https://thetvdb.github.io/v4-api/#/Login/post_login
+    tvdbApiKeyRaw <- liftIO $ lookupEnv "TVDB_API_KEY"
+    let tvdbApiKey = case tvdbApiKeyRaw of
+          Nothing -> Nothing
+          Just str | all isSpace str -> Nothing
+          Just str -> Just $ TVDBApiKey str
+    tvdbToken <- case tvdbApiKey of
+      Nothing -> pure Nothing
+      Just key -> getToken key
+    when (isNothing tvdbToken) $
+      putLog Info "No tvdb token found, so running in read-only mode."
+
+    inputDevice <- mkInputDevice
+    tvState <- liftIO $ newTVarIO startingTVState
+
+    let port = 8080
+    let (homePath, _params) = renderRoute HomeR
+    let url = "http://localhost:" ++ show port ++ "/" ++ unpack (Text.intercalate "/" homePath)
+    putLog Info $ "Running on port " ++ show port ++ " - " ++ url
+    putLog Info $ "Development mode: " ++ show isDevelopment
+
+    -- Only open the browser automatically in production because it;s annoying in
+    -- development as it opens a new tab every time the server restarts.
+    when (not isDevelopment) . liftIO $
+      callProcess "xdg-open" [url]
+
     mRootDirs <- loadRootsFromDisk
     let emptyRootData = RootDirectoryData Map.empty Map.empty
     let rootDirsDefault =
@@ -337,15 +344,6 @@ main = do
             ]
     let rootDirs = fromMaybe rootDirsDefault mRootDirs
     rootDirsPVar <- newPVar rootDirs
-
-    tvdbToken <- case tvdbApiKey of
-      Nothing -> pure Nothing
-      Just key -> getToken key
-    when (isNothing tvdbToken) $
-      putLog Info "No tvdb token found, so running in read-only mode."
-
-    putLog Info $ "Running on port " ++ show port ++ " - " ++ url
-    putLog Info $ "Development mode: " ++ show isDevelopment
 
     -- Open samba shares. TODO: Make some way of checking and re-mounting the broken ones at runtime
     mountAllSambaShares rootDirs

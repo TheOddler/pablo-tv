@@ -466,51 +466,52 @@ screenWidth = 1920
 screenHeight :: Int32
 screenHeight = 1080
 
-mkInputDevice :: IO Device
+mkInputDevice :: (MonadIO m) => m Device
 mkInputDevice =
-  newDevice
-    "Pablo TV Input Device"
-    DeviceOpts
-      { phys = Nothing,
-        uniq = Nothing,
-        idProduct = Nothing,
-        idVendor = Nothing,
-        idBustype = Nothing,
-        idVersion = Nothing,
-        keys =
-          -- We can't just enable all keys as there seems to be a 255 keys
-          -- limit, and there are over 500 keys.
-          -- We only run this once, so it's fine to use nub here
-          nub
-            ( -- All keys supported by the mouse
-              fmap mouseButtonToEvdevKey [minBound .. maxBound]
-                -- All extra keys supported as single press keyboard keys
-                ++ fmap keyboardButtonToEvdevKey [minBound .. maxBound]
-                -- Add all keys we support in the keyboard
-                ++ concatMap charToKey [minBound .. maxBound]
-                -- Some extra control keys:
-                ++ [KeyLeftctrl, KeyLeftshift]
-            ),
-        relAxes = [RelX, RelY, RelWheel],
-        absAxes =
-          let absInfo max' =
-                AbsInfo
-                  { absValue = 0,
-                    absMinimum = 0,
-                    absMaximum = max',
-                    absFuzz = 0,
-                    absFlat = 0,
-                    absResolution = 0
-                  }
-           in [ (AbsX, absInfo screenWidth),
-                (AbsY, absInfo screenHeight)
-              ],
-        miscs = [],
-        switchs = [],
-        leds = [],
-        sounds = [], -- Maybe SndClick?
-        reps = [],
-        ffs = [],
-        powers = [],
-        ffStats = []
-      }
+  liftIO $
+    newDevice
+      "Pablo TV Input Device"
+      DeviceOpts
+        { phys = Nothing,
+          uniq = Nothing,
+          idProduct = Nothing,
+          idVendor = Nothing,
+          idBustype = Nothing,
+          idVersion = Nothing,
+          keys =
+            -- We can't just enable all keys as there seems to be a 255 keys
+            -- limit, and there are over 500 keys.
+            -- We only run this once, so it's fine to use nub here
+            nub
+              ( -- All keys supported by the mouse
+                fmap mouseButtonToEvdevKey [minBound .. maxBound]
+                  -- All extra keys supported as single press keyboard keys
+                  ++ fmap keyboardButtonToEvdevKey [minBound .. maxBound]
+                  -- Add all keys we support in the keyboard
+                  ++ concatMap charToKey [minBound .. maxBound]
+                  -- Some extra control keys:
+                  ++ [KeyLeftctrl, KeyLeftshift]
+              ),
+          relAxes = [RelX, RelY, RelWheel],
+          absAxes =
+            let absInfo max' =
+                  AbsInfo
+                    { absValue = 0,
+                      absMinimum = 0,
+                      absMaximum = max',
+                      absFuzz = 0,
+                      absFlat = 0,
+                      absResolution = 0
+                    }
+             in [ (AbsX, absInfo screenWidth),
+                  (AbsY, absInfo screenHeight)
+                ],
+          miscs = [],
+          switchs = [],
+          leds = [],
+          sounds = [], -- Maybe SndClick?
+          reps = [],
+          ffs = [],
+          powers = [],
+          ffStats = []
+        }
