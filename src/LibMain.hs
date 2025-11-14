@@ -61,7 +61,7 @@ import Foundation
 import GHC.Conc (newTVarIO)
 import GHC.Utils.Misc (sortWith)
 import IsDevelopment (isDevelopment)
-import Logging (LogLevel (..), Logger, putLog, putLogIO, runLoggerT)
+import Logging (LogLevel (..), Logger, putLog, runLoggerT)
 import Mpris (MprisAction (..), mediaListener)
 import Network.Info (NetworkInterface (..), getNetworkInterfaces)
 import Network.Wai.Handler.Warp (run)
@@ -324,7 +324,8 @@ main = do
   when (not isDevelopment) $ do
     callProcess "xdg-open" [url]
 
-  runLoggerT $ do
+  let minLogLevel = Info
+  runLoggerT minLogLevel $ do
     mRootDirs <- loadRootsFromDisk
     let emptyRootData = RootDirectoryData Map.empty Map.empty
     let rootDirsDefault =
@@ -340,7 +341,7 @@ main = do
       Nothing -> pure Nothing
       Just key -> getToken key
     when (isNothing tvdbToken) $
-      putLogIO Info "No tvdb token found, so running in read-only mode."
+      putLog Info "No tvdb token found, so running in read-only mode."
 
     putLog Info $ "Running on port " ++ show port ++ " - " ++ url
     putLog Info $ "Development mode: " ++ show isDevelopment
@@ -352,7 +353,7 @@ main = do
     let app =
           App
             { appPort = port,
-              appMinLogLevel = Info,
+              appMinLogLevel = minLogLevel,
               appTVDBToken = tvdbToken,
               appInputDevice = inputDevice,
               appTVState = tvState,

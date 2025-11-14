@@ -1,5 +1,6 @@
 module Logging where
 
+import Control.Monad (when)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Trans.Class (MonadTrans (..))
 import Control.Monad.Trans.Reader (ReaderT (..), ask)
@@ -15,8 +16,10 @@ data LogLevel
   | Error
   deriving (Eq, Ord)
 
+type LogFunc m = LogLevel -> BS.ByteString -> m ()
+
 class Logger m where
-  putLogBS :: LogLevel -> BS.ByteString -> m ()
+  putLogBS :: LogFunc m
 
 putLog :: (Logger m) => LogLevel -> String -> m ()
 putLog level = putLogBS level . BS.fromString
@@ -33,19 +36,20 @@ defaultColour = "\ESC[0m"
 
 -- | Use putStr from the bytestring module as that seems to be concurrency safe?
 -- Don't use putStrLn as that isn't. Instead append the newline, even though that requires more memory.
-putLogIO :: (MonadIO m) => LogLevel -> BS.ByteString -> m ()
-putLogIO level msg =
-  liftIO . BS.putStr $
-    mconcat
-      [ defaultColour,
-        BS.fromString "➫ ", -- This ensure correct encoding of the arrow
-        logLevelColour level,
-        msg,
-        defaultColour,
-        "\n"
-      ]
+putLogWithMinLvlIO :: (MonadIO m) => LogLevel -> LogFunc m
+putLogWithMinLvlIO minLogLevel level msg =
+  when (level >= minLogLevel) $
+    liftIO . BS.putStr $
+      mconcat
+        [ defaultColour,
+          BS.fromString "➫ ", -- This ensure correct encoding of the arrow
+          logLevelColour level,
+          msg,
+          defaultColour,
+          "\n"
+        ]
 
-newtype LoggerT m a = LoggerT {unLoggerT :: ReaderT (LogLevel -> BS.ByteString -> m ()) m a}
+newtype LoggerT m a = LoggerT {unLoggerT :: ReaderT (LogFunc m) m a}
   deriving (Functor, Applicative, Monad, MonadIO, MonadUnliftIO)
 
 instance (Monad m) => Logger (LoggerT m) where
@@ -57,5 +61,5 @@ instance (Monad m, Logger m) => Logger (WebSocketsT m) where
   putLogBS lvl msg = do
     lift $ putLogBS lvl msg
 
-runLoggerT :: (MonadIO m) => LoggerT m a -> m a
-runLoggerT loggerT = runReaderT (unLoggerT loggerT) putLogIO
+runLoggerT :: (MonadIO m) => LogLevel -> LoggerT m a -> m a
+runLoggerT minLogLevel loggerT = runReaderT (unLoggerT loggerT) (putLogWithMinLvlIO minLogLevel)

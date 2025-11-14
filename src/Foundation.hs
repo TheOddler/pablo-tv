@@ -16,7 +16,7 @@ import Evdev.Uinput (Device)
 import GHC.Conc (TVar)
 import GHC.Utils.Misc (sortWith)
 import IsDevelopment (isDevelopment)
-import Logging (LogLevel (..), Logger (..), putLogIO)
+import Logging (LogLevel (..), Logger (..), putLogWithMinLvlIO)
 import Network.Info (getNetworkInterfaces)
 import PVar (PVar)
 import TVDB (TVDBToken)
@@ -123,5 +123,4 @@ defaultLayout title widget = Yesod.defaultLayout $ do
 instance Logger Handler where
   putLogBS lvl msg = do
     minLogLevel <- getsYesod appMinLogLevel
-    when (lvl >= minLogLevel) $
-      putLogIO lvl msg
+    putLogWithMinLvlIO minLogLevel lvl msg
