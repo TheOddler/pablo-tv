@@ -264,6 +264,20 @@ getDirectoryAtPath roots (DirectoryPath wantedRoot wantedDirNames) = do
       subDir <- Map.lookup name dir.directorySubDirs
       innerGet rest subDir
 
+-- | Looks for an image in the directory or any of it's parents, preferring closer to the directory
+findDirWithImageFor :: RootDirectories -> DirectoryPath -> Maybe DirectoryPath
+findDirWithImageFor allRoots (DirectoryPath dirRoot dirNames) = innerSearch (NE.nonEmpty dirNames)
+  where
+    innerSearch Nothing = Nothing
+    innerSearch (Just dirNamesNE) = do
+      let dirPath = DirectoryPath dirRoot $ NE.toList dirNamesNE
+      case getDirectoryAtPath allRoots dirPath of
+        Nothing -> Nothing
+        Just d ->
+          case d.directoryImage of
+            Nothing -> innerSearch (NE.nonEmpty $ NE.init dirNamesNE)
+            Just _img -> Just dirPath
+
 -- | Will silently do nothing if the path isn't found.
 updateDirectoryAtPath :: RootDirectories -> DirectoryPath -> (DirectoryData -> DirectoryData) -> RootDirectories
 updateDirectoryAtPath roots (DirectoryPath wantedRoot wantedDirNames) updateFunc =
@@ -335,7 +349,7 @@ data DirectoryKindGuess
 
 guessDirectoryKind :: DirectoryName -> DirectoryData -> DirectoryKindGuess
 guessDirectoryKind dirName dirData =
-  let title = titleFromDir dirName
+  let (title, _rest) = splitTitleFromDir dirName
       dirSeasonIndicator = isJust $ seasonFromDir dirName
       subDirsSeasonIndicators =
         any (isJust . seasonFromDir) $ Map.keys dirData.directorySubDirs
@@ -370,7 +384,7 @@ updateRootDirectoriesFromDisk rootDirs =
   flip Map.traverseWithKey rootDirs $ \rootLocation rootDirData -> do
     let path = rootDirectoryPath rootLocation
     let rootAsDir = rootDirectoryAsDirectory rootDirData
-    result <- updateDirectoryFromDisk path rootAsDir
+    result <- updateDirectoryFromDisk rootDirs path rootAsDir
     case result of
       DirectoryChanged updated ->
         pure
@@ -423,8 +437,8 @@ loadRootsFromDisk = do
 -- | Updates the directory (at given path) with new data from disk.
 -- It will potentially remove or add video files and sub-directories.
 -- It leaves watched or added information for files in tact.
-updateDirectoryFromDisk :: (MonadIO m, MonadThrow m, Logger m) => DirectoryPath -> DirectoryData -> m DirectoryUpdateResult
-updateDirectoryFromDisk dirPath dir = do
+updateDirectoryFromDisk :: (MonadIO m, MonadThrow m, Logger m) => RootDirectories -> DirectoryPath -> DirectoryData -> m DirectoryUpdateResult
+updateDirectoryFromDisk allDirsData dirPath dir = do
   dirAbsPath <- directoryPathToAbsPath dirPath
   logDuration ("Updated directory " ++ dirAbsPath) $ do
     absDirPath <- directoryPathToAbsPath dirPath
@@ -446,7 +460,7 @@ updateDirectoryFromDisk dirPath dir = do
           let knownDir = Map.lookup subDirName dir.directorySubDirs
           let newDir = DirectoryData Nothing Map.empty Map.empty
           let fullPath = addSubDir dirPath subDirName
-          upd <- updateDirectoryFromDisk fullPath $ knownDir `orElse` newDir
+          upd <- updateDirectoryFromDisk allDirsData fullPath $ knownDir `orElse` newDir
           pure (subDirName, upd)
         (unchanged, changed, notDirs) <-
           foldrM
@@ -502,14 +516,18 @@ updateDirectoryFromDisk dirPath dir = do
               Just namesNE -> NE.last namesNE
             dirNameStr = T.unpack dirName.unDirectoryName
 
+            anyParentDirHasImage = isJust $ findDirWithImageFor allDirsData dirPath
+            isRootDir = null dirPath.directoryPathNames
+            isSeasonDirOrSubDir = any isSeasonDir dirPath.directoryPathNames
+
             getImageFromDisk imgName = do
               putLog Info $ "Getting image from disk for: " ++ dirNameStr
               imgFile <- liftIO $ BS.readFile $ absDirPath </> dirNameStr
               pure (imgName, ImageFileData imgFile)
 
             imgFindingErr msg = "Failed finding image for " ++ dirAbsPath ++ ": " ++ msg
-            getImageFromWeb = do
-              mImg <- tryFindImage dirName.unDirectoryName
+            tryFindImage' searchTerm = do
+              mImg <- tryFindImage searchTerm
               case mImg of
                 Left ImageSearchFailedScraping -> do
                   putLog Warning $ imgFindingErr "web scraping unsuccessful"
@@ -518,8 +536,13 @@ updateDirectoryFromDisk dirPath dir = do
                   putLog Warning $ imgFindingErr err
                   pure Nothing
                 Right (contentType, img) -> do
-                  putLog Info $ "Downloaded image for: " ++ dirNameStr
+                  putLog Info $ "Downloaded image for " ++ dirAbsPath ++ " with search term " ++ T.unpack searchTerm
                   pure $ Just (imageFileNameForContentType contentType, ImageFileData img)
+            getImageFromWeb = do
+              firstAttempt <- tryFindImage' dirName.unDirectoryName
+              case firstAttempt of
+                Just img -> pure $ Just img
+                Nothing -> tryFindImage' . fst $ splitTitleFromDir dirName
         newImage <- case (currentImageName, diskImageName) of
           (Nothing, Just diskImg) ->
             -- We currently don't know about an image, but there's one on disk, use that.
@@ -535,9 +558,9 @@ updateDirectoryFromDisk dirPath dir = do
             -- We have an image already, but none on disk. Just keep it, we probably downloaded it previously.
             pure Nothing
           (Nothing, Nothing)
-            | any isSeasonDir dirPath.directoryPathNames
-                || null dirPath.directoryPathNames ->
-                -- Do nothing for season dirs or sub-dirs of a season (such as possibly subs folders), otherwise we try and search for "Season X" a lot
+            | isRootDir -- Root dirs never have images
+                || isSeasonDirOrSubDir -- Season dirs or subdirs of season don't have images, otherwise we search for "Season X" a bunch. Subdirs are likely stuff like "subs"
+                || anyParentDirHasImage -> -- If the parent dir already has an image we use that image, so save some time and don't search for another image
                 pure Nothing
           (Nothing, Nothing) ->
             -- Nothing known, nothing on disk, try and download one
@@ -691,8 +714,10 @@ episodeInfoFromFile (VideoFileName file) =
             Just a -> (Nothing, Just $ Left a)
             Nothing -> (Nothing, Nothing)
 
-titleFromDir :: DirectoryName -> Text
-titleFromDir = T.strip . fst . T.breakOn "(" . niceDirNameT
+splitTitleFromDir :: DirectoryName -> (Text, Text)
+splitTitleFromDir dirName =
+  let (title, rest) = T.breakOn "(" $ niceDirNameT dirName
+   in (T.strip title, T.strip rest)
 
 niceDirNameT :: DirectoryName -> Text
 niceDirNameT (DirectoryName dir) = T.pack $ dropTrailingPathSeparator $ T.unpack dir

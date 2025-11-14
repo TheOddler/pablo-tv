@@ -289,7 +289,7 @@ performAction action = do
           Nothing -> do
             fail404 "Trying to refresh a directory we don't actually know about. This should only be used on already known dirs for updating them."
           Just currentKnownData -> do
-            updatedData <- updateDirectoryFromDisk dirPath currentKnownData
+            updatedData <- updateDirectoryFromDisk roots dirPath currentKnownData
             case updatedData of
               DirectoryChanged d -> pure $ updateDirectoryAtPath roots dirPath (const d)
               DirectoryUnchanged -> pure roots
