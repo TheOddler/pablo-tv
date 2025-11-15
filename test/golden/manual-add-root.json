@@ -1,0 +1,30 @@
+{
+    "smb-192.168.0.23-movies": {},
+    "Videos": {
+        "rootDirectorySubDirs": {
+            "dir name": {
+                "directoryImage": null,
+                "directorySubDirs": {
+                    "sub dir": {
+                        "directoryImage": null,
+                        "directorySubDirs": {},
+                        "directoryVideoFiles": {}
+                    }
+                },
+                "directoryVideoFiles": {
+                    "video.avi": {
+                        "videoFileAdded": "2000-01-01T01:01:01Z",
+                        "videoFileWatched": null
+                    }
+                }
+            }
+        },
+        "rootDirectoryVideoFiles": {
+            "test.mov": {
+                "videoFileAdded": "2000-01-01T01:01:01Z",
+                "videoFileWatched": null
+            }
+        }
+    },
+    "smb-192.168.0.55-movies": {}
+}
