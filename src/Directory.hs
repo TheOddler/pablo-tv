@@ -18,7 +18,6 @@ import Directory.Directories
 import Directory.Files
 import Directory.Paths
 import GHC.Data.Maybe (orElse)
-import GHC.IO (catchAny)
 import GHC.IO.Exception (IOErrorType (..), IOException (..))
 import GHC.Utils.Exception (displayException)
 import ImageScraper (ImageSearchFailure (..), tryFindImage)
@@ -29,8 +28,10 @@ import System.Directory
     createDirectoryIfMissing,
     getModificationTime,
     getXdgDirectory,
+    renameFile,
   )
 import System.FilePath ((</>))
+import UnliftIO (MonadUnliftIO, catchAny)
 import Util
   ( failE,
     impossible,
@@ -136,18 +137,20 @@ saveRootsToDisk roots = logDuration "Saved roots to disk" $ do
     createDirectoryIfMissing True memoryDir
     encodeFile (memoryDir </> memoryFileName) roots
 
-loadRootsFromDisk :: (Logger m, MonadIO m) => m (Maybe RootDirectories)
-loadRootsFromDisk = do
+loadRootsFromDisk :: (Logger m, MonadUnliftIO m) => m (Maybe RootDirectories)
+loadRootsFromDisk = logDuration "Loaded roots from disk" $ do
   memoryDir <- getMemoryFileDir
   let memoryFile = memoryDir </> memoryFileName
   let safeDecode =
         eitherDecodeFileStrict memoryFile
           `catchAny` \e -> pure $ Left $ displayException e
-  rootsOrErr <- logDuration "Loaded roots from disk" $ liftIO safeDecode
+  rootsOrErr <- liftIO safeDecode
   case rootsOrErr of
     Right roots -> pure $ Just roots
     Left err -> do
-      putLog Error $ "Failed loading roots from disk: " ++ err
+      putLog Error $ "Failed loading roots from disk, marking as broken. Error was: " ++ err
+      liftIO (renameFile memoryFile (memoryFile ++ ".broken"))
+        `catchAny` \e -> putLog Error $ "Failed marking as broken: " ++ displayException e
       pure Nothing
 
 -- | Updates the directory (at given path) with new data from disk.
