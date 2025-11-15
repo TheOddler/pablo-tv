@@ -69,12 +69,12 @@ getImageContentType (ImageFileName imgName) =
        in "image/" <> BS8.pack cleanedExt
 
 -- | We assume this is a properly formatted content type, something like "image/jpg".
--- If it is not, we silently return some default
+-- If it is not, we silently return some default or possibly a weird filename
 imageFileNameForContentType :: ContentType -> ImageFileName
 imageFileNameForContentType ct = ImageFileName $
   case BS.toString ct of
     'i' : 'm' : 'a' : 'g' : 'e' : '/' : ext ->
-      removeSeparatorsFromText . T.pack $ "poster." ++ ext
+      [twsQQ|poster.|] <> removeSeparatorsFromText (T.pack ext)
     _ -> [twsQQ|poster.jpg|]
 
 newtype ImageFileData = ImageFileData {unImageFileData :: BS.ByteString}
