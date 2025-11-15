@@ -157,8 +157,8 @@ rootDirectoryLocation tws = do
   let t = unwrap tws
   if t == "Videos"
     then pure RootLocalVideos
-    else case T.unpack <$> T.split (`elem` ['=', '-']) t of
-      ["smbSrv", srv, "smbShr", shr] ->
+    else case T.unpack <$> T.split (== '-') t of
+      ["smb", srv, shr] ->
         pure $
           RootSamba
             (SmbServer srv)
