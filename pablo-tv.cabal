@@ -43,6 +43,9 @@ library
     exposed-modules:
         Actions
         Directory
+        Directory.Directories
+        Directory.Files
+        Directory.Paths
         Foundation
         ImageScraper
         IsDevelopment
@@ -56,6 +59,7 @@ library
         TVDB
         TVState
         Util
+        Util.Regex
         Util.TextWithoutSeparator
     if flag(development)
         cpp-options: -DDEVELOPMENT

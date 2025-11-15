@@ -18,19 +18,16 @@ import Data.Text qualified as T
 import Data.Text.Lazy.Encoding qualified as T
 import Data.Time (getCurrentTime)
 import Directory
-  ( DirectoryData (..),
-    DirectoryPath (..),
-    DirectoryUpdateResult (..),
-    VideoFileData (..),
-    VideoFilePath (..),
-    directoryPathToAbsPath,
+  ( DirectoryUpdateResult (..),
     getDirectoryAtPath,
     saveRootsToDisk,
     updateDirectoryAtPath,
     updateDirectoryFromDisk,
     updateRootDirectoriesFromDisk,
-    videoFilePathToAbsPath,
   )
+import Directory.Directories (DirectoryData (..))
+import Directory.Files (VideoFileData (..))
+import Directory.Paths (DirectoryPath (..), VideoFilePath (..), directoryPathToAbsPath, videoFilePathToAbsPath)
 import Evdev.Codes
 import Evdev.Uinput
 import Foundation (App (..), Handler)

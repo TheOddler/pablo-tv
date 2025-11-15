@@ -1,13 +1,14 @@
 module Util where
 
+import Algorithms.NaturalSort qualified as Natural
 import Control.Concurrent (MVar, takeMVar)
 import Control.Exception (Exception, displayException)
 import Control.Monad (when)
 import Control.Monad.Catch (MonadThrow (..))
 import Data.Aeson qualified as Aeson
 import Data.Default (def)
-import Data.List (foldl', isPrefixOf)
-import Data.List.Extra (dropPrefix)
+import Data.List (foldl', isPrefixOf, sortBy)
+import Data.List.Extra (dropPrefix, lower)
 import Data.List.NonEmpty qualified as NE
 import Data.List.NonEmpty.Extra qualified as NE
 import Data.Ord (Down)
@@ -118,6 +119,14 @@ asyncOnTrigger trigger action = loop
 shuffle :: (RandomGen gen) => [a] -> gen -> [a]
 shuffle [] _ = []
 shuffle list gen = shuffle' list (length list) gen
+
+-- | Compares taking into account numbers properly
+naturalCompareBy :: (a -> String) -> a -> a -> Ordering
+naturalCompareBy f a b = Natural.compare (lower $ f a) (lower $ f b)
+
+-- | Sorts taking into account numbers properly
+naturalSortBy :: (a -> String) -> [a] -> [a]
+naturalSortBy f = sortBy $ naturalCompareBy f
 
 withDuration :: (MonadIO m) => m a -> m (a, NominalDiffTime)
 withDuration f = do

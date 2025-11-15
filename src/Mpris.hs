@@ -22,7 +22,7 @@ import Data.List (isPrefixOf)
 import Data.Map qualified as Map
 import Data.Maybe (listToMaybe)
 import Data.String (IsString (..))
-import Directory (VideoFilePath)
+import Directory.Paths (VideoFilePath)
 import GHC.Generics (Generic)
 import Logging (LogLevel (..), Logger, putLog)
 import Network.URI (unEscapeString)

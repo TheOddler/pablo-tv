@@ -11,7 +11,8 @@ module Foundation where
 import Control.Monad (when)
 import Data.ByteString.Char8 qualified as BS
 import Data.Maybe (isNothing, listToMaybe)
-import Directory (DirectoryName, RootDirectories, RootDirectoryLocation)
+import Directory (RootDirectories)
+import Directory.Directories (DirectoryName, RootDirectoryLocation)
 import Evdev.Uinput (Device)
 import GHC.Conc (TVar)
 import GHC.Utils.Misc (sortWith)

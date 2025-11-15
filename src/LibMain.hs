@@ -28,24 +28,30 @@ import Data.Text qualified as Text
 import Data.Time (UTCTime)
 import Directory
   ( AggDirInfo (..),
-    DirectoryData (..),
-    DirectoryName,
-    DirectoryPath (..),
     RootDirectories,
-    RootDirectoryData (..),
-    RootDirectoryLocation (..),
-    VideoFileData (..),
-    VideoFileName,
-    VideoFilePath (..),
     findDirWithImageFor,
     getDirectoryAtPath,
-    getImageContentType,
     getSubDirAggInfo,
     loadRootsFromDisk,
-    niceFileNameT,
+  )
+import Directory.Directories
+  ( DirectoryData (..),
+    DirectoryName,
+    RootDirectoryData (..),
+    RootDirectoryLocation (..),
     rootDirectoryAsDirectory,
-    rootDirectoryPath,
     splitTitleFromDir,
+  )
+import Directory.Files
+  ( VideoFileData (..),
+    VideoFileName,
+    getImageContentType,
+    niceFileNameT,
+  )
+import Directory.Paths
+  ( DirectoryPath (..),
+    VideoFilePath,
+    rootDirectoryPath,
     videoFilePath,
   )
 import Foundation
