@@ -1,8 +1,0 @@
-kind: series
-title: Pabloland
-year: 1991
-description: A description
-imdb: tt1234567
-tvdb: '123'
-tmdb: abc
-force-update: true

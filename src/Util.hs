@@ -35,7 +35,8 @@ ourAesonOptions =
 ourAesonOptionsPrefix :: String -> Aeson.Options
 ourAesonOptionsPrefix prefix =
   ourAesonOptions
-    { Aeson.constructorTagModifier = dropPrefix prefix
+    { Aeson.constructorTagModifier = dropPrefix prefix,
+      Aeson.fieldLabelModifier = dropPrefix prefix
     }
 
 -- | Load a widget file, automatically reloading it in development.

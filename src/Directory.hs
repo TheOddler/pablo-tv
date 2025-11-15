@@ -1,3 +1,5 @@
+{-# LANGUAGE DerivingStrategies #-}
+
 module Directory where
 
 import Algorithms.NaturalSort qualified as Natural
@@ -7,15 +9,16 @@ import Control.Monad.Catch (MonadThrow)
 import Data.Aeson
   ( FromJSON (..),
     FromJSONKey,
+    FromJSONKeyFunction (..),
     ToJSON (..),
-    ToJSONKey,
+    ToJSONKey (..),
     eitherDecodeFileStrict,
     encodeFile,
     genericParseJSON,
     genericToEncoding,
     withText,
   )
-import Data.Aeson.Types (parseFail)
+import Data.Aeson.Types (FromJSONKey (..), Parser, parseFail, toJSONKeyText)
 import Data.ByteString qualified as BS
 import Data.ByteString.Base64 qualified as B64
 import Data.ByteString.Char8 qualified as BS8
@@ -49,21 +52,12 @@ import System.FilePath (takeBaseName, takeExtension, (</>))
 import Text.Blaze (ToMarkup)
 import Text.Read (readMaybe)
 import Text.Regex.TDFA ((=~))
-import Util (failE, impossible, logDuration, ourAesonOptions, safeMinimumOn)
+import Util (failE, impossible, logDuration, ourAesonOptions, ourAesonOptionsPrefix, safeMinimumOn)
 import Yesod (ContentType, MonadIO (..), PathPiece (..), ToContent, typeOctet)
 
 newtype DirectoryName = DirectoryName {unDirectoryName :: Text}
-  deriving (Eq, Ord, Generic, PathPiece, ToMarkup)
-
-instance ToJSON DirectoryName where
-  toEncoding = genericToEncoding ourAesonOptions
-
-instance FromJSON DirectoryName where
-  parseJSON = genericParseJSON ourAesonOptions
-
-instance ToJSONKey DirectoryName
-
-instance FromJSONKey DirectoryName
+  deriving stock (Eq, Ord, Generic)
+  deriving newtype (ToJSON, FromJSON, ToJSONKey, FromJSONKey, PathPiece, ToMarkup)
 
 instance Show DirectoryName where
   showsPrec p (DirectoryName a) = showsPrec p a
@@ -75,26 +69,12 @@ instance Read DirectoryName where
     pure $ DirectoryName $ T.pack str
 
 newtype VideoFileName = VideoFileName {unVideoFileName :: Text}
-  deriving (Show, Eq, Ord, Generic)
-
-instance ToJSON VideoFileName where
-  toEncoding = genericToEncoding ourAesonOptions
-
-instance FromJSON VideoFileName where
-  parseJSON = genericParseJSON ourAesonOptions
-
-instance ToJSONKey VideoFileName
-
-instance FromJSONKey VideoFileName
+  deriving stock (Show, Eq, Ord, Generic)
+  deriving newtype (ToJSON, FromJSON, ToJSONKey, FromJSONKey)
 
 newtype ImageFileName = ImageFileName {unImageFileName :: Text}
-  deriving (Eq, Generic)
-
-instance ToJSON ImageFileName where
-  toEncoding = genericToEncoding ourAesonOptions
-
-instance FromJSON ImageFileName where
-  parseJSON = genericParseJSON ourAesonOptions
+  deriving stock (Eq, Generic, Show)
+  deriving newtype (ToJSON, FromJSON)
 
 getImageContentType :: ImageFileName -> ContentType
 getImageContentType (ImageFileName imgName) =
@@ -114,7 +94,7 @@ imageFileNameForContentType ct = ImageFileName . T.pack $
     _ -> "poster.jpg"
 
 newtype ImageFileData = ImageFileData {unImageFileData :: BS.ByteString}
-  deriving (ToContent)
+  deriving (ToContent, Eq, Show)
 
 instance ToJSON ImageFileData where
   toJSON imgData = toJSON $ bsToBase64Text imgData.unImageFileData
@@ -131,20 +111,20 @@ data VideoFileData = VideoFileData
   { videoFileAdded :: UTCTime,
     videoFileWatched :: Maybe UTCTime
   }
-  deriving (Generic)
+  deriving (Generic, Eq, Show)
 
 instance ToJSON VideoFileData where
-  toEncoding = genericToEncoding ourAesonOptions
+  toEncoding = genericToEncoding $ ourAesonOptionsPrefix "videoFile"
 
 instance FromJSON VideoFileData where
-  parseJSON = genericParseJSON ourAesonOptions
+  parseJSON = genericParseJSON $ ourAesonOptionsPrefix "videoFile"
 
 data DirectoryData = DirectoryData
   { directoryImage :: Maybe (ImageFileName, ImageFileData),
     directorySubDirs :: Map.Map DirectoryName DirectoryData,
     directoryVideoFiles :: Map.Map VideoFileName VideoFileData
   }
-  deriving (Generic)
+  deriving (Generic, Show, Eq)
 
 instance ToJSON DirectoryData where
   toEncoding = genericToEncoding ourAesonOptions
@@ -180,13 +160,19 @@ instance ToJSON RootDirectoryLocation where
 instance FromJSON RootDirectoryLocation where
   parseJSON v = do
     (asText :: Text) <- parseJSON v
-    case rootDirectoryLocationFromText asText of
-      Just dir -> pure dir
-      Nothing -> parseFail "Failed parsing RootDirectoryLocation"
+    parseRootDirectoryLocationFromText asText
 
-instance ToJSONKey RootDirectoryLocation
+parseRootDirectoryLocationFromText :: Text -> Parser RootDirectoryLocation
+parseRootDirectoryLocationFromText text =
+  case rootDirectoryLocationFromText text of
+    Just dir -> pure dir
+    Nothing -> parseFail "Failed parsing RootDirectoryLocation"
 
-instance FromJSONKey RootDirectoryLocation
+instance ToJSONKey RootDirectoryLocation where
+  toJSONKey = toJSONKeyText rootDirectoryLocationToText
+
+instance FromJSONKey RootDirectoryLocation where
+  fromJSONKey = FromJSONKeyTextParser parseRootDirectoryLocationFromText
 
 instance PathPiece RootDirectoryLocation where
   toPathPiece :: RootDirectoryLocation -> Text
@@ -199,7 +185,7 @@ data RootDirectoryData = RootDirectoryData
   { rootDirectorySubDirs :: Map.Map DirectoryName DirectoryData,
     rootDirectoryVideoFiles :: Map.Map VideoFileName VideoFileData
   }
-  deriving (Generic)
+  deriving (Generic, Show, Eq)
 
 instance ToJSON RootDirectoryData where
   toEncoding = genericToEncoding ourAesonOptions

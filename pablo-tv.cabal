@@ -117,16 +117,19 @@ test-suite pablo-tv-test
     type:             exitcode-stdio-1.0
     other-modules:
         ActionsSpec
+        DirectorySpec
         Orphanage
         TestUtils
     build-depends:
         aeson
       , bytestring
+      , containers
       , generic-random
       , pablo-tv
       , QuickCheck
       , quickcheck-instances
       , sydtest
+      , sydtest-aeson
       , sydtest-discover
       , text
       , unordered-containers

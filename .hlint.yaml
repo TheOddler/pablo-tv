@@ -126,7 +126,7 @@
   - {name: fromInteger, within: []}
 
   - name: 'read'
-    within: WatchedSpec
+    within: DirectorySpec
     message: Partial, use `Text.Read.readMaybe` instead.
   
   # Deprecated, use `pure` instead.
