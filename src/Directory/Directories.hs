@@ -4,6 +4,7 @@
 module Directory.Directories where
 
 import Control.Applicative ((<|>))
+import Control.Monad.IO.Class (MonadIO (..))
 import Data.Aeson
   ( FromJSON (..),
     FromJSONKey,
@@ -22,7 +23,9 @@ import Directory.Files
 import GHC.Data.Maybe (firstJusts, orElse)
 import GHC.Generics (Generic)
 import Orphanage ()
-import Samba (SmbServer (..), SmbShare (..))
+import Samba (SmbServer (..), SmbShare (..), mkMountPath)
+import System.Directory (getHomeDirectory)
+import System.FilePath
 import Text.Blaze (ToMarkup)
 import Text.Read (Read (..))
 import Util (ourAesonOptions)
@@ -61,6 +64,13 @@ rootDirectoryLocation tws = do
             (SmbServer srv)
             (SmbShare shr)
       _ -> fail $ "Unknown root directory structure: " ++ T.unpack t
+
+rootDirectoryLocationToAbsPath :: (MonadIO m) => RootDirectoryLocation -> m FilePath
+rootDirectoryLocationToAbsPath = \case
+  RootSamba srv shr -> mkMountPath srv shr
+  RootLocalVideos -> do
+    home <- liftIO getHomeDirectory
+    pure $ home </> "Videos"
 
 instance Read RootDirectoryLocation where
   readPrec = readPrec >>= rootDirectoryLocation

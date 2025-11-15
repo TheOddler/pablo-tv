@@ -8,7 +8,7 @@ import Control.Monad.Catch (MonadThrow (..))
 import Data.Aeson qualified as Aeson
 import Data.Default (def)
 import Data.List (foldl', isPrefixOf, sortBy)
-import Data.List.Extra (dropPrefix, lower)
+import Data.List.Extra (dropPrefix, lower, unsnoc)
 import Data.List.NonEmpty qualified as NE
 import Data.List.NonEmpty.Extra qualified as NE
 import Data.Ord (Down)
@@ -102,6 +102,11 @@ showIpV4OrV6WithPort port i =
 mapLeft :: (t -> a) -> Either t b -> Either a b
 mapLeft f (Left x) = Left $ f x
 mapLeft _ (Right x) = Right x
+
+unsnocNE :: NE.NonEmpty a -> ([a], a)
+unsnocNE (first NE.:| rest) = case unsnoc rest of
+  Nothing -> ([], first)
+  Just (inits, last') -> (first : inits, last')
 
 -- | This will loop and take the `()` from the trigger, and rerun the action
 -- every time the trigger is set.

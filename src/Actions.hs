@@ -19,6 +19,7 @@ import Data.Text.Lazy.Encoding qualified as T
 import Data.Time (getCurrentTime)
 import Directory
   ( DirectoryUpdateResult (..),
+    RootDirectories,
     getDirectoryAtPath,
     saveRootsToDisk,
     updateDirectoryAtPath,
@@ -271,9 +272,9 @@ performAction action = do
           absPath
         ]
     ActionMarkAsWatched dirOrFile ->
-      markDirOrFileAsWatched app dirOrFile
+      modifyPVar_ app.appRootDirs $ markDirOrFileAsWatched dirOrFile
     ActionMarkAsUnwatched dirOrFile ->
-      markDirOrFileAsUnwatched app dirOrFile
+      modifyPVar_ app.appRootDirs $ markDirOrFileAsUnwatched dirOrFile
     ActionOpenUrlOnTV url ->
       liftIO $ atomically $ do
         tvState <- readTVar app.appTVState
@@ -321,8 +322,8 @@ performAction action = do
       Dir d -> directoryPathToAbsPath d
       File f -> videoFilePathToAbsPath f
 
-markDirOrFileAsWatched :: (MonadIO m) => App -> DirOrFile -> m ()
-markDirOrFileAsWatched app dirOrFile = modifyPVar_ app.appRootDirs $ \roots -> do
+markDirOrFileAsWatched :: (MonadIO m) => DirOrFile -> RootDirectories -> m RootDirectories
+markDirOrFileAsWatched dirOrFile rootDirs = do
   let dirPath = case dirOrFile of
         Dir p -> p
         File (VideoFilePath r p _) -> DirectoryPath r p
@@ -331,7 +332,7 @@ markDirOrFileAsWatched app dirOrFile = modifyPVar_ app.appRootDirs $ \roots -> d
         case fileData.videoFileWatched of
           Just _ -> fileData
           Nothing -> fileData {videoFileWatched = Just now}
-  pure $ updateDirectoryAtPath roots dirPath $ \dir ->
+  pure $ updateDirectoryAtPath rootDirs dirPath $ \dir ->
     case dirOrFile of
       Dir _ ->
         dir
@@ -344,8 +345,8 @@ markDirOrFileAsWatched app dirOrFile = modifyPVar_ app.appRootDirs $ \roots -> d
               Map.adjust applyWatched fileName dir.directoryVideoFiles
           }
 
-markDirOrFileAsUnwatched :: (MonadIO m) => App -> DirOrFile -> m ()
-markDirOrFileAsUnwatched app dirOrFile = modifyPVar_ app.appRootDirs $ \roots -> do
+markDirOrFileAsUnwatched :: (MonadIO m) => DirOrFile -> RootDirectories -> m RootDirectories
+markDirOrFileAsUnwatched dirOrFile rootDirs = do
   let dirPath = case dirOrFile of
         Dir p -> p
         File (VideoFilePath r p _) -> DirectoryPath r p
@@ -353,7 +354,7 @@ markDirOrFileAsUnwatched app dirOrFile = modifyPVar_ app.appRootDirs $ \roots ->
         case fileData.videoFileWatched of
           Just _ -> fileData {videoFileWatched = Nothing}
           Nothing -> fileData
-  pure $ updateDirectoryAtPath roots dirPath $ \dir ->
+  pure $ updateDirectoryAtPath rootDirs dirPath $ \dir ->
     case dirOrFile of
       Dir _ ->
         dir

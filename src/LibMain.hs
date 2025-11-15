@@ -17,12 +17,13 @@ import Actions
 import Control.Monad (when)
 import Control.Monad.Trans.Reader (ask)
 import Data.Aeson qualified as Aeson
-import Data.List.Extra (intercalate, notNull)
+import Data.List.Extra (intercalate, notNull, stripPrefix)
 import Data.List.NonEmpty qualified as NE
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe, isJust, mapMaybe)
 import Data.Ord (Down (..))
 import Data.Text (Text, unpack)
+import Data.Text qualified as T
 import Data.Text qualified as Text
 import Data.Time (UTCTime)
 import Directory
@@ -35,23 +36,23 @@ import Directory
   )
 import Directory.Directories
   ( DirectoryData (..),
-    DirectoryName,
+    DirectoryName (..),
     RootDirectoryData (..),
     RootDirectoryLocation (..),
     rootDirectoryAsDirectory,
+    rootDirectoryLocationToAbsPath,
     splitTitleFromDir,
   )
 import Directory.Files
   ( VideoFileData (..),
-    VideoFileName,
+    VideoFileName (..),
     getImageContentType,
     niceFileNameT,
   )
 import Directory.Paths
   ( DirectoryPath (..),
-    VideoFilePath,
+    VideoFilePath (..),
     rootDirectoryPath,
-    videoFilePath,
   )
 import Foundation
   ( App (..),
@@ -65,14 +66,16 @@ import Foundation
     static_images_youtube_png,
   )
 import GHC.Conc (newTVarIO)
+import GHC.Data.Maybe (firstJustsM)
 import GHC.Utils.Misc (sortWith)
 import IsDevelopment (isDevelopment)
 import Logging (LogLevel (..), Logger, LoggerT (..), putLog, runLoggerT)
 import Mpris (MprisAction (..), mediaListener)
 import Network.Info (NetworkInterface (..), getNetworkInterfaces)
 import Network.Wai.Handler.Warp (run)
-import PVar (newPVar, readPVar)
+import PVar (PVar, modifyPVar_, newPVar, readPVar)
 import Samba (MountResult, SmbServer (..), SmbShare (..), mount)
+import System.FilePath (pathSeparator)
 import System.Process (callProcess)
 import System.Random (initStdGen, mkStdGen)
 import TVState (startingTVState, tvStateWebSocket)
@@ -81,8 +84,10 @@ import Util
     networkInterfaceWorthiness,
     raceAll,
     shuffle,
+    unsnocNE,
     widgetFile,
   )
+import Util.TextWithoutSeparator (splitAtSeparatorNE)
 import Yesod hiding (defaultLayout, replace)
 import Yesod.WebSockets (race_, webSockets)
 
@@ -199,7 +204,7 @@ getDirectoryHomeR = do
               (videoName, videoData) <- Map.toList rootData.rootDirectoryVideoFiles
               pure
                 ( videoName,
-                  videoFilePath (rootDirectoryPath rootLocation) videoName,
+                  VideoFilePath rootLocation [] videoName,
                   videoData
                 )
           )
@@ -237,7 +242,7 @@ getDirectoryR rootLoc dirNames = do
         map
           ( \(videoName, videoData) ->
               ( videoName,
-                videoFilePath dirPath videoName,
+                VideoFilePath rootLoc dirNames videoName,
                 videoData
               )
           )
@@ -307,6 +312,29 @@ mountAllSambaShares roots = do
     "Mounted sambas:\n\t"
       ++ intercalate "\t\n" (showResult <$> zip sambaShares results)
 
+mediaListenerHandler :: (MonadIO m, Logger m) => PVar RootDirectories -> [Char] -> m ()
+mediaListenerHandler rootDirsPVar absFilePath = modifyPVar_ rootDirsPVar $ \roots -> do
+  let tryRoot rootLoc = do
+        rootAbsPath <- rootDirectoryLocationToAbsPath rootLoc
+        let mRest = stripPrefix (rootAbsPath ++ [pathSeparator]) absFilePath
+        case mRest of
+          Nothing -> pure Nothing
+          Just rest -> do
+            let pathPieces = splitAtSeparatorNE $ T.pack rest
+            let (dirNames', fileName) = unsnocNE pathPieces
+            let dirNames = DirectoryName <$> dirNames'
+            -- We'll pretend that this filename is always a video file, if not we just won't find the file and not update it, so that's fine too.
+            let videoFileName = VideoFileName fileName
+            pure $ Just $ VideoFilePath rootLoc dirNames videoFileName
+  mPath <- firstJustsM $ tryRoot <$> Map.keys roots
+  case mPath of
+    Nothing -> do
+      putLog Info $ "Path did not match any known files, so didn't mark any file as watched: " ++ absFilePath
+      pure roots
+    Just path -> do
+      putLog Info $ "Marked file as watched: " ++ show path
+      markDirOrFileAsWatched (File path) roots
+
 main :: IO ()
 main = do
   let minLogLevel = Info
@@ -355,10 +383,8 @@ main = do
     let appThread = toWaiAppPlain app >>= run port . defaultMiddlewaresNoLogging
 
     -- The thread that'll be listening for files being played, and marking them as watched
-    -- This is function returns instantly, but in the background it's still running, so no need to race
-    _ <- mediaListener $ \path -> do
-      putLog Info $ "Heard file playing: " ++ show path
-      markDirOrFileAsWatched app $ File path
+    -- This function returns instantly, but in the background it's still running, so no need to race
+    _ <- mediaListener $ mediaListenerHandler rootDirsPVar
 
     putLog Info "Starting server..."
     liftIO $ raceAll [appThread]

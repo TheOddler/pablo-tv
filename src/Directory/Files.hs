@@ -18,7 +18,7 @@ import Data.ByteString.Base64 qualified as B64
 import Data.ByteString.Char8 qualified as BS8
 import Data.ByteString.UTF8 qualified as BS
 import Data.HashSet qualified as Set
-import Data.List.Extra (lower)
+import Data.List.Extra (lower, stripPrefix)
 import Data.List.NonEmpty qualified as NE
 import Data.Maybe (isJust, listToMaybe, mapMaybe)
 import Data.Text (Text)
@@ -72,10 +72,9 @@ getImageContentType (ImageFileName imgName) =
 -- If it is not, we silently return some default or possibly a weird filename
 imageFileNameForContentType :: ContentType -> ImageFileName
 imageFileNameForContentType ct = ImageFileName $
-  case BS.toString ct of
-    'i' : 'm' : 'a' : 'g' : 'e' : '/' : ext ->
-      [twsQQ|poster.|] <> removeSeparatorsFromText (T.pack ext)
-    _ -> [twsQQ|poster.jpg|]
+  case stripPrefix "image/" $ BS.toString ct of
+    Just ext -> [twsQQ|poster.|] <> removeSeparatorsFromText (T.pack ext)
+    Nothing -> [twsQQ|poster.jpg|]
 
 newtype ImageFileData = ImageFileData {unImageFileData :: BS.ByteString}
   deriving newtype (ToContent, Eq, Show)

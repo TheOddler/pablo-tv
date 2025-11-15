@@ -18,11 +18,10 @@ import DBus
 import DBus.Client (Client, MatchRule (..), SignalHandler, addMatch, call, connectSession, matchAny)
 import Data.Aeson (FromJSON (..), ToJSON (..), genericParseJSON, genericToEncoding)
 import Data.Int (Int64)
-import Data.List (isPrefixOf)
+import Data.List (isPrefixOf, stripPrefix)
 import Data.Map qualified as Map
 import Data.Maybe (listToMaybe)
 import Data.String (IsString (..))
-import Directory.Paths (VideoFilePath)
 import GHC.Generics (Generic)
 import Logging (LogLevel (..), Logger, putLog)
 import Network.URI (unEscapeString)
@@ -96,7 +95,7 @@ mprisMethodCall destination interface member body =
 
 -- | This instantly returns, and shouldn't be run in a race.
 -- This is essentially a wrapper around `addMatch` so can be stopped by using the returned SignalHandler.
-mediaListener :: (Logger m, MonadUnliftIO m) => (VideoFilePath -> m ()) -> m SignalHandler
+mediaListener :: (Logger m, MonadUnliftIO m) => (FilePath -> m ()) -> m SignalHandler
 mediaListener onFilePlayed = do
   client <- liftIO connectSession
 
@@ -123,8 +122,8 @@ mediaListener onFilePlayed = do
               else pure $ Left err
     let body = signalBody signal
     case body of
-      [interface', changedProps', _] ->
-        let errOrPath :: Either String VideoFilePath
+      [interface', changedProps', _] -> do
+        let errOrPath :: Either String FilePath
             errOrPath = runExcept $ do
               interface <- justOrErr "interface failed parsing" $ fromVariant interface'
               guard (interface == playerInterface) $ "interface is not " ++ show playerInterface
@@ -136,16 +135,14 @@ mediaListener onFilePlayed = do
               -- I observed that opening a video sends 3 signals, each time with a bit more information. The last one is the only one with a proper length, so only listen for that one
               guard (videoLength > 0) "length reported as 0, so likely some in-between signal"
               (xesamUrl :: String) <- justOrErr "video path" $ Map.lookup "xesam:url" metaData >>= fromVariant
-              let mFile :: Maybe VideoFilePath
-                  mFile = case unEscapeString xesamUrl of
-                    'f' : 'i' : 'l' : 'e' : ':' : '/' : '/' : path ->
-                      -- TODO: Convert a filePath to VideoFilePath by checking what root it belongs to and stuff
-                      undefined path
-                    _ -> Nothing
-              justOrErr "file path failed parsing" mFile
-         in runInIO $ case errOrPath of
-              Left err -> putLog Debug $ "Ignoring property changes because " ++ err ++ "; " ++ show body
-              Right path -> onFilePlayed path
+              justOrErr "was not a file:// path" $ stripPrefix "file://" (unEscapeString xesamUrl)
+
+        runInIO $ case errOrPath of
+          Left err ->
+            putLog Debug $ "Ignoring property changes because " ++ err ++ "; " ++ show body
+          Right path -> do
+            putLog Info $ "Heard file playing: " ++ show path
+            onFilePlayed path
       _ ->
         runInIO $ putLog Error $ "Incorrect body shape for PropertiesChanged signal: " ++ show body
 

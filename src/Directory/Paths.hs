@@ -13,8 +13,6 @@ import Directory.Directories
 import Directory.Files
 import GHC.Generics (Generic)
 import Orphanage ()
-import Samba qualified
-import System.Directory (getHomeDirectory)
 import System.FilePath (takeExtension)
 import Util.TextWithoutSeparator
 import Yesod (MonadIO (..))
@@ -48,11 +46,7 @@ addSubDir (DirectoryPath root names) newName = DirectoryPath root $ names ++ [ne
 
 directoryPathToAbsPath :: (MonadIO m) => DirectoryPath -> m FilePath
 directoryPathToAbsPath (DirectoryPath root dirNames) = do
-  rootAbsPath <- case root of
-    RootSamba srv shr -> Samba.mkMountPath srv shr
-    RootLocalVideos -> do
-      home <- liftIO getHomeDirectory
-      pure $ home ++ "/Videos"
+  rootAbsPath <- rootDirectoryLocationToAbsPath root
   pure $ intercalate "/" $ rootAbsPath : (T.unpack . unwrap <$> dirNames)
 
 -- Video File Paths
@@ -85,14 +79,6 @@ instance FromJSON VideoFilePath where
         Just (Left err) -> parseFail $ "Couldn't parse VideoFilePath: " ++ err
         Nothing -> parseFail "Couldn't parse VideoFilePath, no directory found in path."
       else parseFail "Not a video file, wrong extension."
-
-videoFilePath :: DirectoryPath -> VideoFileName -> VideoFilePath
-videoFilePath dir videoName =
-  VideoFilePath
-    { videoFilePathRoot = dir.directoryPathRoot,
-      videoFilePathNames = dir.directoryPathNames,
-      videoFilePathName = videoName
-    }
 
 videoFilePathToAbsPath :: VideoFilePath -> IO FilePath
 videoFilePathToAbsPath (VideoFilePath root dirNames fileName) = do
