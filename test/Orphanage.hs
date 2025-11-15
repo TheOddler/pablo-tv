@@ -3,14 +3,19 @@
 module Orphanage () where
 
 import Actions (Action (..), DirOrFile (..), KeyboardButton (..), MouseButton (..))
-import Data.Text as T
-import Directory (DirectoryName (..), DirectoryPath, RootDirectoryLocation, VideoFileName (..), VideoFilePath, videoFileExts)
+import Data.HashSet qualified as Set
+import Directory.Directories (DirectoryName (..), RootDirectoryLocation)
+import Directory.Files (VideoFileName (..), videoFileExts)
+import Directory.Paths (DirectoryPath, VideoFilePath)
 import Generic.Random (genericArbitrary, uniform)
 import Mpris qualified
 import Samba (SmbServer (..), SmbShare (..))
-import Test.QuickCheck (Arbitrary (..), elements, listOf1)
+import Test.QuickCheck (Arbitrary (..), elements, listOf1, suchThatMap)
 import Test.QuickCheck.Instances ()
-import TestUtils (genFileNameWithExt)
+import Util.TextWithoutSeparator (TextWithoutSeparator, textWithoutSeparator)
+
+instance Arbitrary TextWithoutSeparator where
+  arbitrary = arbitrary `suchThatMap` textWithoutSeparator
 
 instance Arbitrary SmbServer where
   arbitrary = do
@@ -24,9 +29,7 @@ instance Arbitrary SmbShare where
     pure $ SmbShare letters
 
 instance Arbitrary DirectoryName where
-  arbitrary = do
-    letters <- listOf1 $ elements ['a' .. 'z']
-    pure $ DirectoryName $ T.pack letters
+  arbitrary = DirectoryName <$> arbitrary
 
 instance Arbitrary RootDirectoryLocation where
   arbitrary = genericArbitrary uniform
@@ -35,7 +38,10 @@ instance Arbitrary DirectoryPath where
   arbitrary = genericArbitrary uniform
 
 instance Arbitrary VideoFileName where
-  arbitrary = VideoFileName <$> genFileNameWithExt videoFileExts
+  arbitrary = do
+    name <- arbitrary
+    ext <- elements $ Set.toList videoFileExts
+    pure . VideoFileName $ name <> ext
 
 instance Arbitrary VideoFilePath where
   arbitrary = genericArbitrary uniform

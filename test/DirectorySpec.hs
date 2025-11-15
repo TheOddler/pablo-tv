@@ -1,15 +1,20 @@
+{-# LANGUAGE QuasiQuotes #-}
+
 module DirectorySpec where
 
 import Actions
 import Data.Aeson (eitherDecode, encode)
 import Data.Map.Strict qualified as Map
 import Directory
+import Directory.Directories
+import Directory.Files
 import Orphanage ()
 import Samba (SmbServer (..), SmbShare (..))
 import Test.QuickCheck (property)
 import Test.QuickCheck.Instances ()
 import Test.Syd
 import Test.Syd.Aeson
+import Util.TextWithoutSeparator (twsQQ)
 
 spec :: Spec
 spec = do
@@ -26,12 +31,12 @@ spec = do
                   RootDirectoryData
                     { rootDirectorySubDirs =
                         Map.fromList
-                          [ ( DirectoryName "dir name",
+                          [ ( DirectoryName [twsQQ|dir name|],
                               DirectoryData
                                 { directoryImage = Nothing,
                                   directorySubDirs =
                                     Map.fromList
-                                      [ ( DirectoryName "sub dir",
+                                      [ ( DirectoryName [twsQQ|sub dir|],
                                           DirectoryData
                                             { directoryImage = Nothing,
                                               directorySubDirs = Map.empty,
@@ -41,7 +46,7 @@ spec = do
                                       ],
                                   directoryVideoFiles =
                                     Map.fromList
-                                      [ ( VideoFileName "video.avi",
+                                      [ ( VideoFileName [twsQQ|video.avi|],
                                           VideoFileData
                                             { videoFileAdded = read "2000-01-01 01:01:01",
                                               videoFileWatched = Nothing
@@ -53,7 +58,7 @@ spec = do
                           ],
                       rootDirectoryVideoFiles =
                         Map.fromList
-                          [ ( VideoFileName "test.mov",
+                          [ ( VideoFileName [twsQQ|test.mov|],
                               VideoFileData
                                 { videoFileAdded = read "2000-01-01 01:01:01",
                                   videoFileWatched = Nothing
@@ -68,7 +73,7 @@ spec = do
                         Map.empty,
                       rootDirectoryVideoFiles =
                         Map.fromList
-                          [ ( VideoFileName "video.mp4",
+                          [ ( VideoFileName [twsQQ|video.mp4|],
                               VideoFileData
                                 { videoFileAdded = read "2000-01-01 01:01:01",
                                   videoFileWatched = Nothing

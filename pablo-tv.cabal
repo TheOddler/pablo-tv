@@ -78,6 +78,7 @@ library
       , extra
       , filepath
       , ghc
+      , hashable
       , http-client
       , http-types
       , modern-uri

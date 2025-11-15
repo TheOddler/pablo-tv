@@ -1,4 +1,5 @@
 {-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE TemplateHaskellQuotes #-}
 
 module Util.TextWithoutSeparator
   ( TextWithoutSeparator,
@@ -11,14 +12,27 @@ module Util.TextWithoutSeparator
     unsplitSeparatedText,
     unsplitSeparatedTextNE,
     safeCleanListDirectory,
+    twsQQ,
+    isSuffixOf,
+    anyIsSuffixOf,
   )
 where
 
 import Control.Monad.IO.Class (MonadIO (..))
-import Data.Aeson (FromJSON (..), FromJSONKey (..), FromJSONKeyFunction (..), ToJSON, ToJSONKey)
+import Data.Aeson
+  ( FromJSON (..),
+    FromJSONKey (..),
+    FromJSONKeyFunction (..),
+    ToJSON,
+    ToJSONKey,
+  )
+import Data.Hashable (Hashable)
 import Data.List.NonEmpty qualified as NE
 import Data.Text qualified as T
 import GHC.Utils.Exception (tryIO)
+import Language.Haskell.TH (Exp, Q)
+import Language.Haskell.TH.Quote (QuasiQuoter (..))
+import Orphanage ()
 import SafeConvert (splitTextNE)
 import System.Directory (listDirectory)
 import Text.Blaze (ToMarkup)
@@ -35,7 +49,7 @@ separator :: Char
 separator = '/'
 
 newtype TextWithoutSeparator = UnsafeTextWithoutSeparator {unTextWithoutSeparator :: T.Text}
-  deriving newtype (Eq, Ord, Show, ToJSON, ToJSONKey, ToMarkup)
+  deriving newtype (Eq, Ord, Show, ToJSON, ToJSONKey, ToMarkup, Semigroup, Monoid, Hashable)
 
 instance Read TextWithoutSeparator where
   readPrec = readPrec >>= textWithoutSeparator
@@ -65,6 +79,23 @@ textWithoutSeparator t =
 removeSeparatorsFromText :: T.Text -> TextWithoutSeparator
 removeSeparatorsFromText = UnsafeTextWithoutSeparator . T.filter (/= separator)
 
+twsQQ :: QuasiQuoter
+twsQQ =
+  QuasiQuoter
+    { quoteExp = quoteAgeExp,
+      quotePat = unsupported "patterns",
+      quoteType = unsupported "types",
+      quoteDec = unsupported "declarations"
+    }
+  where
+    unsupported what _ = fail $ "tws (TextWithoutSeparator) quasiquoter does not support " ++ what
+    quoteAgeExp :: String -> Q Exp
+    quoteAgeExp str = do
+      let txt = T.pack str
+      case textWithoutSeparator txt of
+        Right _ -> [|UnsafeTextWithoutSeparator txt|]
+        Left err -> fail err
+
 splitAtSeparator :: T.Text -> [TextWithoutSeparator]
 splitAtSeparator = NE.toList . splitAtSeparatorNE
 
@@ -87,3 +118,11 @@ safeCleanListDirectory dirPath = do
     Right names ->
       -- We know the listed paths won't have separators in them, so safe to do
       Right $ UnsafeTextWithoutSeparator . T.pack <$> names
+
+isSuffixOf :: TextWithoutSeparator -> TextWithoutSeparator -> Bool
+suffix `isSuffixOf` txt =
+  suffix.unTextWithoutSeparator `T.isSuffixOf` txt.unTextWithoutSeparator
+
+anyIsSuffixOf :: (Foldable f) => f TextWithoutSeparator -> TextWithoutSeparator -> Bool
+suffixes `anyIsSuffixOf` txt =
+  any (`isSuffixOf` txt) suffixes

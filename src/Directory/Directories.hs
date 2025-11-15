@@ -1,4 +1,5 @@
 {-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE QuasiQuotes #-}
 
 module Directory.Directories where
 
@@ -37,16 +38,16 @@ data RootDirectoryLocation
   deriving (Eq, Ord, Generic)
 
 unRootDirectoryLocation :: RootDirectoryLocation -> TextWithoutSeparator
-unRootDirectoryLocation rd = removeSeparatorsFromText $ case rd of
+unRootDirectoryLocation rd = case rd of
+  RootLocalVideos -> [twsQQ|Videos|]
   RootSamba srv shr ->
-    T.pack $
+    removeSeparatorsFromText . T.pack $
       concat
         [ "smb-",
           srv.unSmbServer,
           "-",
           shr.unSmbShare
         ]
-  RootLocalVideos -> "Videos"
 
 rootDirectoryLocation :: (MonadFail m) => TextWithoutSeparator -> m RootDirectoryLocation
 rootDirectoryLocation tws = do

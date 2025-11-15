@@ -1,5 +1,5 @@
 {
-    "192.168.0.23/movies": {
+    "smb-192.168.0.23-movies": {
         "rootDirectorySubDirs": {},
         "rootDirectoryVideoFiles": {
             "video.mp4": {

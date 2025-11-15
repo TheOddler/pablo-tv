@@ -77,7 +77,7 @@ instance FromJSON VideoFilePath where
         fileNameT = NE.last pieces
         fileName = VideoFileName fileNameT
         isVideoFile :: Bool
-        isVideoFile = any ((`T.isSuffixOf` unwrap fileNameT) . T.pack) videoFileExts
+        isVideoFile = hasVideoFileExt fileNameT
         dirPathPieces = NE.nonEmpty $ NE.init pieces
     if isVideoFile
       then case parseRootAndNames <$> dirPathPieces of
@@ -116,9 +116,9 @@ guessType tws = case str of
   "" -> LikelyOther tws
   '.' : _ -> LikelyOther tws
   _ -> case takeExtension str of
-    ext | isVideoFileExt ext -> LikelyVideoFile $ VideoFileName tws
-    ext | isImageFileExt ext -> LikelyImageFile $ ImageFileName tws
-    ext | isCommonFileExt ext -> LikelyOther tws
+    _ | hasVideoFileExt tws -> LikelyVideoFile $ VideoFileName tws
+    _ | hasImageFileExt tws -> LikelyImageFile $ ImageFileName tws
+    _ | hasCommonFileExt tws -> LikelyOther tws
     _ -> LikelyDir $ DirectoryName tws
   where
     str = T.unpack tws.unTextWithoutSeparator

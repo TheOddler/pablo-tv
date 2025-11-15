@@ -1,14 +1,19 @@
+{-# LANGUAGE QuasiQuotes #-}
+
 module ActionsSpec where
 
 import Actions
 import Data.Aeson (Value, eitherDecode, encode)
 import Data.ByteString.Lazy.Char8 qualified as BS
-import Directory (DirectoryName (..), DirectoryPath (..), RootDirectoryLocation (..), VideoFileName (..), VideoFilePath (..))
+import Directory.Directories (DirectoryName (..), RootDirectoryLocation (..))
+import Directory.Files (VideoFileName (..))
+import Directory.Paths (DirectoryPath (..), VideoFilePath (..))
 import Orphanage ()
 import Samba (SmbServer (..), SmbShare (..))
 import Test.QuickCheck (property)
 import Test.QuickCheck.Instances ()
 import Test.Syd
+import Util.TextWithoutSeparator (twsQQ)
 
 spec :: Spec
 spec = do
@@ -67,18 +72,18 @@ encodingExamples =
       ActionPlayPath . Dir $
         DirectoryPath
           RootLocalVideos
-          [ DirectoryName "path",
-            DirectoryName "to",
-            DirectoryName "folder"
+          [ DirectoryName [twsQQ|path|],
+            DirectoryName [twsQQ|to|],
+            DirectoryName [twsQQ|folder|]
           ]
     ),
-    ( "{\"tag\":\"PlayPath\",\"path\":\"192.168.0.0/movies/path/to/file.mov\"}",
+    ( "{\"tag\":\"PlayPath\",\"path\":\"smb-192.168.0.0-movies/path/to/file.mov\"}",
       ActionPlayPath . File $
         VideoFilePath
           (RootSamba (SmbServer "192.168.0.0") (SmbShare "movies"))
-          [ DirectoryName "path",
-            DirectoryName "to"
+          [ DirectoryName [twsQQ|path|],
+            DirectoryName [twsQQ|to|]
           ]
-          (VideoFileName "file.mov")
+          (VideoFileName [twsQQ|file.mov|])
     )
   ]

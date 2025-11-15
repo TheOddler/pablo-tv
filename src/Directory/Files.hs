@@ -1,4 +1,6 @@
 {-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE OverloadedLists #-}
+{-# LANGUAGE QuasiQuotes #-}
 
 module Directory.Files where
 
@@ -28,7 +30,7 @@ import GHC.Generics (Generic)
 import Orphanage ()
 import SafeConvert (bsToBase64Text)
 import System.FilePath (takeBaseName, takeExtension)
-import Util (ourAesonOptionsPrefix, safeMinimumOn)
+import Util (ourAesonOptions, safeMinimumOn)
 import Util.Regex
 import Util.TextWithoutSeparator
 import Yesod (ContentType, ToContent, typeJpeg)
@@ -45,10 +47,10 @@ data VideoFileData = VideoFileData
   deriving (Generic, Eq, Show)
 
 instance ToJSON VideoFileData where
-  toEncoding = genericToEncoding $ ourAesonOptionsPrefix "videoFile"
+  toEncoding = genericToEncoding ourAesonOptions
 
 instance FromJSON VideoFileData where
-  parseJSON = genericParseJSON $ ourAesonOptionsPrefix "videoFile"
+  parseJSON = genericParseJSON ourAesonOptions
 
 -- Images
 
@@ -69,10 +71,11 @@ getImageContentType (ImageFileName imgName) =
 -- | We assume this is a properly formatted content type, something like "image/jpg".
 -- If it is not, we silently return some default
 imageFileNameForContentType :: ContentType -> ImageFileName
-imageFileNameForContentType ct = ImageFileName . removeSeparatorsFromText . T.pack $
+imageFileNameForContentType ct = ImageFileName $
   case BS.toString ct of
-    'i' : 'm' : 'a' : 'g' : 'e' : '/' : ext -> "poster." ++ ext
-    _ -> "poster.jpg"
+    'i' : 'm' : 'a' : 'g' : 'e' : '/' : ext ->
+      removeSeparatorsFromText . T.pack $ "poster." ++ ext
+    _ -> [twsQQ|poster.jpg|]
 
 newtype ImageFileData = ImageFileData {unImageFileData :: BS.ByteString}
   deriving newtype (ToContent, Eq, Show)
@@ -139,90 +142,87 @@ episodeInfoFromFile file =
             Just a -> (Nothing, Just $ Left a)
             Nothing -> (Nothing, Nothing)
 
-isVideoFileExt :: String -> Bool
-isVideoFileExt ext = ext `Set.member` videoFileExts
+hasVideoFileExt :: TextWithoutSeparator -> Bool
+hasVideoFileExt t = videoFileExts `anyIsSuffixOf` t
 
-videoFileExts :: Set.HashSet String
+videoFileExts :: Set.HashSet TextWithoutSeparator
 videoFileExts =
-  Set.fromList
-    [ ".avi",
-      ".flv",
-      ".m4v",
-      ".mkv",
-      ".mov",
-      ".mp4",
-      ".mpeg",
-      ".mpg",
-      ".webm",
-      ".wmv"
-    ]
+  [ [twsQQ|.avi|],
+    [twsQQ|.flv|],
+    [twsQQ|.m4v|],
+    [twsQQ|.mkv|],
+    [twsQQ|.mov|],
+    [twsQQ|.mp4|],
+    [twsQQ|.mpeg|],
+    [twsQQ|.mpg|],
+    [twsQQ|.webm|],
+    [twsQQ|.wmv|]
+  ]
 
-isImageFileExt :: String -> Bool
-isImageFileExt ext = ext `Set.member` imageFileExts
+hasImageFileExt :: TextWithoutSeparator -> Bool
+hasImageFileExt t = imageFileExts `anyIsSuffixOf` t
 
-imageFileExts :: Set.HashSet String
+imageFileExts :: Set.HashSet TextWithoutSeparator
 imageFileExts =
-  Set.fromList
-    [ ".bmp",
-      ".gif",
-      ".heic",
-      ".heif",
-      ".jpeg",
-      ".jpg",
-      ".png",
-      ".svg",
-      ".tif",
-      ".tiff",
-      ".webp"
-    ]
+  [ [twsQQ|.bmp|],
+    [twsQQ|.gif|],
+    [twsQQ|.heic|],
+    [twsQQ|.heif|],
+    [twsQQ|.jpeg|],
+    [twsQQ|.jpg|],
+    [twsQQ|.png|],
+    [twsQQ|.svg|],
+    [twsQQ|.tif|],
+    [twsQQ|.tiff|],
+    [twsQQ|.webp|]
+  ]
 
 -- | For non-video, non-image ext.
 -- This is used to improve guesses on what are files and what are directories.
-isCommonFileExt :: String -> Bool
-isCommonFileExt ext = ext `Set.member` commonFileExts
+hasCommonFileExt :: TextWithoutSeparator -> Bool
+hasCommonFileExt t = commonFileExts `anyIsSuffixOf` t
 
-commonFileExts :: Set.HashSet String
+commonFileExts :: Set.HashSet TextWithoutSeparator
 commonFileExts =
-  Set.fromList
-    [ ".7z",
-      ".aac",
-      ".aes",
-      ".apk",
-      ".bat",
-      ".csv",
-      ".db",
-      ".db3-shm",
-      ".db3-wal",
-      ".db3",
-      ".dmg",
-      ".doc",
-      ".docx",
-      ".exe",
-      ".flac",
-      ".gz",
-      ".idx",
-      ".img",
-      ".iso",
-      ".mp3",
-      ".msi",
-      ".odp",
-      ".ods",
-      ".odt",
-      ".ogg",
-      ".pdf",
-      ".ppt",
-      ".pptx",
-      ".rar",
-      ".rtf",
-      ".sh",
-      ".srt",
-      ".sub",
-      ".tar.gz",
-      ".tar",
-      ".txt",
-      ".wav",
-      ".xls",
-      ".xlsx",
-      ".yaml",
-      ".zip"
-    ]
+  [ [twsQQ|.7z|],
+    [twsQQ|.aac|],
+    [twsQQ|.aes|],
+    [twsQQ|.apk|],
+    [twsQQ|.bat|],
+    [twsQQ|.csv|],
+    [twsQQ|.db|],
+    [twsQQ|.db3-shm|],
+    [twsQQ|.db3-wal|],
+    [twsQQ|.db3|],
+    [twsQQ|.dmg|],
+    [twsQQ|.doc|],
+    [twsQQ|.docx|],
+    [twsQQ|.exe|],
+    [twsQQ|.flac|],
+    [twsQQ|.gz|],
+    [twsQQ|.idx|],
+    [twsQQ|.img|],
+    [twsQQ|.iso|],
+    [twsQQ|.mp3|],
+    [twsQQ|.msi|],
+    [twsQQ|.odp|],
+    [twsQQ|.ods|],
+    [twsQQ|.odt|],
+    [twsQQ|.ogg|],
+    [twsQQ|.pdf|],
+    [twsQQ|.ppt|],
+    [twsQQ|.pptx|],
+    [twsQQ|.rar|],
+    [twsQQ|.rtf|],
+    [twsQQ|.sh|],
+    [twsQQ|.srt|],
+    [twsQQ|.sub|],
+    [twsQQ|.tar.gz|],
+    [twsQQ|.tar|],
+    [twsQQ|.txt|],
+    [twsQQ|.wav|],
+    [twsQQ|.xls|],
+    [twsQQ|.xlsx|],
+    [twsQQ|.yaml|],
+    [twsQQ|.zip|]
+  ]
