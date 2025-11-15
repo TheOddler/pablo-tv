@@ -23,8 +23,8 @@
   - {name: throw, within: []} # Don't throw from pure code, use throwIO instead.
   - name: Prelude.error
     within:
-      - Util
       - TestUtils
+      - SafeConvert
 
   - {name: Data.List.head, within: []} # Partial, use `listToMaybe` instead.
   - {name: Data.List.tail, within: []} # Partial

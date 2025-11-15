@@ -1,6 +1,6 @@
 {-# OPTIONS_GHC -Wno-orphans #-}
 
-module Orphanage where
+module Orphanage () where
 
 import Actions (Action (..), DirOrFile (..), KeyboardButton (..), MouseButton (..))
 import Data.Text as T

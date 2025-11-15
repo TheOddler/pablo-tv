@@ -4,7 +4,7 @@ module Directory where
 
 import Algorithms.NaturalSort qualified as Natural
 import Control.Applicative ((<|>))
-import Control.Monad (forM, when)
+import Control.Monad (forM)
 import Control.Monad.Catch (MonadThrow)
 import Data.Aeson
   ( FromJSON (..),
@@ -40,46 +40,49 @@ import GHC.Exts (sortWith)
 import GHC.Generics (Generic)
 import GHC.IO (catchAny)
 import GHC.IO.Exception (IOErrorType (..), IOException (..))
-import GHC.Read (Read (..))
 import GHC.Utils.Exception (displayException, tryIO)
 import ImageScraper (ImageSearchFailure (..), tryFindImage)
 import Logging (LogLevel (..), Logger, putLog)
+import Orphanage ()
 import SafeConvert (bsToBase64Text)
 import Samba (SmbServer (..), SmbShare (..))
 import Samba qualified
-import System.Directory (XdgDirectory (..), createDirectoryIfMissing, getHomeDirectory, getModificationTime, getXdgDirectory, listDirectory)
+import System.Directory
+  ( XdgDirectory (..),
+    createDirectoryIfMissing,
+    getHomeDirectory,
+    getModificationTime,
+    getXdgDirectory,
+    listDirectory,
+  )
 import System.FilePath (takeBaseName, takeExtension, (</>))
 import Text.Blaze (ToMarkup)
-import Text.Read (readMaybe)
+import Text.Read (Read (..), readMaybe)
 import Text.Regex.TDFA ((=~))
-import Util (failE, impossible, logDuration, ourAesonOptions, ourAesonOptionsPrefix, safeMinimumOn)
-import Yesod (ContentType, MonadIO (..), PathPiece (..), ToContent, typeOctet)
+import Util
+  ( failE,
+    impossible,
+    logDuration,
+    ourAesonOptions,
+    ourAesonOptionsPrefix,
+    safeMinimumOn,
+  )
+import Util.TextWithoutSeparator
+import Yesod (ContentType, MonadIO (..), PathPiece (..), ToContent, typeJpeg)
 
-newtype DirectoryName = DirectoryName {unDirectoryName :: Text}
-  deriving stock (Eq, Ord, Generic)
-  deriving newtype (ToJSON, FromJSON, ToJSONKey, FromJSONKey, PathPiece, ToMarkup)
+newtype DirectoryName = DirectoryName {unDirectoryName :: TextWithoutSeparator}
+  deriving newtype (Show, Eq, Ord, Read, Unwrap Text, ToJSON, FromJSON, ToJSONKey, FromJSONKey, PathPiece, ToMarkup)
 
-instance Show DirectoryName where
-  showsPrec p (DirectoryName a) = showsPrec p a
+newtype VideoFileName = VideoFileName {unVideoFileName :: TextWithoutSeparator}
+  deriving newtype (Show, Eq, Ord, Unwrap Text, ToJSON, FromJSON, ToJSONKey, FromJSONKey)
 
-instance Read DirectoryName where
-  readPrec = do
-    str <- readPrec
-    when ('/' `elem` str) $ fail "DirectoryName cannot contain '/'"
-    pure $ DirectoryName $ T.pack str
-
-newtype VideoFileName = VideoFileName {unVideoFileName :: Text}
-  deriving stock (Show, Eq, Ord, Generic)
-  deriving newtype (ToJSON, FromJSON, ToJSONKey, FromJSONKey)
-
-newtype ImageFileName = ImageFileName {unImageFileName :: Text}
-  deriving stock (Eq, Generic, Show)
-  deriving newtype (ToJSON, FromJSON)
+newtype ImageFileName = ImageFileName TextWithoutSeparator
+  deriving newtype (Eq, Show, Unwrap Text, ToJSON, FromJSON)
 
 getImageContentType :: ImageFileName -> ContentType
 getImageContentType (ImageFileName imgName) =
-  case takeExtension $ T.unpack imgName of
-    "" -> typeOctet -- What would be the best fallback?
+  case takeExtension $ T.unpack $ unwrap imgName of
+    "" -> typeJpeg
     ext ->
       let cleanedExt = lower $
             case ext of
@@ -87,14 +90,16 @@ getImageContentType (ImageFileName imgName) =
               e -> e
        in "image/" <> BS8.pack cleanedExt
 
+-- | We assume this is a properly formatted content type, something like "image/jpg".
+-- If it is not, we silently return some default
 imageFileNameForContentType :: ContentType -> ImageFileName
-imageFileNameForContentType ct = ImageFileName . T.pack $
+imageFileNameForContentType ct = ImageFileName . removeSeparatorsFromText . T.pack $
   case BS.toString ct of
     'i' : 'm' : 'a' : 'g' : 'e' : '/' : ext -> "poster." ++ ext
     _ -> "poster.jpg"
 
 newtype ImageFileData = ImageFileData {unImageFileData :: BS.ByteString}
-  deriving (ToContent, Eq, Show)
+  deriving newtype (ToContent, Eq, Show)
 
 instance ToJSON ImageFileData where
   toJSON imgData = toJSON $ bsToBase64Text imgData.unImageFileData
@@ -104,8 +109,6 @@ instance FromJSON ImageFileData where
   parseJSON jsonValue = do
     t <- parseJSON jsonValue
     pure $ ImageFileData $ B64.decodeLenient $ TE.encodeUtf8 t
-
-newtype IgnoredFileName = IgnoredFileName Text
 
 data VideoFileData = VideoFileData
   { videoFileAdded :: UTCTime,
@@ -135,27 +138,41 @@ instance FromJSON DirectoryData where
 data RootDirectoryLocation
   = RootSamba Samba.SmbServer Samba.SmbShare
   | RootLocalVideos
-  deriving (Eq, Ord, Show, Read, Generic)
+  deriving (Eq, Ord, Generic)
 
-rootDirectoryLocationToText :: RootDirectoryLocation -> Text
-rootDirectoryLocationToText = \case
-  RootSamba srv shr -> T.pack $ srv.unSmbServer ++ "/" ++ shr.unSmbShare
+unRootDirectoryLocation :: RootDirectoryLocation -> TextWithoutSeparator
+unRootDirectoryLocation rd = removeSeparatorsFromText $ case rd of
+  RootSamba srv shr ->
+    T.pack $
+      concat
+        [ "smb-",
+          srv.unSmbServer,
+          "-",
+          shr.unSmbShare
+        ]
   RootLocalVideos -> "Videos"
 
-rootDirectoryLocationFromText :: Text -> Maybe RootDirectoryLocation
-rootDirectoryLocationFromText t =
+rootDirectoryLocation :: (MonadFail m) => TextWithoutSeparator -> m RootDirectoryLocation
+rootDirectoryLocation tws = do
+  let t = unwrap tws
   if t == "Videos"
-    then Just RootLocalVideos
-    else case T.split (== '/') t of
-      [srv, shr] ->
-        Just $
+    then pure RootLocalVideos
+    else case T.unpack <$> T.split (`elem` ['=', '-']) t of
+      ["smbSrv", srv, "smbShr", shr] ->
+        pure $
           RootSamba
-            (SmbServer $ T.unpack srv)
-            (SmbShare $ T.unpack shr)
-      _ -> Nothing
+            (SmbServer srv)
+            (SmbShare shr)
+      _ -> fail $ "Unknown root directory structure: " ++ T.unpack t
+
+instance Read RootDirectoryLocation where
+  readPrec = readPrec >>= rootDirectoryLocation
+
+instance Show RootDirectoryLocation where
+  show = T.unpack . unTextWithoutSeparator . unRootDirectoryLocation
 
 instance ToJSON RootDirectoryLocation where
-  toEncoding = toEncoding . rootDirectoryLocationToText
+  toEncoding = toEncoding . unRootDirectoryLocation
 
 instance FromJSON RootDirectoryLocation where
   parseJSON v = do
@@ -164,22 +181,20 @@ instance FromJSON RootDirectoryLocation where
 
 parseRootDirectoryLocationFromText :: Text -> Parser RootDirectoryLocation
 parseRootDirectoryLocationFromText text =
-  case rootDirectoryLocationFromText text of
-    Just dir -> pure dir
-    Nothing -> parseFail "Failed parsing RootDirectoryLocation"
+  textWithoutSeparator text >>= rootDirectoryLocation
 
 instance ToJSONKey RootDirectoryLocation where
-  toJSONKey = toJSONKeyText rootDirectoryLocationToText
+  toJSONKey = toJSONKeyText (unwrap . unRootDirectoryLocation)
 
 instance FromJSONKey RootDirectoryLocation where
   fromJSONKey = FromJSONKeyTextParser parseRootDirectoryLocationFromText
 
 instance PathPiece RootDirectoryLocation where
   toPathPiece :: RootDirectoryLocation -> Text
-  toPathPiece = rootDirectoryLocationToText
+  toPathPiece = unwrap . unRootDirectoryLocation
 
   fromPathPiece :: Text -> Maybe RootDirectoryLocation
-  fromPathPiece = rootDirectoryLocationFromText
+  fromPathPiece text = textWithoutSeparator text >>= rootDirectoryLocation
 
 data RootDirectoryData = RootDirectoryData
   { rootDirectorySubDirs :: Map.Map DirectoryName DirectoryData,
@@ -192,9 +207,6 @@ instance ToJSON RootDirectoryData where
 
 instance FromJSON RootDirectoryData where
   parseJSON = genericParseJSON ourAesonOptions
-
-rootDirectoryLocationName :: RootDirectoryLocation -> DirectoryName
-rootDirectoryLocationName l = DirectoryName $ rootDirectoryLocationToText l
 
 rootDirectoryAsDirectory :: RootDirectoryData -> DirectoryData
 rootDirectoryAsDirectory root =
@@ -217,24 +229,19 @@ data DirectoryPath = DirectoryPath
 
 instance ToJSON DirectoryPath where
   toEncoding (DirectoryPath root names) =
-    toEncoding . T.intercalate "/" $
-      rootDirectoryLocationToText root : (unDirectoryName <$> names)
+    toEncoding . unsplitSeparatedText $
+      unRootDirectoryLocation root : (unDirectoryName <$> names)
 
 instance FromJSON DirectoryPath where
   parseJSON = withText "DirectoryPath" $ \text ->
-    case parseRootAndNames $ T.splitOn "/" text of
+    case parseRootAndNames $ splitAtSeparatorNE text of
       Just (root, names) -> pure $ DirectoryPath root names
       Nothing -> parseFail $ "Couldn't parse DirectoryPath: " ++ T.unpack text
 
-parseRootAndNames :: [Text] -> Maybe (RootDirectoryLocation, [DirectoryName])
-parseRootAndNames = \case
-  first : rest
-    | Just root <- rootDirectoryLocationFromText first ->
-        Just (root, DirectoryName <$> rest)
-  first : second : rest
-    | Just root <- rootDirectoryLocationFromText (first <> "/" <> second) ->
-        Just (root, DirectoryName <$> rest)
-  _ -> Nothing
+parseRootAndNames :: (MonadFail m) => NE.NonEmpty TextWithoutSeparator -> m (RootDirectoryLocation, [DirectoryName])
+parseRootAndNames (mRoot NE.:| names) = do
+  root <- rootDirectoryLocation mRoot
+  pure (root, DirectoryName <$> names)
 
 addSubDir :: DirectoryPath -> DirectoryName -> DirectoryPath
 addSubDir (DirectoryPath root names) newName = DirectoryPath root $ names ++ [newName]
@@ -246,7 +253,7 @@ directoryPathToAbsPath (DirectoryPath root dirNames) = do
     RootLocalVideos -> do
       home <- liftIO getHomeDirectory
       pure $ home ++ "/Videos"
-  pure $ intercalate "/" $ rootAbsPath : (T.unpack . unDirectoryName <$> dirNames)
+  pure $ intercalate "/" $ rootAbsPath : (T.unpack . unwrap <$> dirNames)
 
 data VideoFilePath = VideoFilePath
   { videoFilePathRoot :: RootDirectoryLocation,
@@ -257,24 +264,25 @@ data VideoFilePath = VideoFilePath
 
 instance ToJSON VideoFilePath where
   toEncoding (VideoFilePath root dirNames videoName) =
-    toEncoding . T.intercalate "/" $
-      rootDirectoryLocationToText root : (unDirectoryName <$> dirNames) ++ [videoName.unVideoFileName]
+    toEncoding . unsplitSeparatedText $
+      unRootDirectoryLocation root
+        : (unDirectoryName <$> dirNames)
+        ++ [videoName.unVideoFileName]
 
 instance FromJSON VideoFilePath where
-  parseJSON = withText "VideoFilePath" $ \text ->
-    case NE.nonEmpty $ T.splitOn "/" text of
-      Nothing -> parseFail $ "Couldn't parse DirectoryPath: " ++ T.unpack text
-      Just pieces -> do
-        let fileNameT = NE.last pieces
-            isVideoFile :: Bool
-            isVideoFile = any ((`T.isSuffixOf` fileNameT) . T.pack) videoFileExts
-            dirPathPieces = NE.init pieces
-            fileName = VideoFileName fileNameT
-        if isVideoFile
-          then case parseRootAndNames dirPathPieces of
-            Just (root, names) -> pure $ VideoFilePath root names fileName
-            Nothing -> parseFail $ "Couldn't parse DirectoryPath: " ++ T.unpack text
-          else parseFail "Not a video file, wrong extension."
+  parseJSON = withText "VideoFilePath" $ \text -> do
+    let pieces = splitAtSeparatorNE text
+        fileNameT = NE.last pieces
+        fileName = VideoFileName fileNameT
+        isVideoFile :: Bool
+        isVideoFile = any ((`T.isSuffixOf` unwrap fileNameT) . T.pack) videoFileExts
+        dirPathPieces = NE.nonEmpty $ NE.init pieces
+    if isVideoFile
+      then case parseRootAndNames <$> dirPathPieces of
+        Just (Right (root, names)) -> pure $ VideoFilePath root names fileName
+        Just (Left err) -> parseFail $ "Couldn't parse VideoFilePath: " ++ err
+        Nothing -> parseFail "Couldn't parse VideoFilePath, no directory found in path."
+      else parseFail "Not a video file, wrong extension."
 
 videoFilePath :: DirectoryPath -> VideoFileName -> VideoFilePath
 videoFilePath dir videoName =
@@ -287,7 +295,7 @@ videoFilePath dir videoName =
 videoFilePathToAbsPath :: VideoFilePath -> IO FilePath
 videoFilePathToAbsPath (VideoFilePath root dirNames fileName) = do
   dirAbsPath <- directoryPathToAbsPath $ DirectoryPath root dirNames
-  pure $ dirAbsPath ++ "/" ++ T.unpack (unVideoFileName fileName)
+  pure $ dirAbsPath ++ "/" ++ T.unpack (unwrap fileName)
 
 getDirectoryAtPath :: RootDirectories -> DirectoryPath -> Maybe DirectoryData
 getDirectoryAtPath roots (DirectoryPath wantedRoot wantedDirNames) = do
@@ -344,39 +352,44 @@ data LikelyPathType
   = LikelyDir DirectoryName
   | LikelyVideoFile VideoFileName
   | LikelyImageFile ImageFileName
-  | LikelyIgnored IgnoredFileName
+  | LikelyOther T.Text
 
 -- | This expects a string that's the result of a `listDirectory` call
 guessType :: String -> LikelyPathType
-guessType p = case p of
-  "" -> LikelyIgnored $ IgnoredFileName $ T.pack p
-  '.' : _ -> LikelyIgnored $ IgnoredFileName $ T.pack p
-  _ -> case takeExtension p of
-    ext | isVideoFileExt ext -> LikelyVideoFile $ VideoFileName $ T.pack p
-    ext | isImageFileExt ext -> LikelyImageFile $ ImageFileName $ T.pack p
-    ext | isCommonFileExt ext -> LikelyIgnored $ IgnoredFileName $ T.pack p
-    _ -> LikelyDir $ DirectoryName $ T.pack p
+guessType str = case str of
+  "" -> LikelyOther txt
+  '.' : _ -> LikelyOther txt
+  _ -> case takeExtension str of
+    ext | isVideoFileExt ext -> mkGuess $ LikelyVideoFile . VideoFileName
+    ext | isImageFileExt ext -> mkGuess $ LikelyImageFile . ImageFileName
+    ext | isCommonFileExt ext -> LikelyOther txt
+    _ -> mkGuess $ LikelyDir . DirectoryName
+  where
+    txt = T.pack str
+    -- Turns the string into a guess, either a guess of the given constructor,
+    -- or LikelyOther if there were separators in the string.
+    mkGuess :: (TextWithoutSeparator -> LikelyPathType) -> LikelyPathType
+    mkGuess constr =
+      case textWithoutSeparator txt of
+        Nothing -> LikelyOther txt
+        Just tws -> constr tws
 
--- | Sometimes we guess something is a directory, but it turns out not to be.
--- In that case we ignore it.
-dirToOther :: DirectoryName -> IgnoredFileName
-dirToOther (DirectoryName n) = IgnoredFileName n
-
-partitionPathTypes :: [LikelyPathType] -> ([DirectoryName], [VideoFileName], [ImageFileName], [IgnoredFileName])
+partitionPathTypes :: [LikelyPathType] -> ([DirectoryName], [VideoFileName], [ImageFileName], [T.Text])
 partitionPathTypes =
   foldr
-    ( \guess (dirs, vids, imgs, igns) -> case guess of
-        LikelyDir d -> (d : dirs, vids, imgs, igns)
-        LikelyVideoFile v -> (dirs, v : vids, imgs, igns)
-        LikelyImageFile i -> (dirs, vids, i : imgs, igns)
-        LikelyIgnored i -> (dirs, vids, imgs, i : igns)
+    ( \guess (dirs, vids, imgs, oths) -> case guess of
+        LikelyDir d -> (d : dirs, vids, imgs, oths)
+        LikelyVideoFile v -> (dirs, v : vids, imgs, oths)
+        LikelyImageFile i -> (dirs, vids, i : imgs, oths)
+        LikelyOther t -> (dirs, vids, imgs, t : oths)
     )
     ([], [], [], [])
 
 bestImageFile :: [ImageFileName] -> Maybe ImageFileName
-bestImageFile = safeMinimumOn $ \(ImageFileName fileName) ->
-  case lower $ takeBaseName $ T.unpack fileName of
+bestImageFile = safeMinimumOn $ \fileName ->
+  case lower $ takeBaseName $ T.unpack $ unwrap fileName of
     "poster" -> 0 :: Int
+    "cover" -> 1
     _ -> 100
 
 data DirectoryKindGuess
@@ -432,11 +445,10 @@ updateRootDirectoriesFromDisk rootDirs =
             }
       DirectoryUnchanged -> pure rootDirData
       DirectoryNotADirectory -> do
-        let name = rootDirectoryLocationName rootLocation
         putLog Warning $
           unwords
             [ "Root directory",
-              T.unpack name.unDirectoryName,
+              T.unpack $ unwrap $ unRootDirectoryLocation rootLocation,
               "wasn't a directory somehow?"
             ]
         pure rootDirData
@@ -475,11 +487,10 @@ loadRootsFromDisk = do
 -- | Updates the directory (at given path) with new data from disk.
 -- It will potentially remove or add video files and sub-directories.
 -- It leaves watched or added information for files in tact.
-updateDirectoryFromDisk :: (MonadIO m, MonadThrow m, Logger m) => RootDirectories -> DirectoryPath -> DirectoryData -> m DirectoryUpdateResult
+updateDirectoryFromDisk :: forall m. (MonadIO m, MonadThrow m, Logger m) => RootDirectories -> DirectoryPath -> DirectoryData -> m DirectoryUpdateResult
 updateDirectoryFromDisk allDirsData dirPath dir = do
-  dirAbsPath <- directoryPathToAbsPath dirPath
-  logDuration ("Updated directory " ++ dirAbsPath) $ do
-    absDirPath <- directoryPathToAbsPath dirPath
+  absDirPath <- directoryPathToAbsPath dirPath
+  logDuration ("Updated directory " ++ absDirPath) $ do
     (namesOrErr :: Either IOError [FilePath]) <- liftIO $ tryIO $ listDirectory absDirPath
     case namesOrErr of
       Left err | err.ioe_type == InappropriateType -> do
@@ -534,7 +545,7 @@ updateDirectoryFromDisk allDirsData dirPath dir = do
             let step1 = foldr Map.delete dir.directoryVideoFiles removedVideoNames
             -- Step 2: Add new videos
             newVideos <- forM newVideoNames $ \newVideoName -> do
-              let fullFilePath = absDirPath ++ "/" ++ T.unpack newVideoName.unVideoFileName
+              let fullFilePath = absDirPath ++ "/" ++ T.unpack (unwrap newVideoName.unVideoFileName)
               modTime <- liftIO $ getModificationTime fullFilePath
               pure
                 ( newVideoName,
@@ -549,21 +560,17 @@ updateDirectoryFromDisk allDirsData dirPath dir = do
         -- We only care about the best image, other images ignore, even if there are new ones that aren't the best
         let diskImageName = bestImageFile imageGuesses
             currentImageName = fst <$> dir.directoryImage
-            dirName = case NE.nonEmpty dirPath.directoryPathNames of
-              Nothing -> rootDirectoryLocationName dirPath.directoryPathRoot
-              Just namesNE -> NE.last namesNE
-            dirNameStr = T.unpack dirName.unDirectoryName
-
             anyParentDirHasImage = isJust $ findDirWithImageFor allDirsData dirPath
             isRootDir = null dirPath.directoryPathNames
             isSeasonDirOrSubDir = any isSeasonDir dirPath.directoryPathNames
 
+            getImageFromDisk :: ImageFileName -> m (ImageFileName, ImageFileData)
             getImageFromDisk imgName = do
-              putLog Info $ "Getting image from disk for: " ++ dirNameStr
-              imgFile <- liftIO $ BS.readFile $ absDirPath </> dirNameStr
+              putLog Info $ "Getting image from disk for: " ++ absDirPath
+              imgFile <- liftIO $ BS.readFile $ absDirPath </> T.unpack (unwrap imgName)
               pure (imgName, ImageFileData imgFile)
 
-            imgFindingErr msg = "Failed finding image for " ++ dirAbsPath ++ ": " ++ msg
+            imgFindingErr msg = "Failed finding image for " ++ absDirPath ++ ": " ++ msg
             tryFindImage' searchTerm = do
               mImg <- tryFindImage searchTerm
               case mImg of
@@ -574,13 +581,18 @@ updateDirectoryFromDisk allDirsData dirPath dir = do
                   putLog Warning $ imgFindingErr err
                   pure Nothing
                 Right (contentType, img) -> do
-                  putLog Info $ "Downloaded image for " ++ dirAbsPath ++ " with search term " ++ T.unpack searchTerm
+                  putLog Info $ "Downloaded image for " ++ absDirPath ++ " with search term " ++ T.unpack searchTerm
                   pure $ Just (imageFileNameForContentType contentType, ImageFileData img)
+
+            dirName =
+              NE.last $
+                unRootDirectoryLocation dirPath.directoryPathRoot
+                  NE.:| map unDirectoryName dirPath.directoryPathNames
             getImageFromWeb = do
-              firstAttempt <- tryFindImage' dirName.unDirectoryName
+              firstAttempt <- tryFindImage' $ unTextWithoutSeparator dirName
               case firstAttempt of
                 Just img -> pure $ Just img
-                Nothing -> tryFindImage' . fst $ splitTitleFromDir dirName
+                Nothing -> tryFindImage' . fst $ splitTitleFromDir $ DirectoryName dirName
         newImage <- case (currentImageName, diskImageName) of
           (Nothing, Just diskImg) ->
             -- We currently don't know about an image, but there's one on disk, use that.
@@ -707,10 +719,10 @@ isSeasonDir :: DirectoryName -> Bool
 isSeasonDir = isJust . seasonFromDir
 
 seasonFromDir :: DirectoryName -> Maybe Int
-seasonFromDir (DirectoryName dir) =
-  tryRegex dir expect1Int "[Ss]eason ([0-9]+)"
-    <|> tryRegex dir expect1Int "[Ss]eries ([0-9]+)"
-    <|> tryRegex dir expect1Int "[Ss]eizoen ([0-9]+)"
+seasonFromDir dir =
+  tryRegex (unwrap dir) expect1Int "[Ss]eason ([0-9]+)"
+    <|> tryRegex (unwrap dir) expect1Int "[Ss]eries ([0-9]+)"
+    <|> tryRegex (unwrap dir) expect1Int "[Ss]eizoen ([0-9]+)"
 
 seasonFromFiles :: [VideoFileName] -> Maybe Int
 seasonFromFiles fileNames =
@@ -722,28 +734,28 @@ seasonFromFiles fileNames =
     looseEpisodesFound = any (isJust . snd . episodeInfoFromFile) fileNames
 
     seasonFromFile :: VideoFileName -> Maybe Int
-    seasonFromFile (VideoFileName file) =
-      tryRegex file expect1Int "[Ss]eason ([0-9]+)"
-        <|> tryRegex file expect1Int "[Ss]eries ([0-9]+)"
-        <|> tryRegex file expect1Int "[Ss]eizoen ([0-9]+)"
-        <|> tryRegex file expect1Int "[Ss]([0-9]+)[Ee][0-9]+"
-        <|> tryRegex file expect1Int "([0-9]+)[Xx][0-9]+"
+    seasonFromFile file =
+      tryRegex (unwrap file) expect1Int "[Ss]eason ([0-9]+)"
+        <|> tryRegex (unwrap file) expect1Int "[Ss]eries ([0-9]+)"
+        <|> tryRegex (unwrap file) expect1Int "[Ss]eizoen ([0-9]+)"
+        <|> tryRegex (unwrap file) expect1Int "[Ss]([0-9]+)[Ee][0-9]+"
+        <|> tryRegex (unwrap file) expect1Int "([0-9]+)[Xx][0-9]+"
 
 episodeInfoFromFile :: VideoFileName -> (Maybe Int, Maybe (Either Int (Int, Int)))
-episodeInfoFromFile (VideoFileName file) =
+episodeInfoFromFile file =
   let double :: Maybe (Int, Int, Int)
       double =
-        tryRegex file expect3Ints "[Ss]([0-9]+)[Ee]([0-9]+)-[Ee]([0-9]+)"
+        tryRegex (unwrap file) expect3Ints "[Ss]([0-9]+)[Ee]([0-9]+)-[Ee]([0-9]+)"
 
       seasonAndEp :: Maybe (Int, Int)
       seasonAndEp =
-        tryRegex file expect2Ints "[Ss]([0-9]+)[Ee]([0-9]+)"
-          <|> tryRegex file expect2Ints "([0-9]+)[Xx]([0-9]+)"
+        tryRegex (unwrap file) expect2Ints "[Ss]([0-9]+)[Ee]([0-9]+)"
+          <|> tryRegex (unwrap file) expect2Ints "([0-9]+)[Xx]([0-9]+)"
 
       epOnly :: Maybe Int
       epOnly =
-        tryRegex file expect1Int "[Ee]pisode ([0-9]+)"
-          <|> tryRegex file expect1Int "[Aa]flevering ([0-9]+)"
+        tryRegex (unwrap file) expect1Int "[Ee]pisode ([0-9]+)"
+          <|> tryRegex (unwrap file) expect1Int "[Aa]flevering ([0-9]+)"
    in case double of
         Just (s, a, b) -> (Just s, Just $ Right (a, b))
         Nothing -> case seasonAndEp of
@@ -754,12 +766,12 @@ episodeInfoFromFile (VideoFileName file) =
 
 splitTitleFromDir :: DirectoryName -> (Text, Text)
 splitTitleFromDir dirName =
-  let (title, rest) = T.breakOn "(" dirName.unDirectoryName
+  let (title, rest) = T.breakOn "(" $ unwrap dirName
    in (T.strip title, T.strip rest)
 
 niceFileNameT :: VideoFileName -> Text
-niceFileNameT (VideoFileName file) =
-  T.replace "." " " $ T.pack $ takeBaseName $ T.unpack file
+niceFileNameT file =
+  T.replace "." " " $ T.pack $ takeBaseName $ T.unpack $ unwrap file
 
 isVideoFileExt :: String -> Bool
 isVideoFileExt ext = ext `Set.member` videoFileExts

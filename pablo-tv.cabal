@@ -49,12 +49,14 @@ library
         LibMain
         Logging
         Mpris
+        Orphanage
         PVar
         SafeConvert
         Samba
         TVDB
         TVState
         Util
+        Util.TextWithoutSeparator
     if flag(development)
         cpp-options: -DDEVELOPMENT
     build-depends:
