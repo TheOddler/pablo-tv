@@ -4,7 +4,18 @@ import Algorithms.NaturalSort qualified as Natural
 import Control.Applicative ((<|>))
 import Control.Monad (forM, when)
 import Control.Monad.Catch (MonadThrow)
-import Data.Aeson (FromJSON (..), FromJSONKey, ToJSON (..), ToJSONKey, eitherDecodeFileStrict, encodeFile, genericParseJSON, genericToEncoding)
+import Data.Aeson
+  ( FromJSON (..),
+    FromJSONKey,
+    ToJSON (..),
+    ToJSONKey,
+    eitherDecodeFileStrict,
+    encodeFile,
+    genericParseJSON,
+    genericToEncoding,
+    withText,
+  )
+import Data.Aeson.Types (parseFail)
 import Data.ByteString qualified as BS
 import Data.ByteString.Base64 qualified as B64
 import Data.ByteString.Char8 qualified as BS8
@@ -146,11 +157,32 @@ data RootDirectoryLocation
   | RootLocalVideos
   deriving (Eq, Ord, Show, Read, Generic)
 
+rootDirectoryLocationToText :: RootDirectoryLocation -> Text
+rootDirectoryLocationToText = \case
+  RootSamba srv shr -> T.pack $ srv.unSmbServer ++ "/" ++ shr.unSmbShare
+  RootLocalVideos -> "Videos"
+
+rootDirectoryLocationFromText :: Text -> Maybe RootDirectoryLocation
+rootDirectoryLocationFromText t =
+  if t == "Videos"
+    then Just RootLocalVideos
+    else case T.split (== '/') t of
+      [srv, shr] ->
+        Just $
+          RootSamba
+            (SmbServer $ T.unpack srv)
+            (SmbShare $ T.unpack shr)
+      _ -> Nothing
+
 instance ToJSON RootDirectoryLocation where
-  toEncoding = genericToEncoding ourAesonOptions
+  toEncoding = toEncoding . rootDirectoryLocationToText
 
 instance FromJSON RootDirectoryLocation where
-  parseJSON = genericParseJSON ourAesonOptions
+  parseJSON v = do
+    (asText :: Text) <- parseJSON v
+    case rootDirectoryLocationFromText asText of
+      Just dir -> pure dir
+      Nothing -> parseFail "Failed parsing RootDirectoryLocation"
 
 instance ToJSONKey RootDirectoryLocation
 
@@ -158,21 +190,10 @@ instance FromJSONKey RootDirectoryLocation
 
 instance PathPiece RootDirectoryLocation where
   toPathPiece :: RootDirectoryLocation -> Text
-  toPathPiece = \case
-    RootSamba srv shr -> T.pack $ srv.unSmbServer ++ "/" ++ shr.unSmbShare
-    RootLocalVideos -> "Videos"
+  toPathPiece = rootDirectoryLocationToText
 
   fromPathPiece :: Text -> Maybe RootDirectoryLocation
-  fromPathPiece t =
-    if t == "Videos"
-      then Just RootLocalVideos
-      else case T.split (== '/') t of
-        [srv, shr] ->
-          Just $
-            RootSamba
-              (SmbServer $ T.unpack srv)
-              (SmbShare $ T.unpack shr)
-        _ -> Nothing
+  fromPathPiece = rootDirectoryLocationFromText
 
 data RootDirectoryData = RootDirectoryData
   { rootDirectorySubDirs :: Map.Map DirectoryName DirectoryData,
@@ -187,7 +208,7 @@ instance FromJSON RootDirectoryData where
   parseJSON = genericParseJSON ourAesonOptions
 
 rootDirectoryLocationName :: RootDirectoryLocation -> DirectoryName
-rootDirectoryLocationName l = DirectoryName $ toPathPiece l
+rootDirectoryLocationName l = DirectoryName $ rootDirectoryLocationToText l
 
 rootDirectoryAsDirectory :: RootDirectoryData -> DirectoryData
 rootDirectoryAsDirectory root =
@@ -209,10 +230,25 @@ data DirectoryPath = DirectoryPath
   deriving (Show, Eq, Generic)
 
 instance ToJSON DirectoryPath where
-  toEncoding = genericToEncoding ourAesonOptions
+  toEncoding (DirectoryPath root names) =
+    toEncoding . T.intercalate "/" $
+      rootDirectoryLocationToText root : (unDirectoryName <$> names)
 
 instance FromJSON DirectoryPath where
-  parseJSON = genericParseJSON ourAesonOptions
+  parseJSON = withText "DirectoryPath" $ \text ->
+    case parseRootAndNames $ T.splitOn "/" text of
+      Just (root, names) -> pure $ DirectoryPath root names
+      Nothing -> parseFail $ "Couldn't parse DirectoryPath: " ++ T.unpack text
+
+parseRootAndNames :: [Text] -> Maybe (RootDirectoryLocation, [DirectoryName])
+parseRootAndNames = \case
+  first : rest
+    | Just root <- rootDirectoryLocationFromText first ->
+        Just (root, DirectoryName <$> rest)
+  first : second : rest
+    | Just root <- rootDirectoryLocationFromText (first <> "/" <> second) ->
+        Just (root, DirectoryName <$> rest)
+  _ -> Nothing
 
 addSubDir :: DirectoryPath -> DirectoryName -> DirectoryPath
 addSubDir (DirectoryPath root names) newName = DirectoryPath root $ names ++ [newName]
@@ -234,10 +270,25 @@ data VideoFilePath = VideoFilePath
   deriving (Show, Eq, Generic)
 
 instance ToJSON VideoFilePath where
-  toEncoding = genericToEncoding ourAesonOptions
+  toEncoding (VideoFilePath root dirNames videoName) =
+    toEncoding . T.intercalate "/" $
+      rootDirectoryLocationToText root : (unDirectoryName <$> dirNames) ++ [videoName.unVideoFileName]
 
 instance FromJSON VideoFilePath where
-  parseJSON = genericParseJSON ourAesonOptions
+  parseJSON = withText "VideoFilePath" $ \text ->
+    case NE.nonEmpty $ T.splitOn "/" text of
+      Nothing -> parseFail $ "Couldn't parse DirectoryPath: " ++ T.unpack text
+      Just pieces -> do
+        let fileNameT = NE.last pieces
+            isVideoFile :: Bool
+            isVideoFile = any ((`T.isSuffixOf` fileNameT) . T.pack) videoFileExts
+            dirPathPieces = NE.init pieces
+            fileName = VideoFileName fileNameT
+        if isVideoFile
+          then case parseRootAndNames dirPathPieces of
+            Just (root, names) -> pure $ VideoFilePath root names fileName
+            Nothing -> parseFail $ "Couldn't parse DirectoryPath: " ++ T.unpack text
+          else parseFail "Not a video file, wrong extension."
 
 videoFilePath :: DirectoryPath -> VideoFileName -> VideoFilePath
 videoFilePath dir videoName =

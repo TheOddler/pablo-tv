@@ -2,6 +2,7 @@
 
 module Actions where
 
+import Control.Applicative ((<|>))
 import Control.Exception (Exception (..))
 import Control.Monad (forever)
 import Data.Aeson (Encoding, FromJSON (..), Object, ToJSON (..), eitherDecode, encode, genericParseJSON, genericToEncoding, pairs, withObject, (.:), (.=))
@@ -45,7 +46,7 @@ import TVState (TVState (..))
 import Text.Blaze qualified as Blaze
 import Text.Julius (ToJavascript (..))
 import UnliftIO.Exception (catch)
-import Util (fail404, impossible, logDuration, ourAesonOptions, ourAesonOptionsPrefix)
+import Util (fail404, impossible, logDuration, ourAesonOptionsPrefix)
 import Yesod (MonadIO, getYesod, lift, liftIO)
 import Yesod.WebSockets (WebSocketsT, receiveData)
 
@@ -55,10 +56,12 @@ data DirOrFile
   deriving (Show, Eq, Generic)
 
 instance ToJSON DirOrFile where
-  toEncoding = genericToEncoding ourAesonOptions
+  toEncoding = \case
+    Dir d -> toEncoding d
+    File f -> toEncoding f
 
 instance FromJSON DirOrFile where
-  parseJSON = genericParseJSON ourAesonOptions
+  parseJSON v = File <$> parseJSON v <|> Dir <$> parseJSON v
 
 data Action
   = ActionClickMouse MouseButton

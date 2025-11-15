@@ -3,8 +3,9 @@ module ActionsSpec where
 import Actions
 import Data.Aeson (Value, eitherDecode, encode)
 import Data.ByteString.Lazy.Char8 qualified as BS
-import Directory (DirectoryName (..), DirectoryPath (..), RootDirectoryLocation (..))
+import Directory (DirectoryName (..), DirectoryPath (..), RootDirectoryLocation (..), VideoFileName (..), VideoFilePath (..))
 import Orphanage ()
+import Samba (SmbServer (..), SmbShare (..))
 import Test.QuickCheck (property)
 import Test.QuickCheck.Instances ()
 import Test.Syd
@@ -62,7 +63,7 @@ encodingExamples =
     ( "{\"tag\":\"Write\",\"text\":\"w () r |_ |}\"}",
       ActionWrite "w () r |_ |}"
     ),
-    ( "{\"tag\":\"PlayPath\",\"path\":\"/path/to/file/or/folder/\"}",
+    ( "{\"tag\":\"PlayPath\",\"path\":\"Videos/path/to/folder\"}",
       ActionPlayPath . Dir $
         DirectoryPath
           RootLocalVideos
@@ -70,5 +71,14 @@ encodingExamples =
             DirectoryName "to",
             DirectoryName "folder"
           ]
+    ),
+    ( "{\"tag\":\"PlayPath\",\"path\":\"192.168.0.0/movies/path/to/file.mov\"}",
+      ActionPlayPath . File $
+        VideoFilePath
+          (RootSamba (SmbServer "192.168.0.0") (SmbShare "movies"))
+          [ DirectoryName "path",
+            DirectoryName "to"
+          ]
+          (VideoFileName "file.mov")
     )
   ]
