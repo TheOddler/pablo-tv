@@ -56,7 +56,6 @@ library
         PVar
         SafeConvert
         Samba
-        TVDB
         TVState
         Util
         Util.Regex
@@ -138,5 +137,4 @@ test-suite pablo-tv-test
       , sydtest
       , sydtest-aeson
       , sydtest-discover
-      , text
       , unordered-containers

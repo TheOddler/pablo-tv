@@ -3,10 +3,7 @@ Pablo TV
 
 # How to run
 
-First you'll need to get a token for the TVDB here: https://thetvdb.github.io/v4-api/#/Login/post_login
-
 ```bash
-export TVDB_TOKEN="YOUR_TOKEN"
 nix run
 ```
 
@@ -17,7 +14,6 @@ Note: Make sure to open up the 8080 port so your phone can connect.
 Alternatively, without the need to clone:
 
 ```bash
-export TVDB_TOKEN="YOUR_TOKEN"
 nix run github:TheOddler/pablo-tv
 ```
 

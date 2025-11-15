@@ -17,11 +17,10 @@ import Actions
 import Control.Monad (when)
 import Control.Monad.Trans.Reader (ask)
 import Data.Aeson qualified as Aeson
-import Data.Char (isSpace)
 import Data.List.Extra (intercalate, notNull)
 import Data.List.NonEmpty qualified as NE
 import Data.Map.Strict qualified as Map
-import Data.Maybe (fromMaybe, isJust, isNothing, mapMaybe)
+import Data.Maybe (fromMaybe, isJust, mapMaybe)
 import Data.Ord (Down (..))
 import Data.Text (Text, unpack)
 import Data.Text qualified as Text
@@ -74,10 +73,8 @@ import Network.Info (NetworkInterface (..), getNetworkInterfaces)
 import Network.Wai.Handler.Warp (run)
 import PVar (newPVar, readPVar)
 import Samba (MountResult, SmbServer (..), SmbShare (..), mount)
-import System.Environment (lookupEnv)
 import System.Process (callProcess)
 import System.Random (initStdGen, mkStdGen)
-import TVDB (TVDBApiKey (..), getToken)
 import TVState (startingTVState, tvStateWebSocket)
 import Util
   ( logDuration,
@@ -314,18 +311,6 @@ main :: IO ()
 main = do
   let minLogLevel = Info
   runLoggerT minLogLevel $ do
-    -- To get this token for now you can use your apiKey here https://thetvdb.github.io/v4-api/#/Login/post_login
-    tvdbApiKeyRaw <- liftIO $ lookupEnv "TVDB_API_KEY"
-    let tvdbApiKey = case tvdbApiKeyRaw of
-          Nothing -> Nothing
-          Just str | all isSpace str -> Nothing
-          Just str -> Just $ TVDBApiKey str
-    tvdbToken <- case tvdbApiKey of
-      Nothing -> pure Nothing
-      Just key -> getToken key
-    when (isNothing tvdbToken) $
-      putLog Info "No tvdb token found, so running in read-only mode."
-
     inputDevice <- mkInputDevice
     tvState <- liftIO $ newTVarIO startingTVState
 
@@ -362,7 +347,6 @@ main = do
           App
             { appPort = port,
               appLogFunc = logFunc,
-              appTVDBToken = tvdbToken,
               appInputDevice = inputDevice,
               appTVState = tvState,
               appGetStatic = embeddedStatic,

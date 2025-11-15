@@ -10,7 +10,7 @@ module Foundation where
 
 import Control.Monad (when)
 import Data.ByteString.Char8 qualified as BS
-import Data.Maybe (isNothing, listToMaybe)
+import Data.Maybe (listToMaybe)
 import Directory (RootDirectories)
 import Directory.Directories (DirectoryName, RootDirectoryLocation)
 import Evdev.Uinput (Device)
@@ -20,7 +20,6 @@ import IsDevelopment (isDevelopment)
 import Logging (LogFunc, Logger (..))
 import Network.Info (getNetworkInterfaces)
 import PVar (PVar)
-import TVDB (TVDBToken)
 import TVState (TVState)
 import Text.Hamlet (hamletFile)
 import Util (networkInterfaceWorthiness, showIpV4OrV6WithPort, widgetFile)
@@ -31,7 +30,6 @@ import Yesod.EmbeddedStatic
 data App = App
   { appPort :: Int,
     appLogFunc :: LogFunc IO,
-    appTVDBToken :: Maybe TVDBToken,
     appInputDevice :: Device,
     appGetStatic :: EmbeddedStatic,
     appTVState :: TVar TVState,
@@ -98,7 +96,6 @@ instance Yesod App where
             listToMaybe $
               sortWith networkInterfaceWorthiness networkInterfaces
       port <- getsYesod appPort
-      inReadOnlyMode <- isNothing <$> getsYesod appTVDBToken
 
       addScript $ StaticR static_reconnecting_websocket_js
       addStylesheet $ StaticR static_fontawesome_css_all_min_css
