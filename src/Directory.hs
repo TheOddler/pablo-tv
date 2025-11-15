@@ -40,7 +40,7 @@ import GHC.Exts (sortWith)
 import GHC.Generics (Generic)
 import GHC.IO (catchAny)
 import GHC.IO.Exception (IOErrorType (..), IOException (..))
-import GHC.Utils.Exception (displayException, tryIO)
+import GHC.Utils.Exception (displayException)
 import ImageScraper (ImageSearchFailure (..), tryFindImage)
 import Logging (LogLevel (..), Logger, putLog)
 import Orphanage ()
@@ -53,7 +53,6 @@ import System.Directory
     getHomeDirectory,
     getModificationTime,
     getXdgDirectory,
-    listDirectory,
   )
 import System.FilePath (takeBaseName, takeExtension, (</>))
 import Text.Blaze (ToMarkup)
@@ -352,29 +351,22 @@ data LikelyPathType
   = LikelyDir DirectoryName
   | LikelyVideoFile VideoFileName
   | LikelyImageFile ImageFileName
-  | LikelyOther T.Text
+  | LikelyOther TextWithoutSeparator
 
 -- | This expects a string that's the result of a `listDirectory` call
-guessType :: String -> LikelyPathType
-guessType str = case str of
-  "" -> LikelyOther txt
-  '.' : _ -> LikelyOther txt
+guessType :: TextWithoutSeparator -> LikelyPathType
+guessType tws = case str of
+  "" -> LikelyOther tws
+  '.' : _ -> LikelyOther tws
   _ -> case takeExtension str of
-    ext | isVideoFileExt ext -> mkGuess $ LikelyVideoFile . VideoFileName
-    ext | isImageFileExt ext -> mkGuess $ LikelyImageFile . ImageFileName
-    ext | isCommonFileExt ext -> LikelyOther txt
-    _ -> mkGuess $ LikelyDir . DirectoryName
+    ext | isVideoFileExt ext -> LikelyVideoFile $ VideoFileName tws
+    ext | isImageFileExt ext -> LikelyImageFile $ ImageFileName tws
+    ext | isCommonFileExt ext -> LikelyOther tws
+    _ -> LikelyDir $ DirectoryName tws
   where
-    txt = T.pack str
-    -- Turns the string into a guess, either a guess of the given constructor,
-    -- or LikelyOther if there were separators in the string.
-    mkGuess :: (TextWithoutSeparator -> LikelyPathType) -> LikelyPathType
-    mkGuess constr =
-      case textWithoutSeparator txt of
-        Nothing -> LikelyOther txt
-        Just tws -> constr tws
+    str = T.unpack tws.unTextWithoutSeparator
 
-partitionPathTypes :: [LikelyPathType] -> ([DirectoryName], [VideoFileName], [ImageFileName], [T.Text])
+partitionPathTypes :: [LikelyPathType] -> ([DirectoryName], [VideoFileName], [ImageFileName], [TextWithoutSeparator])
 partitionPathTypes =
   foldr
     ( \guess (dirs, vids, imgs, oths) -> case guess of
@@ -491,7 +483,7 @@ updateDirectoryFromDisk :: forall m. (MonadIO m, MonadThrow m, Logger m) => Root
 updateDirectoryFromDisk allDirsData dirPath dir = do
   absDirPath <- directoryPathToAbsPath dirPath
   logDuration ("Updated directory " ++ absDirPath) $ do
-    (namesOrErr :: Either IOError [FilePath]) <- liftIO $ tryIO $ listDirectory absDirPath
+    namesOrErr <- safeCleanListDirectory absDirPath
     case namesOrErr of
       Left err | err.ioe_type == InappropriateType -> do
         putLog Warning $ "What we thought was a directory turned out not to be: " ++ absDirPath
