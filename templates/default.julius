@@ -327,11 +327,9 @@ async function sendActionE(event, action, refreshPageAfter = true, disableButton
       // Prevent default (that is scrolling),
       // as we scroll to the selected element
       event.preventDefault();
-      event.stopImmediatePropagation();
     } else if (event.key == 'Backspace') {
       history.back();
       event.preventDefault();
-      event.stopImmediatePropagation();
     }
   });
   document.addEventListener('keyup', (event) => {
@@ -349,6 +347,15 @@ async function sendActionE(event, action, refreshPageAfter = true, disableButton
    * Highlighter for the focused element
    * Based on when the focus changes for any reason
    */
+
+  /** @type {"mouse" | "touch" | "pen" | "keyboard"} */
+  let lastInteraction;
+  document.addEventListener('pointerdown', e => {
+    lastInteraction = e.pointerType; // "mouse", "touch", or "pen"
+  });
+  document.addEventListener('keydown', e => {
+    lastInteraction = "keyboard";
+  });
 
   /**
    * @param {number} a
@@ -426,6 +433,7 @@ async function sendActionE(event, action, refreshPageAfter = true, disableButton
   const getRect = (element) => {
     if (element === null
       || element === document.body
+      || lastInteraction !== "keyboard"
     ) {
       const offset = 100;
       return {
