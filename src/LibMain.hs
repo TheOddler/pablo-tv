@@ -355,11 +355,6 @@ main = do
     putLog Info $ "Running on port " ++ show port ++ " - " ++ url
     putLog Info $ "Development mode: " ++ show isDevelopment
 
-    -- Only open the browser automatically in production because it;s annoying in
-    -- development as it opens a new tab every time the server restarts.
-    when (not isDevelopment) . liftIO $
-      callProcess "xdg-open" [url]
-
     mRootDirs <- loadRootsFromDisk
     let emptyRootData = RootDirectoryData Map.empty Map.empty
     let rootDirsDefault =
@@ -392,6 +387,12 @@ main = do
     -- The thread that'll be listening for files being played, and marking them as watched
     -- This function returns instantly, but in the background it's still running, so no need to race
     _ <- mediaListener $ mediaListenerHandler rootDirsPVar
+
+    -- Only open the browser automatically in production because it's annoying in
+    -- development as it opens a new tab every time the server restarts.
+    -- Do this as late as possible, because if we're too fast the server won't actually respond yet.
+    when (not isDevelopment) . liftIO $
+      callProcess "xdg-open" [url]
 
     putLog Info "Starting server..."
     liftIO $ raceAll [appThread]
