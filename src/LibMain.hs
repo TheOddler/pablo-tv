@@ -26,6 +26,7 @@ import Data.Text (Text, unpack)
 import Data.Text qualified as T
 import Data.Text qualified as Text
 import Data.Time (UTCTime)
+import Data.Tuple.Extra (fst3)
 import Directory
   ( AggDirInfo (..),
     RootDirectories,
@@ -81,13 +82,14 @@ import System.Random (initStdGen, mkStdGen)
 import TVState (startingTVState, tvStateWebSocket)
 import Util
   ( logDuration,
+    naturalSortBy,
     networkInterfaceWorthiness,
     raceAll,
     shuffle,
     unsnocNE,
     widgetFile,
   )
-import Util.TextWithoutSeparator (splitAtSeparatorNE)
+import Util.TextWithoutSeparator (splitAtSeparatorNE, unwrap)
 import Yesod hiding (defaultLayout, replace)
 import Yesod.WebSockets (race_, webSockets)
 
@@ -190,25 +192,27 @@ getDirectoryHomeR = do
   roots <- liftIO . readPVar =<< getsYesod appRootDirs
   let dirs :: [AggDirInfo]
       dirs =
-        concatMap
-          ( \(rootLocation, rootData) ->
-              getSubDirAggInfo
-                (rootDirectoryPath rootLocation)
-                (rootDirectoryAsDirectory rootData)
-          )
-          (Map.toList roots)
+        naturalSortBy (unwrap . aggDirName) $
+          concatMap
+            ( \(rootLocation, rootData) ->
+                getSubDirAggInfo
+                  (rootDirectoryPath rootLocation)
+                  (rootDirectoryAsDirectory rootData)
+            )
+            (Map.toList roots)
   let files :: [VideoFileWithNameAndPath]
       files =
-        concatMap
-          ( \(rootLocation, rootData) -> do
-              (videoName, videoData) <- Map.toList rootData.rootDirectoryVideoFiles
-              pure
-                ( videoName,
-                  VideoFilePath rootLocation [] videoName,
-                  videoData
-                )
-          )
-          (Map.toList roots)
+        naturalSortBy (unwrap . fst3) $
+          concatMap
+            ( \(rootLocation, rootData) -> do
+                (videoName, videoData) <- Map.toList rootData.rootDirectoryVideoFiles
+                pure
+                  ( videoName,
+                    VideoFilePath rootLocation [] videoName,
+                    videoData
+                  )
+            )
+            (Map.toList roots)
 
   -- We share the widget with directory, so we need these, but they are all hidden on the home dir
   let imagePath = Nothing :: Maybe DirectoryPath
@@ -236,17 +240,20 @@ getDirectoryR rootLoc dirNames = do
     Nothing -> redirect DirectoryHomeR
     Just d -> pure d
   let dirs :: [AggDirInfo]
-      dirs = getSubDirAggInfo dirPath dir
+      dirs =
+        naturalSortBy (unwrap . aggDirName) $
+          getSubDirAggInfo dirPath dir
   let files :: [VideoFileWithNameAndPath]
       files =
-        map
-          ( \(videoName, videoData) ->
-              ( videoName,
-                VideoFilePath rootLoc dirNames videoName,
-                videoData
-              )
-          )
-          (Map.toList dir.directoryVideoFiles)
+        naturalSortBy (unwrap . fst3) $
+          map
+            ( \(videoName, videoData) ->
+                ( videoName,
+                  VideoFilePath rootLoc dirNames videoName,
+                  videoData
+                )
+            )
+            (Map.toList dir.directoryVideoFiles)
 
   let imagePath = findDirWithImageFor roots dirPath
   let playAllAction = Just $ ActionPlayPath $ Dir dirPath

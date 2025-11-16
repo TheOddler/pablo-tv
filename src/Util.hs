@@ -8,10 +8,11 @@ import Control.Monad.Catch (MonadThrow (..))
 import Data.Aeson qualified as Aeson
 import Data.Default (def)
 import Data.List (foldl', isPrefixOf, sortBy)
-import Data.List.Extra (dropPrefix, lower, unsnoc)
+import Data.List.Extra (dropPrefix, unsnoc)
 import Data.List.NonEmpty qualified as NE
 import Data.List.NonEmpty.Extra qualified as NE
 import Data.Ord (Down)
+import Data.Text qualified as T
 import Data.Time (NominalDiffTime, diffUTCTime, getCurrentTime)
 import GHC.Conc (TVar, atomically, readTVar, readTVarIO, retry)
 import GHC.Exception (errorCallException, errorCallWithCallStackException)
@@ -138,11 +139,11 @@ firstRightM = go []
         Left failed -> go (failures ++ [failed]) nextAttempts
 
 -- | Compares taking into account numbers properly
-naturalCompareBy :: (a -> String) -> a -> a -> Ordering
-naturalCompareBy f a b = Natural.compare (lower $ f a) (lower $ f b)
+naturalCompareBy :: (a -> T.Text) -> a -> a -> Ordering
+naturalCompareBy f a b = Natural.compare (T.toLower $ f a) (T.toLower $ f b)
 
 -- | Sorts taking into account numbers properly
-naturalSortBy :: (a -> String) -> [a] -> [a]
+naturalSortBy :: (a -> T.Text) -> [a] -> [a]
 naturalSortBy f = sortBy $ naturalCompareBy f
 
 withDuration :: (MonadIO m) => m a -> m (a, NominalDiffTime)
