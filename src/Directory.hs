@@ -214,7 +214,6 @@ shallowUpdateDirectory roots dirPath = do
               -- If there's none on disk, and no known one either, it'll try to find one online.
               updateImageFile :: [ImageFileName] -> m (Maybe (ImageFileName, ImageFileData))
               updateImageFile imageGuesses = do
-                -- TODO: Check if an image exists, before doing the sub dirs, and then pass on wether or not an image was found already, so child knows not to get another image for new folders for example
                 -- We only care about the best image, other images ignore, even if there are new ones that aren't the best
                 let diskImageName = bestImageFile imageGuesses
                     currentImageName = fst <$> currentDirData.directoryImage
@@ -310,6 +309,8 @@ recursiveUpdateDirectoryNoSave :: forall m. (MonadIO m, MonadThrow m, Logger m) 
 recursiveUpdateDirectoryNoSave rootsPVar startingDirPath = do
   absStartingDirPath <- directoryPathToAbsPath startingDirPath
   logDuration ("Fully updated dir " ++ absStartingDirPath) $
+    -- This loop updates parent dirs first, which is important, because that way children know if there already
+    -- is an image or not, and so we can skip searching for images again when we already have one and save time
     loop [startingDirPath]
   where
     loop :: [DirectoryPath] -> m ()
