@@ -16,7 +16,7 @@ import Data.Time.Clock.POSIX (posixSecondsToUTCTime)
 import Directory.Directories
 import Directory.Files
 import Directory.Paths
-import GHC.Data.Maybe (orElse)
+import GHC.Data.Maybe (firstJust, orElse)
 import GHC.IO.Exception (IOErrorType (..), IOException (..))
 import GHC.Utils.Exception (displayException)
 import ImageScraper (ImageSearchFailure (..), tryFindImage)
@@ -162,7 +162,8 @@ shallowUpdateDirectory roots dirPath = do
               _ -> do
                 pure . ShallowDirUpdateChanged $
                   DirectoryData
-                    { directoryImage = updatedImageFile,
+                    { directoryImage =
+                        firstJust updatedImageFile currentDirData.directoryImage,
                       directoryVideoFiles =
                         updatedVideoFiles `orElse` currentDirData.directoryVideoFiles,
                       directorySubDirs =
