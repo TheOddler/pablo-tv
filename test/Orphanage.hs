@@ -6,7 +6,8 @@ import Actions (Action (..), DirOrFile (..), KeyboardButton (..), MouseButton (.
 import Data.HashSet qualified as Set
 import Directory.Directories (DirectoryName (..), RootDirectoryLocation)
 import Directory.Files (VideoFileName (..), videoFileExts)
-import Directory.Paths (DirectoryPath, VideoFilePath)
+import Directory.Paths (DirectoryPath (..), VideoFilePath (..))
+import GHC.Generics (Generic)
 import Generic.Random (genericArbitrary, uniform)
 import Mpris qualified
 import Samba (SmbServer (..), SmbShare (..))
@@ -34,6 +35,8 @@ instance Arbitrary DirectoryName where
 instance Arbitrary RootDirectoryLocation where
   arbitrary = genericArbitrary uniform
 
+deriving instance Generic DirectoryPath
+
 instance Arbitrary DirectoryPath where
   arbitrary = genericArbitrary uniform
 
@@ -43,11 +46,17 @@ instance Arbitrary VideoFileName where
     ext <- elements $ Set.toList videoFileExts
     pure . VideoFileName $ name <> ext
 
+deriving instance Generic VideoFilePath
+
 instance Arbitrary VideoFilePath where
   arbitrary = genericArbitrary uniform
 
+deriving instance Generic DirOrFile
+
 instance Arbitrary DirOrFile where
   arbitrary = genericArbitrary uniform
+
+deriving instance Generic Action
 
 instance Arbitrary Action where
   arbitrary = genericArbitrary uniform
