@@ -3,24 +3,25 @@ $maybe imagePath <- imagePath
 <h1>#{title} 
   <span class="subTitle">#{subTitle}
 
-<div class="section">
-  <div class="row white">
-    $maybe action <- playAllAction
-      <a href="#" class="large name" onclick="sendActionE(event, '#{action}')">
-        <i class="fa-solid fa-play">
-        <span>Play All
-    
-    $if (not $ null files)
-      $maybe action <- markAllWatchedAction
-        <a href="#" title="Mark all as watched"
-          onclick="sendActionE(event, '#{action}')"
-        >
-          <i class="fa-regular fa-eye">
-      $maybe action <- markAllUnwatchedAction
-        <a href="#" title="Mark all as unwatched"
-          onclick="sendActionE(event, '#{action}')"
-        >
-          <i class="fa-regular fa-eye-slash">
+$if (length files + length dirs) > 1
+  <div class="section">
+    <div class="row white">
+      $maybe action <- playAllAction
+        <a href="#" class="large name" onclick="sendActionE(event, '#{action}')">
+          <i class="fa-solid fa-play">
+          <span>Play All
+      
+      $if length files > 1
+        $maybe action <- markAllWatchedAction
+          <a href="#" title="Mark all as watched"
+            onclick="sendActionE(event, '#{action}')"
+          >
+            <i class="fa-regular fa-eye">
+        $maybe action <- markAllUnwatchedAction
+          <a href="#" title="Mark all as unwatched"
+            onclick="sendActionE(event, '#{action}')"
+          >
+            <i class="fa-regular fa-eye-slash">
 
 $if (not $ null files)
   <div class="section">
@@ -42,8 +43,6 @@ $if (not $ null files)
 
 $if (not $ null dirs)
   <div class="section">
-    $if (not $ null files)
-      <h1>Directories
     $forall dir <- dirs
       <div class="row #{watchedClassDir dir}"> 
         <a href=@{DirectoryR dir.aggDirPath.directoryPathRoot dir.aggDirPath.directoryPathNames } class="name">

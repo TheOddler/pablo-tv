@@ -72,18 +72,15 @@ img.header {
 }
 
 h1,
-h2 {
+h2,
+h3 {
   margin: 0;
   text-align: center;
 }
 
 .refresh {
   text-decoration: none;
-  padding-bottom: 1rem;
-
-  a {
-    padding: 0.5rem;
-  }
+  padding: 1rem 0 2rem 0;
 
   a.disabled {
     pointer-events: none;
