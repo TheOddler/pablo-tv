@@ -1,15 +1,4 @@
 // Helpers
-function throttle(func, timeout = 50) {
-  let timer;
-  let latestFunc;
-  return (...args) => {
-    latestFunc = func;
-    if (!timer) {
-      timer = setTimeout(() => { latestFunc.apply(this, args); timer = null; }, timeout);
-    }
-  };
-}
-
 async function sendAction(action) {
   return await fetch("@{HomeR}", {
     method: "POST",

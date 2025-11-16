@@ -10,32 +10,36 @@ const clickEvent = isTouchDevice() ? "touchend" : "click";
 // Trackpad
 const trackpad = document.getElementById("trackpad");
 let previousTouches;
-const handleTouchMove = throttle((event) => {
-  if (event.touches.length == 1 && previousTouches?.length == 1) {
+const handleTouchMove = async (event) => {
+  const currentTouches = event.touches;
+  let action = null;
+
+  if (currentTouches.length == 1 && previousTouches?.length == 1) {
     // Move mouse
-    const touch = event.touches[0];
+    const touch = currentTouches[0];
     const previousTouch = previousTouches[0];
     const x = touch.pageX - previousTouch.pageX;
     const y = touch.pageY - previousTouch.pageY;
-    sendAction({ tag: "MoveMouse", x, y });
+    action = { tag: "MoveMouse", x, y };
   }
-  else if (event.touches.length == 2 && previousTouches?.length == 2) {
+  else if (currentTouches.length == 2 && previousTouches?.length == 2) {
     // Simulate scrolling
-    const startY = (event.touches[0].pageY + event.touches[1].pageY) / 2;
+    const startY = (currentTouches[0].pageY + currentTouches[1].pageY) / 2;
     const previousStartY = (previousTouches[0].pageY + previousTouches[1].pageY) / 2;
     const scrollY = Math.round((previousStartY - startY) / 10);
-    sendAction({ tag: "MouseScroll", amount: scrollY });
+    action = { tag: "MouseScroll", amount: scrollY };
   }
 
-  previousTouches = event.touches;
-});
+  previousTouches = currentTouches;
+  if (action) await sendAction(action);
+};
 trackpad.addEventListener("touchstart", e => previousTouches = e.touches);
 trackpad.addEventListener("touchmove", handleTouchMove);
-trackpad.addEventListener("click", () => sendAction('#{ActionClickMouse MouseButtonLeft}')); // Don't use clickEvent as that would make the touchpad click way too much
+trackpad.addEventListener("click", async () => await sendAction('#{ActionClickMouse MouseButtonLeft}')); // Don't use clickEvent as that would make the touchpad click way too much
 
 // Click buttons
-document.getElementById("left").addEventListener(clickEvent, () => sendAction('#{ActionClickMouse MouseButtonLeft}'));
-document.getElementById("right").addEventListener(clickEvent, () => sendAction('#{ActionClickMouse MouseButtonRight}'));
+document.getElementById("left").addEventListener(clickEvent, async () => await sendAction('#{ActionClickMouse MouseButtonLeft}'));
+document.getElementById("right").addEventListener(clickEvent, async () => await sendAction('#{ActionClickMouse MouseButtonRight}'));
 
 // Pointer
 (() => {
@@ -70,7 +74,7 @@ document.getElementById("right").addEventListener(clickEvent, () => sendAction('
   }
 
   /** @param event {{ alpha: number, beta: number }} */
-  function handleOrientation(event) {
+  async function handleOrientation(event) {
     // Even update raw when not active to reset center works
     raw = {
       leftRight: event.alpha, // [0, 360[
@@ -90,21 +94,21 @@ document.getElementById("right").addEventListener(clickEvent, () => sendAction('
       upDown: slowMove(smoothed.upDown, newUD)
     }
 
-    sendOrientation(smoothed);
+    await sendOrientation(smoothed);
   };
 
-  const sendOrientation = throttle((value) => {
-    sendAction({
+  const sendOrientation = async (value) => {
+    await sendAction({
       tag: "PointMouse",
       leftRight: -value.leftRight * scalingFactor,
       upDown: -value.upDown * scalingFactor,
     });
-  });
+  };
 
-  function resetCenter() {
+  async function resetCenter() {
     center = raw;
     smoothed = { leftRight: 0, upDown: 0 };
-    sendOrientation(smoothed);
+    await sendOrientation(smoothed);
   }
 
   window.addEventListener("deviceorientation", handleOrientation, true);
@@ -117,11 +121,11 @@ document.getElementById("right").addEventListener(clickEvent, () => sendAction('
 })();
 
 // Keyboard
-document.getElementById("keyboard").addEventListener(clickEvent, () => {
+document.getElementById("keyboard").addEventListener(clickEvent, async () => {
   const text = prompt("Enter text");
-  if (text !== null) sendAction({ tag: "Write", text });
+  if (text !== null) await sendAction({ tag: "Write", text });
 });
 
-document.getElementById("move-cursor-left").addEventListener(clickEvent, () => sendAction('#{ActionPressKeyboard KeyboardLeftArrow}'));
-document.getElementById("move-cursor-right").addEventListener(clickEvent, () => sendAction('#{ActionPressKeyboard KeyboardRightArrow}'));
-document.getElementById("backspace").addEventListener(clickEvent, () => sendAction('#{ActionPressKeyboard KeyboardBackspace}'));
+document.getElementById("move-cursor-left").addEventListener(clickEvent, async () => await sendAction('#{ActionPressKeyboard KeyboardLeftArrow}'));
+document.getElementById("move-cursor-right").addEventListener(clickEvent, async () => await sendAction('#{ActionPressKeyboard KeyboardRightArrow}'));
+document.getElementById("backspace").addEventListener(clickEvent, async () => await sendAction('#{ActionPressKeyboard KeyboardBackspace}'));
