@@ -125,6 +125,18 @@ shuffle :: (RandomGen gen) => [a] -> gen -> [a]
 shuffle [] _ = []
 shuffle list gen = shuffle' list (length list) gen
 
+-- | Returns the first right, and all lefts that came before it
+firstRightM :: forall m a b. (Monad m) => [m (Either a b)] -> m ([a], Maybe b)
+firstRightM = go []
+  where
+    go :: [a] -> [m (Either a b)] -> m ([a], Maybe b)
+    go failures [] = pure (failures, Nothing)
+    go failures (attempt : nextAttempts) = do
+      result <- attempt
+      case result of
+        Right success -> pure (failures, Just success)
+        Left failed -> go (failures ++ [failed]) nextAttempts
+
 -- | Compares taking into account numbers properly
 naturalCompareBy :: (a -> String) -> a -> a -> Ordering
 naturalCompareBy f a b = Natural.compare (lower $ f a) (lower $ f b)

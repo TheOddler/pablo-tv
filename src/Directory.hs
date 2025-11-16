@@ -34,6 +34,7 @@ import System.FilePath ((</>))
 import UnliftIO (MonadUnliftIO, catchAny)
 import Util
   ( failE,
+    firstRightM,
     logDuration,
     unsnocNE,
   )
@@ -227,30 +228,6 @@ shallowUpdateDirectory roots dirPath = do
                       imgFile <- liftIO $ BS.readFile $ absDirPath </> T.unpack (unwrap imgName)
                       pure (imgName, ImageFileData imgFile)
 
-                    imgFindingErr msg = "Failed finding image for " ++ absDirPath ++ ": " ++ msg
-                    tryFindImage' searchTerm = do
-                      mImg <- tryFindImage searchTerm
-                      case mImg of
-                        Left ImageSearchFailedScraping -> do
-                          putLog Warning $ imgFindingErr "web scraping unsuccessful"
-                          pure Nothing
-                        Left (ImageSearchDownloadFailed err) -> do
-                          putLog Warning $ imgFindingErr err
-                          pure Nothing
-                        Right (contentType, img) -> do
-                          putLog Info $ "Downloaded image for " ++ absDirPath ++ " with search term " ++ T.unpack searchTerm
-                          pure $ Just (imageFileNameForContentType contentType, ImageFileData img)
-
-                    dirName =
-                      NE.last $
-                        unRootDirectoryLocation dirPath.directoryPathRoot
-                          NE.:| map unDirectoryName dirPath.directoryPathNames
-                    getImageFromWeb = do
-                      firstAttempt <- tryFindImage' $ unTextWithoutSeparator dirName
-                      case firstAttempt of
-                        Just img -> pure $ Just img
-                        Nothing -> tryFindImage' . fst $ splitTitleFromDir $ DirectoryName dirName
-
                 case (currentImageName, diskImageName) of
                   (Nothing, Just diskImg) ->
                     -- We currently don't know about an image, but there's one on disk, use that.
@@ -270,9 +247,53 @@ shallowUpdateDirectory roots dirPath = do
                         || isSeasonDirOrSubDir -- Season dirs or subdirs of season don't have images, otherwise we search for "Season X" a bunch. Subdirs are likely stuff like "subs"
                         || anyParentDirHasImage -> -- If the parent dir already has an image we use that image, so save some time and don't search for another image
                         pure Nothing
-                  (Nothing, Nothing) ->
+                  (Nothing, Nothing) -> do
                     -- Nothing known, nothing on disk, try and download one
-                    getImageFromWeb
+                    (attemptErrors, result) <- getImageFromWebFor dirPath
+                    case (attemptErrors, result) of
+                      ([], Just _) ->
+                        putLog Info $ "Successfully downloaded image for: " ++ absDirPath
+                      (errs, Just _) ->
+                        putLog Info $
+                          unwords
+                            [ "Successfully downloaded image for:",
+                              absDirPath,
+                              "after",
+                              show $ length errs + 1,
+                              "attempts. Search terms and errors of previous attempts were:",
+                              show errs
+                            ]
+                      (errs, Nothing) ->
+                        putLog Warning $
+                          unwords
+                            [ "Failed downloaded image for:",
+                              absDirPath,
+                              "after",
+                              show $ length errs + 1,
+                              "attempts. Search terms and errors were:",
+                              show errs
+                            ]
+                    pure result
+
+-- | Returns a (potentially empty) list of errors of failed attempts with the search string that was tried,
+-- and hopefully a successful result.
+getImageFromWebFor :: forall m. (MonadIO m) => DirectoryPath -> m ([(T.Text, ImageSearchFailure)], Maybe (ImageFileName, ImageFileData))
+getImageFromWebFor DirectoryPath {directoryPathRoot, directoryPathNames} = do
+  let dirName =
+        DirectoryName . NE.last $
+          unRootDirectoryLocation directoryPathRoot NE.:| map unDirectoryName directoryPathNames
+      (dirTitle, _dirSubTitle) = splitTitleFromDir dirName
+      tryFindImage' :: T.Text -> m (Either (T.Text, ImageSearchFailure) (ImageFileName, ImageFileData))
+      tryFindImage' searchTerm = do
+        res <- tryFindImage searchTerm
+        pure $ case res of
+          Left err -> Left (searchTerm, err)
+          Right (contentType, img) ->
+            Right (imageFileNameForContentType contentType, ImageFileData img)
+  firstRightM
+    [ tryFindImage' $ unwrap dirName,
+      tryFindImage' dirTitle
+    ]
 
 -- | Recursively updates the directory, each time a directory is updated it's saved to the root directories pvar.
 -- It also saves all the directories data to disk at the end.
