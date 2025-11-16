@@ -16,7 +16,7 @@ import DBus
     methodCall,
   )
 import DBus.Client (Client, MatchRule (..), SignalHandler, addMatch, call, connectSession, matchAny)
-import Data.Aeson (FromJSON (..), ToJSON (..), genericParseJSON, genericToEncoding)
+import Data.Aeson (FromJSON (..), ToJSON (..), genericParseJSON, genericToEncoding, genericToJSON)
 import Data.Int (Int64)
 import Data.List (isPrefixOf, stripPrefix)
 import Data.Map qualified as Map
@@ -43,6 +43,7 @@ data MprisAction
   deriving (Show, Eq, Bounded, Enum, Generic)
 
 instance ToJSON MprisAction where
+  toJSON = genericToJSON $ ourAesonOptionsPrefix "Mpris"
   toEncoding = genericToEncoding $ ourAesonOptionsPrefix "Mpris"
 
 instance FromJSON MprisAction where

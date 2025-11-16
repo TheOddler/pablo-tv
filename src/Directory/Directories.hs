@@ -13,6 +13,7 @@ import Data.Aeson
     ToJSONKey (..),
     genericParseJSON,
     genericToEncoding,
+    genericToJSON,
   )
 import Data.Aeson.Types (FromJSONKey (..), Parser, toJSONKeyText)
 import Data.Map.Strict qualified as Map
@@ -79,6 +80,7 @@ instance Show RootDirectoryLocation where
   show = T.unpack . unTextWithoutSeparator . unRootDirectoryLocation
 
 instance ToJSON RootDirectoryLocation where
+  toJSON = toJSON . unRootDirectoryLocation
   toEncoding = toEncoding . unRootDirectoryLocation
 
 instance PathPiece RootDirectoryLocation where
@@ -112,6 +114,7 @@ data RootDirectoryData = RootDirectoryData
   deriving (Generic, Show, Eq)
 
 instance ToJSON RootDirectoryData where
+  toJSON = genericToJSON ourAesonOptions
   toEncoding = genericToEncoding ourAesonOptions
 
 instance FromJSON RootDirectoryData where
@@ -140,6 +143,7 @@ data DirectoryData = DirectoryData
   deriving (Generic, Show, Eq)
 
 instance ToJSON DirectoryData where
+  toJSON = genericToJSON ourAesonOptions
   toEncoding = genericToEncoding ourAesonOptions
 
 instance FromJSON DirectoryData where

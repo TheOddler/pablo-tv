@@ -11,7 +11,6 @@ import Data.List.NonEmpty qualified as NE
 import Data.Text qualified as T
 import Directory.Directories
 import Directory.Files
-import GHC.Generics (Generic)
 import Orphanage ()
 import System.FilePath (takeExtension)
 import Util.TextWithoutSeparator
@@ -23,11 +22,11 @@ data DirectoryPath = DirectoryPath
   { directoryPathRoot :: RootDirectoryLocation,
     directoryPathNames :: [DirectoryName]
   }
-  deriving (Show, Eq, Generic)
+  deriving (Show, Eq)
 
 instance ToJSON DirectoryPath where
-  toEncoding (DirectoryPath root names) =
-    toEncoding . unsplitSeparatedText $
+  toJSON (DirectoryPath root names) =
+    toJSON . unsplitSeparatedText $
       unRootDirectoryLocation root : (unDirectoryName <$> names)
 
 instance FromJSON DirectoryPath where
@@ -56,11 +55,11 @@ data VideoFilePath = VideoFilePath
     videoFilePathNames :: [DirectoryName],
     videoFilePathName :: VideoFileName
   }
-  deriving (Show, Eq, Generic)
+  deriving (Show, Eq)
 
 instance ToJSON VideoFilePath where
-  toEncoding (VideoFilePath root dirNames videoName) =
-    toEncoding . unsplitSeparatedText $
+  toJSON (VideoFilePath root dirNames videoName) =
+    toJSON . unsplitSeparatedText $
       unRootDirectoryLocation root
         : (unDirectoryName <$> dirNames)
         ++ [videoName.unVideoFileName]

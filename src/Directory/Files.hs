@@ -12,6 +12,7 @@ import Data.Aeson
     ToJSONKey (..),
     genericParseJSON,
     genericToEncoding,
+    genericToJSON,
   )
 import Data.ByteString qualified as BS
 import Data.ByteString.Base64 qualified as B64
@@ -47,6 +48,7 @@ data VideoFileData = VideoFileData
   deriving (Generic, Eq, Show)
 
 instance ToJSON VideoFileData where
+  toJSON = genericToJSON ourAesonOptions
   toEncoding = genericToEncoding ourAesonOptions
 
 instance FromJSON VideoFileData where

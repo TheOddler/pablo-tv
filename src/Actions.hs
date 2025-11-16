@@ -5,7 +5,7 @@ module Actions where
 import Control.Applicative ((<|>))
 import Control.Exception (Exception (..))
 import Control.Monad (forever)
-import Data.Aeson (Encoding, FromJSON (..), Object, ToJSON (..), eitherDecode, encode, genericParseJSON, genericToEncoding, pairs, withObject, (.:), (.=))
+import Data.Aeson (FromJSON (..), Object, ToJSON (toJSON), Value, eitherDecode, encode, genericParseJSON, genericToJSON, object, withObject, (.:), (.=))
 import Data.Aeson.Key qualified as Aeson
 import Data.Aeson.Types (Parser)
 import Data.Char (isSpace)
@@ -48,12 +48,12 @@ import Yesod.WebSockets (WebSocketsT, receiveData)
 data DirOrFile
   = Dir DirectoryPath
   | File VideoFilePath
-  deriving (Show, Eq, Generic)
+  deriving (Show, Eq)
 
 instance ToJSON DirOrFile where
-  toEncoding = \case
-    Dir d -> toEncoding d
-    File f -> toEncoding f
+  toJSON = \case
+    Dir d -> toJSON d
+    File f -> toJSON f
 
 instance FromJSON DirOrFile where
   parseJSON v = File <$> parseJSON v <|> Dir <$> parseJSON v
@@ -79,10 +79,10 @@ data Action
   | ActionRefreshAllDirectoryData
   | ActionRefreshDirectoryData DirectoryPath
   | ActionMedia Mpris.MprisAction
-  deriving (Show, Eq, Generic)
+  deriving (Show, Eq)
 
 instance ToJSON Action where
-  toEncoding = \case
+  toJSON = \case
     ActionClickMouse button -> oneField "ClickMouse" "button" button
     ActionPressKeyboard button -> oneField "PressKeyboard" "button" button
     ActionMoveMouse x y -> twoFields "MoveMouse" "x" x "y" y
@@ -97,12 +97,12 @@ instance ToJSON Action where
     ActionRefreshDirectoryData path -> oneField "RefreshDirectoryData" "path" path
     ActionMedia mpris -> oneField "Media" "action" mpris
     where
-      noFields :: Text -> Encoding
-      noFields tag = pairs ("tag" .= tag)
-      oneField :: (ToJSON a) => Text -> Aeson.Key -> a -> Encoding
-      oneField tag field value = pairs ("tag" .= tag <> field .= value)
-      twoFields :: (ToJSON a, ToJSON b) => Text -> Aeson.Key -> a -> Aeson.Key -> b -> Encoding
-      twoFields tag f1 v1 f2 v2 = pairs ("tag" .= tag <> f1 .= v1 <> f2 .= v2)
+      noFields :: Text -> Value
+      noFields tag = object ["tag" .= tag]
+      oneField :: (ToJSON a) => Text -> Aeson.Key -> a -> Value
+      oneField tag field value = object ["tag" .= tag, field .= value]
+      twoFields :: (ToJSON a, ToJSON b) => Text -> Aeson.Key -> a -> Aeson.Key -> b -> Value
+      twoFields tag f1 v1 f2 v2 = object ["tag" .= tag, f1 .= v1, f2 .= v2]
 
 instance FromJSON Action where
   parseJSON = withObject "Action" $ \obj -> do
@@ -145,7 +145,7 @@ data MouseButton = MouseButtonLeft | MouseButtonRight
   deriving (Show, Eq, Bounded, Enum, Generic)
 
 instance ToJSON MouseButton where
-  toEncoding = genericToEncoding $ ourAesonOptionsPrefix "MouseButton"
+  toJSON = genericToJSON $ ourAesonOptionsPrefix "MouseButton"
 
 instance FromJSON MouseButton where
   parseJSON = genericParseJSON $ ourAesonOptionsPrefix "MouseButton"
@@ -163,7 +163,7 @@ data KeyboardButton
   deriving (Show, Eq, Bounded, Enum, Generic)
 
 instance ToJSON KeyboardButton where
-  toEncoding = genericToEncoding $ ourAesonOptionsPrefix "Keyboard"
+  toJSON = genericToJSON $ ourAesonOptionsPrefix "Keyboard"
 
 instance FromJSON KeyboardButton where
   parseJSON = genericParseJSON $ ourAesonOptionsPrefix "Keyboard"
