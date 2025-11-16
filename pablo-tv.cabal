@@ -64,7 +64,6 @@ library
         cpp-options: -DDEVELOPMENT
     build-depends:
         aeson
-      , autodocodec
       , base64-bytestring
       , blaze-markup
       , bytestring
