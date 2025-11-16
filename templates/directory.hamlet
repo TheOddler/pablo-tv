@@ -4,29 +4,30 @@ $maybe imagePath <- imagePath
   <span class="subTitle">#{subTitle}
 
 <div class="section">
-  $if (not $ null files)
-    <h1>Files
+  <div class="row white">
+    $maybe action <- playAllAction
+      <a href="#" class="large name" onclick="sendActionE(event, '#{action}')">
+        <i class="fa-solid fa-play">
+        <span>Play All
     
-    $if (length files > 1)
-      <div class="row white">
-        $maybe action <- playAllAction
-          <a href="#" class="large name" onclick="sendActionE(event, '#{action}')">
-            <i class="fa-solid fa-play">
-            <span>Play All
-        $maybe action <- markAllWatchedAction
-          <a href="#" title="Mark all as watched"
-            onclick="sendActionE(event, '#{action}')"
-          >
-            <i class="fa-regular fa-eye">
-        $maybe action <- markAllUnwatchedAction
-          <a href="#" title="Mark all as unwatched"
-            onclick="sendActionE(event, '#{action}')"
-          >
-            <i class="fa-regular fa-eye-slash">
+    $if (not $ null files)
+      $maybe action <- markAllWatchedAction
+        <a href="#" title="Mark all as watched"
+          onclick="sendActionE(event, '#{action}')"
+        >
+          <i class="fa-regular fa-eye">
+      $maybe action <- markAllUnwatchedAction
+        <a href="#" title="Mark all as unwatched"
+          onclick="sendActionE(event, '#{action}')"
+        >
+          <i class="fa-regular fa-eye-slash">
+
+$if (not $ null files)
+  <div class="section">
     $forall (videoName, videoPath, videoData) <- files
       <div class="row #{watchedClassM videoData.videoFileWatched}">
         <a href="#" class="name" 
-         onclick="sendActionE(event, '#{ActionPlayPath $ File videoPath}')"
+          onclick="sendActionE(event, '#{ActionPlayPath $ File videoPath}')"
         >
           <i class="fa-solid fa-play">
           <span>#{niceFileNameT videoName}
@@ -39,8 +40,8 @@ $maybe imagePath <- imagePath
         >
           <i class="fa-regular fa-eye-slash">
 
-<div class="section">
-  $if (not $ null dirs)
+$if (not $ null dirs)
+  <div class="section">
     $if (not $ null files)
       <h1>Directories
     $forall dir <- dirs
