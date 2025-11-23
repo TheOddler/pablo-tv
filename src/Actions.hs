@@ -29,7 +29,7 @@ import Directory.Paths (DirectoryPath (..), VideoFilePath (..), directoryPathToA
 import Evdev.Codes
 import Evdev.Uinput
 import Foundation (App (..), Handler)
-import GHC.Conc (atomically, readTVar, writeTVar)
+import GHC.Conc (atomically, readTVar, readTVarIO, writeTVar)
 import GHC.Generics (Generic)
 import Logging (LogLevel (..), putLog)
 import Mpris qualified
@@ -280,8 +280,11 @@ performAction action = do
       recursiveUpdateDirectory app.appRootDirs dirPath
     ActionRefreshAllDirectoryData -> do
       recursivelyUpdateAllDirectories app.appRootDirs
-    ActionMedia a ->
-      Mpris.performAction a
+    ActionMedia a -> do
+      mPlayer <- liftIO $ readTVarIO app.appLastActivePlayer
+      case mPlayer of
+        Nothing -> putLog Warning "Ignoring action: No media player found."
+        Just mp -> Mpris.performAction mp a
   where
     clickKeyCombo keys =
       map (`KeyEvent` Pressed) keys

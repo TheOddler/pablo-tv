@@ -18,6 +18,7 @@ import GHC.Conc (TVar)
 import GHC.Utils.Misc (sortWith)
 import IsDevelopment (isDevelopment)
 import Logging (LogFunc, Logger (..))
+import Mpris (MediaPlayer)
 import Network.Info (getNetworkInterfaces)
 import PVar (PVar)
 import TVState (TVState)
@@ -32,6 +33,7 @@ data App = App
     appLogFunc :: LogFunc IO,
     appInputDevice :: Device,
     appGetStatic :: EmbeddedStatic,
+    appLastActivePlayer :: TVar (Maybe MediaPlayer),
     appTVState :: TVar TVState,
     appRootDirs :: PVar RootDirectories
   }

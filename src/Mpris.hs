@@ -75,6 +75,11 @@ allMediaPlayers client = do
 firstMediaPlayer :: (Logger m, MonadIO m, MonadThrow m) => Client -> m (Maybe MediaPlayer)
 firstMediaPlayer client = listToMaybe <$> allMediaPlayers client
 
+getFirstMediaPlayer :: (Logger m, MonadIO m, MonadThrow m) => m (Maybe MediaPlayer)
+getFirstMediaPlayer = do
+  client <- liftIO connectSession
+  firstMediaPlayer client
+
 mprisObject :: ObjectPath
 mprisObject = "/org/mpris/MediaPlayer2"
 
@@ -96,8 +101,11 @@ mprisMethodCall destination interface member body =
 
 -- | This instantly returns, and shouldn't be run in a race.
 -- This is essentially a wrapper around `addMatch` so can be stopped by using the returned SignalHandler.
-mediaListener :: (Logger m, MonadUnliftIO m) => (FilePath -> m ()) -> m SignalHandler
-mediaListener onFilePlayed = do
+-- It has two handlers:
+-- 1. one for when a file is played, this is used to mark those files as watched
+-- 2. one for when any player does anything, so we can detect which player was last used and send messages to that one
+mediaListener :: (Logger m, MonadUnliftIO m) => (FilePath -> m ()) -> (MediaPlayer -> m ()) -> m SignalHandler
+mediaListener onFilePlayed onMediaPlayerActed = do
   client <- liftIO connectSession
 
   -- Add a match rule for PropertiesChanged signals on the Player interface
@@ -121,6 +129,11 @@ mediaListener onFilePlayed = do
             if b
               then pure $ Right ()
               else pure $ Left err
+
+    case signalSender signal of
+      Nothing -> pure ()
+      Just sender -> runInIO $ onMediaPlayerActed $ MediaPlayer sender
+
     let body = signalBody signal
     case body of
       [interface', changedProps', _] -> do
@@ -147,75 +160,70 @@ mediaListener onFilePlayed = do
       _ ->
         runInIO $ putLog Error $ "Incorrect body shape for PropertiesChanged signal: " ++ show body
 
-performAction :: (Logger m, MonadIO m, MonadThrow m) => MprisAction -> m ()
-performAction action = do
+performAction :: (Logger m, MonadIO m) => MediaPlayer -> MprisAction -> m ()
+performAction mp action = do
   client <- liftIO connectSession
-  -- Request a list of connected clients from the bus
-  mPlayer <- firstMediaPlayer client
-  case mPlayer of
-    Nothing -> putLog Warning "No media player found."
-    Just mp -> do
-      let baseCallNoParam method =
-            mprisMethodCall mp baseInterface method []
-          playerCallNoParam method =
-            mprisMethodCall mp playerInterface method []
-          playerCall method param =
-            mprisMethodCall mp playerInterface method [toVariant param]
-          baseSetProp :: (IsVariant a) => String -> a -> MethodCall
-          baseSetProp prop val =
-            mprisMethodCall
-              mp
-              propertiesInterface
-              "Set"
-              [ -- First parameter is the interface name
-                toVariant baseInterface,
-                -- Second the property we want to set
-                toVariant prop,
-                -- Third the value (as a `Variant`, so we need `toVariant` twice, as the first is unwrapped by `call`)
-                toVariant $ toVariant val
-              ]
-          sToMicroS :: Int64 -> Int64
-          sToMicroS s = s * 1000000
+  let baseCallNoParam method =
+        mprisMethodCall mp baseInterface method []
+      playerCallNoParam method =
+        mprisMethodCall mp playerInterface method []
+      playerCall method param =
+        mprisMethodCall mp playerInterface method [toVariant param]
+      baseSetProp :: (IsVariant a) => String -> a -> MethodCall
+      baseSetProp prop val =
+        mprisMethodCall
+          mp
+          propertiesInterface
+          "Set"
+          [ -- First parameter is the interface name
+            toVariant baseInterface,
+            -- Second the property we want to set
+            toVariant prop,
+            -- Third the value (as a `Variant`, so we need `toVariant` twice, as the first is unwrapped by `call`)
+            toVariant $ toVariant val
+          ]
+      sToMicroS :: Int64 -> Int64
+      sToMicroS s = s * 1000000
 
-          methodCall' = case action of
-            -- Relevant docs:
-            -- https://specifications.freedesktop.org/mpris-spec/latest/index.html
-            -- https://specifications.freedesktop.org/mpris-spec/latest/Media_Player.html
-            -- https://specifications.freedesktop.org/mpris-spec/latest/Player_Interface.html
-            MprisQuit -> baseCallNoParam "Quit"
-            MprisPlayPause -> playerCallNoParam "PlayPause"
-            MprisStop -> playerCallNoParam "Stop"
-            MprisNext -> playerCallNoParam "Next"
-            MprisPrevious -> playerCallNoParam "Previous"
-            MprisForwardStep -> playerCall "Seek" $ sToMicroS 10
-            MprisBackwardStep -> playerCall "Seek" $ -sToMicroS 10
-            MprisForwardJump -> playerCall "Seek" $ sToMicroS 60
-            MprisBackwardJump -> playerCall "Seek" $ -sToMicroS 60
-            MprisGoFullscreen -> baseSetProp "Fullscreen" True
-            MprisGoWindowed -> baseSetProp "Fullscreen" False
+      methodCall' = case action of
+        -- Relevant docs:
+        -- https://specifications.freedesktop.org/mpris-spec/latest/index.html
+        -- https://specifications.freedesktop.org/mpris-spec/latest/Media_Player.html
+        -- https://specifications.freedesktop.org/mpris-spec/latest/Player_Interface.html
+        MprisQuit -> baseCallNoParam "Quit"
+        MprisPlayPause -> playerCallNoParam "PlayPause"
+        MprisStop -> playerCallNoParam "Stop"
+        MprisNext -> playerCallNoParam "Next"
+        MprisPrevious -> playerCallNoParam "Previous"
+        MprisForwardStep -> playerCall "Seek" $ sToMicroS 10
+        MprisBackwardStep -> playerCall "Seek" $ -sToMicroS 10
+        MprisForwardJump -> playerCall "Seek" $ sToMicroS 60
+        MprisBackwardJump -> playerCall "Seek" $ -sToMicroS 60
+        MprisGoFullscreen -> baseSetProp "Fullscreen" True
+        MprisGoWindowed -> baseSetProp "Fullscreen" False
 
-      errOrResult <- liftIO $ call client methodCall'
-      case errOrResult of
-        Right result ->
-          putLog Info $
-            unwords
-              [ "Successfully called",
-                show action,
-                "on",
-                show mp,
-                ":",
-                show $ methodReturnBody result
-              ]
-        Left err ->
-          putLog Error $
-            unwords
-              [ "Error when calling",
-                show action,
-                "on",
-                show mp,
-                ":",
-                show err
-              ]
+  errOrResult <- liftIO $ call client methodCall'
+  case errOrResult of
+    Right result ->
+      putLog Info $
+        unwords
+          [ "Successfully called",
+            show action,
+            "on",
+            show mp,
+            ":",
+            show $ methodReturnBody result
+          ]
+    Left err ->
+      putLog Error $
+        unwords
+          [ "Error when calling",
+            show action,
+            "on",
+            show mp,
+            ":",
+            show err
+          ]
 
 -- | Some helpers to parse dbus replies
 expectSingleValue :: (MonadThrow m, Logger m, IsVariant a) => [Variant] -> m a

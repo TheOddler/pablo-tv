@@ -9,6 +9,7 @@ module Logging
 where
 
 import Control.Monad (when)
+import Control.Monad.Catch (MonadThrow)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Trans.Class (MonadTrans (..))
 import Control.Monad.Trans.Reader (ReaderT (..), ask)
@@ -58,7 +59,7 @@ putLogWithMinLvlIO minLogLevel level msg =
         ]
 
 newtype LoggerT m a = LoggerT {unLoggerT :: ReaderT (LogFunc m) m a}
-  deriving (Functor, Applicative, Monad, MonadIO, MonadUnliftIO)
+  deriving (Functor, Applicative, Monad, MonadIO, MonadUnliftIO, MonadThrow)
 
 instance (Monad m) => Logger (LoggerT m) where
   putLogBS lvl msg = LoggerT $ do

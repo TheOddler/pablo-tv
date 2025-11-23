@@ -66,12 +66,12 @@ import Foundation
     static_images_netflix_png,
     static_images_youtube_png,
   )
-import GHC.Conc (newTVarIO)
+import GHC.Conc (TVar, atomically, newTVarIO, writeTVar)
 import GHC.Data.Maybe (firstJustsM)
 import GHC.Utils.Misc (sortWith)
 import IsDevelopment (isDevelopment)
 import Logging (LogLevel (..), Logger, LoggerT (..), putLog, runLoggerT)
-import Mpris (MprisAction (..), mediaListener)
+import Mpris (MediaPlayer, MprisAction (..), getFirstMediaPlayer, mediaListener)
 import Network.Info (NetworkInterface (..), getNetworkInterfaces)
 import Network.Wai.Handler.Warp (run)
 import PVar (PVar, modifyPVar_, newPVar, readPVar)
@@ -319,7 +319,7 @@ mountAllSambaShares roots = do
     "Mounted sambas:\n\t"
       ++ intercalate "\t\n" (showResult <$> zip sambaShares results)
 
-mediaListenerHandler :: (MonadIO m, Logger m) => PVar RootDirectories -> [Char] -> m ()
+mediaListenerHandler :: (MonadIO m, Logger m) => PVar RootDirectories -> FilePath -> m ()
 mediaListenerHandler rootDirsPVar absFilePath = modifyPVar_ rootDirsPVar $ \roots -> do
   let tryRoot rootLoc = do
         rootAbsPath <- rootDirectoryLocationToAbsPath rootLoc
@@ -342,6 +342,10 @@ mediaListenerHandler rootDirsPVar absFilePath = modifyPVar_ rootDirsPVar $ \root
       putLog Info $ "Marked file as watched: " ++ show path
       markDirOrFileAsWatched (File path) roots
 
+playerListenerHandler :: (MonadIO m) => TVar (Maybe MediaPlayer) -> MediaPlayer -> m ()
+playerListenerHandler lastActivePlayerTVar playerName = do
+  liftIO $ atomically $ writeTVar lastActivePlayerTVar $ Just playerName
+
 main :: IO ()
 main = do
   let minLogLevel = Info
@@ -354,6 +358,9 @@ main = do
     let url = "http://localhost:" ++ show port ++ "/" ++ unpack (Text.intercalate "/" homePath)
     putLog Info $ "Running on port " ++ show port ++ " - " ++ url
     putLog Info $ "Development mode: " ++ show isDevelopment
+
+    player <- getFirstMediaPlayer
+    lastActivePlayerTVar <- liftIO $ newTVarIO player
 
     mRootDirs <- loadRootsFromDisk
     let emptyRootData = RootDirectoryData Map.empty Map.empty
@@ -380,13 +387,17 @@ main = do
               appInputDevice = inputDevice,
               appTVState = tvState,
               appGetStatic = embeddedStatic,
+              appLastActivePlayer = lastActivePlayerTVar,
               appRootDirs = rootDirsPVar
             }
     let appThread = toWaiAppPlain app >>= run port . defaultMiddlewaresNoLogging
 
     -- The thread that'll be listening for files being played, and marking them as watched
     -- This function returns instantly, but in the background it's still running, so no need to race
-    _ <- mediaListener $ mediaListenerHandler rootDirsPVar
+    _ <-
+      mediaListener
+        (mediaListenerHandler rootDirsPVar)
+        (playerListenerHandler lastActivePlayerTVar)
 
     -- Only open the browser automatically in production because it's annoying in
     -- development as it opens a new tab every time the server restarts.
