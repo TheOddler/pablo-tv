@@ -22,7 +22,7 @@ import GHC.Utils.Exception (displayException)
 import ImageScraper (ImageSearchFailure (..), tryFindImage)
 import Logging (LogLevel (..), Logger, putLog)
 import Orphanage ()
-import PVar (PVar, modifyPVar, readPVar)
+import PVar (PVar, modifyPVar, modifyPVar_, readPVar)
 import System.Directory
   ( XdgDirectory (..),
     createDirectoryIfMissing,
@@ -101,12 +101,15 @@ getMemoryFileDir :: (MonadIO m) => m FilePath
 getMemoryFileDir = liftIO $ getXdgDirectory XdgData ""
 
 -- | Writes the known disks to a json file on disk, so we can read it on startup next time.
-saveRootsToDisk :: (MonadIO m, Logger m) => RootDirectories -> m ()
-saveRootsToDisk roots = logDuration "Saved roots to disk" $ do
-  memoryDir <- getMemoryFileDir
-  liftIO $ do
-    createDirectoryIfMissing True memoryDir
-    encodeFile (memoryDir </> memoryFileName) roots
+-- Blocks other threads from changing the PVar while writing to disk, so we can't get any race conditions in the value changing between calls.
+saveRootsToDisk :: (MonadIO m, Logger m) => PVar RootDirectories -> m ()
+saveRootsToDisk rootsPvar = logDuration "Saved roots to disk" $ do
+  modifyPVar_ rootsPvar $ \roots -> do
+    memoryDir <- getMemoryFileDir
+    liftIO $ do
+      createDirectoryIfMissing True memoryDir
+      encodeFile (memoryDir </> memoryFileName) roots
+      pure roots
 
 loadRootsFromDisk :: (Logger m, MonadUnliftIO m) => m (Maybe RootDirectories)
 loadRootsFromDisk = logDuration "Loaded roots from disk" $ do
@@ -302,8 +305,7 @@ recursiveUpdateDirectory rootsPVar startingDirPath = do
   -- Update
   recursiveUpdateDirectoryNoSave rootsPVar startingDirPath
   -- Save the new result (saved in the PVar already) to disk
-  newRoots <- readPVar rootsPVar
-  saveRootsToDisk newRoots
+  saveRootsToDisk rootsPVar
 
 -- `recursiveUpdateDirectory` but doesn't save to disk at the end.
 recursiveUpdateDirectoryNoSave :: forall m. (MonadIO m, MonadThrow m, Logger m) => PVar RootDirectories -> DirectoryPath -> m ()
@@ -365,8 +367,7 @@ recursivelyUpdateAllDirectories rootsPVar = do
     forM_ (Map.keys roots) $ \rootLocation -> do
       recursiveUpdateDirectoryNoSave rootsPVar $ rootDirectoryPath rootLocation
   -- At the end save to disk
-  newRoots <- readPVar rootsPVar
-  saveRootsToDisk newRoots
+  saveRootsToDisk rootsPVar
 
 -- Agg data
 data AggDirInfo = AggDirInfo

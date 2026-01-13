@@ -21,6 +21,7 @@ import Directory
   ( RootDirectories,
     recursiveUpdateDirectory,
     recursivelyUpdateAllDirectories,
+    saveRootsToDisk,
     updateDirectoryAtPath,
   )
 import Directory.Directories (DirectoryData (..))
@@ -268,10 +269,12 @@ performAction action = do
         [ defaultVideoPlayer,
           absPath
         ]
-    ActionMarkAsWatched dirOrFile ->
+    ActionMarkAsWatched dirOrFile -> do
       modifyPVar_ app.appRootDirs $ markDirOrFileAsWatched dirOrFile
-    ActionMarkAsUnwatched dirOrFile ->
+      saveRootsToDisk app.appRootDirs
+    ActionMarkAsUnwatched dirOrFile -> do
       modifyPVar_ app.appRootDirs $ markDirOrFileAsUnwatched dirOrFile
+      saveRootsToDisk app.appRootDirs
     ActionOpenUrlOnTV url ->
       liftIO $ atomically $ do
         tvState <- readTVar app.appTVState
