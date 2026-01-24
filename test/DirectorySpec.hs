@@ -23,7 +23,7 @@ spec = do
     let encoded = encode action
      in eitherDecode encoded `shouldBe` Right action
 
-  xit "can decode file where I manually added a samba share" $ do
+  it "can decode file where I manually added a samba share" $ do
     (decoded :: Either String RootDirectories) <- eitherDecodeFileStrict "test/golden/manual-add-root.json"
     decoded `shouldSatisfy` isRight
 

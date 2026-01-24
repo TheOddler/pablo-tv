@@ -1,5 +1,8 @@
 {
-    "smb-192.168.0.23-movies": {},
+    "smb-192.168.0.23-movies": {
+        "subDirs": {},
+        "videoFiles": {}
+    },
     "Videos": {
         "subDirs": {
             "dir name": {
@@ -26,5 +29,8 @@
             }
         }
     },
-    "smb-192.168.0.55-movies": {}
+    "smb-192.168.0.55-movies": {
+        "subDirs": {},
+        "videoFiles": {}
+    }
 }
