@@ -76,6 +76,7 @@ import Network.Info (NetworkInterface (..), getNetworkInterfaces)
 import Network.Wai.Handler.Warp (run)
 import PVar (PVar, PVarState (..), modifyPVar_, newPVar, readPVar, readPVarState)
 import Samba (MountResult, SmbServer (..), SmbShare (..), mount)
+import System.Environment (getArgs)
 import System.FilePath (pathSeparator)
 import System.Process (callProcess)
 import System.Random (initStdGen, mkStdGen)
@@ -358,8 +359,15 @@ playerListenerHandler lastActivePlayerTVar playerName = do
 
 main :: IO ()
 main = do
-  let minLogLevel = Info
+  args <- getArgs
+  let minLogLevel =
+        if "--log-debug" `elem` args
+          then Debug
+          else Info
   runLoggerT minLogLevel $ do
+    putLog Info $ "Terminal arguments: " ++ show args
+    putLog Info $ "Min log level: " ++ show minLogLevel
+
     inputDevice <- mkInputDevice
     tvState <- liftIO $ newTVarIO startingTVState
 

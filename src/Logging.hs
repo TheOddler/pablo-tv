@@ -23,7 +23,7 @@ data LogLevel
   | Info
   | Warning
   | Error
-  deriving (Eq, Ord)
+  deriving (Eq, Ord, Show)
 
 type LogFunc m = LogLevel -> BS.ByteString -> m ()
 
