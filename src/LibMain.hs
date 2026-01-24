@@ -74,7 +74,7 @@ import Logging (LogLevel (..), Logger, LoggerT (..), putLog, runLoggerT)
 import Mpris (MediaPlayer, MprisAction (..), getFirstMediaPlayer, mediaListener)
 import Network.Info (NetworkInterface (..), getNetworkInterfaces)
 import Network.Wai.Handler.Warp (run)
-import PVar (PVar, modifyPVar_, newPVar, readPVar)
+import PVar (PVar, PVarState (..), modifyPVar_, newPVar, readPVar, readPVarState)
 import Samba (MountResult, SmbServer (..), SmbShare (..), mount)
 import System.FilePath (pathSeparator)
 import System.Process (callProcess)
@@ -301,6 +301,16 @@ getAllIPsR = do
       if a == minBound
         then ""
         else show a
+
+getDebugR :: Handler Html
+getDebugR = do
+  app <- getYesod
+  rootDirPVarState' <- liftIO $ readPVarState app.appRootDirs
+  let rootDirPVarState = case rootDirPVarState' of
+        PVarReady -> "ready" :: Text
+        PVarUpdating -> "updating"
+
+  defaultLayout "Debug" $(widgetFile "debug")
 
 mountAllSambaShares :: (MonadIO m, Logger m) => RootDirectories -> m ()
 mountAllSambaShares roots = do

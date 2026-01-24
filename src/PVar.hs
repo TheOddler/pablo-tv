@@ -2,8 +2,10 @@
 -- value with long-running IO without other threads also doing an update.
 module PVar
   ( PVar,
+    PVarState (..),
     newPVar,
     readPVar,
+    readPVarState,
     modifyPVar,
     modifyPVar_,
     tryModifyPVar,
@@ -27,6 +29,9 @@ newPVar initialState = PVar <$> liftIO (newTVarIO (PVarReady, initialState))
 
 readPVar :: (MonadIO m) => PVar a -> m a
 readPVar (PVar inner) = snd <$> liftIO (readTVarIO inner)
+
+readPVarState :: (MonadIO m) => PVar a -> m PVarState
+readPVarState (PVar inner) = fst <$> liftIO (readTVarIO inner)
 
 -- | Modify the PVar, for the duration of the IO, any other calls to modify the PVar will wait.
 -- Reading the PVar is still possible though, and will return the original value immediately.

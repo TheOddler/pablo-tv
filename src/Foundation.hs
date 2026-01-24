@@ -45,6 +45,7 @@ mkYesodData
   [parseRoutes|
 / HomeR GET POST
 /ips AllIPsR GET
+/debug DebugR GET
 /input InputR GET
 /remote RemoteR GET
 /dir DirectoryHomeR GET
