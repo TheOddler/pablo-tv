@@ -2,3 +2,41 @@
 
 #{rootDirPVarState}
 
+<h1>Runtime Stats
+
+$case runtimeStats
+  $of Left e
+    #{displayException e}
+  $of Right stats
+    <table>
+      <thead>
+        <tr>
+          <th>Description
+          <th>Value
+          <th>Raw field
+      <tbody>
+        <tr>
+          <td>Actually used memory
+          <td>#{humanReadableBytes stats.gc.gcdetails_live_bytes}
+          <td>gc.gcdetails_live_bytes
+        <tr>
+          <td>Reserved heap memory
+          <td>#{humanReadableBytes stats.gc.gcdetails_mem_in_use_bytes}
+          <td>gc.gcdetails_mem_in_use_bytes
+        <tr>
+          <td>Maximum memory used ever
+          <td>#{humanReadableBytes stats.max_live_bytes}
+          <td>max_live_bytes
+        $# <tr>
+        $#   <td>Wasted space due to block/closure sizing
+        $#   <td>#{humanReadableBytes stats.gc.gcdetails_slop_bytes}
+        $#   <td>gc.gcdetails_slop_bytes
+        $# <tr>
+        $#   <td>Bytes allocated since program start,<br>most likely released already
+        $#   <td>#{humanReadableBytes stats.allocated_bytes}
+        $#   <td>allocated_bytes
+  
+    <details>
+      <summary>Raw
+      <pre>
+        #{show stats}

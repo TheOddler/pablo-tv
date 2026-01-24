@@ -14,6 +14,7 @@ import Actions
     mkInputDevice,
     performAction,
   )
+import Control.Exception (Exception (..))
 import Control.Monad (when)
 import Control.Monad.Trans.Reader (ask)
 import Data.Aeson qualified as Aeson
@@ -68,6 +69,7 @@ import Foundation
   )
 import GHC.Conc (TVar, atomically, newTVarIO, writeTVar)
 import GHC.Data.Maybe (firstJustsM)
+import GHC.Stats (GCDetails (..), RTSStats (..), getRTSStats)
 import GHC.Utils.Misc (sortWith)
 import IsDevelopment (isDevelopment)
 import Logging (LogLevel (..), Logger, LoggerT (..), putLog, runLoggerT)
@@ -75,12 +77,14 @@ import Mpris (MediaPlayer, MprisAction (..), getFirstMediaPlayer, mediaListener)
 import Network.Info (NetworkInterface (..), getNetworkInterfaces)
 import Network.Wai.Handler.Warp (run)
 import PVar (PVar, PVarState (..), modifyPVar_, newPVar, readPVar, readPVarState)
+import SafeConvert (humanReadableBytes)
 import Samba (MountResult, SmbServer (..), SmbShare (..), mount)
 import System.Environment (getArgs)
 import System.FilePath (pathSeparator)
 import System.Process (callProcess)
 import System.Random (initStdGen, mkStdGen)
 import TVState (startingTVState, tvStateWebSocket)
+import UnliftIO (tryAny)
 import Util
   ( logDuration,
     naturalSortBy,
@@ -311,6 +315,8 @@ getDebugR = do
   let rootDirPVarState = case rootDirPVarState' of
         PVarReady -> "Ready" :: Text
         PVarUpdating desc -> "Updating: " <> desc
+
+  runtimeStats <- liftIO $ tryAny getRTSStats
 
   defaultLayout "Debug" $(widgetFile "debug")
 

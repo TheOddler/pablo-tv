@@ -6,6 +6,8 @@ import Data.Int (Int32)
 import Data.List.NonEmpty qualified as NE
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
+import Data.Word (Word64)
+import Text.Printf (printf)
 
 -- | Safe because Integer is unbounded
 int32ToInteger :: Int32 -> Integer
@@ -24,3 +26,17 @@ splitTextNE :: (Char -> Bool) -> T.Text -> NE.NonEmpty T.Text
 splitTextNE f t = case T.split f t of
   [] -> error "Split returns a singleton with the input if the predicate doesn't match anything. So can't ever be an empty list."
   x : xs -> x NE.:| xs
+
+humanReadableBytes :: Word64 -> String
+humanReadableBytes bytes = printf "%.2f %s" value unit
+  where
+    units :: [String]
+    units = ["B", "KiB", "MiB", "GiB"]
+
+    value :: Double
+    (value, unit) = go (fromIntegral bytes) units
+    go v [] = (v, "?") -- fallback, shouldn't happen
+    go v [u] = (v, u)
+    go v (u : us)
+      | v < 1024 = (v, u)
+      | otherwise = go (v / 1024) us
