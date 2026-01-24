@@ -7,19 +7,25 @@ $if (length files + length dirs) > 1
   <div class="section">
     <div class="row white">
       $maybe action <- playAllAction
-        <a href="#" class="large name" onclick="sendActionE(event, '#{action}')">
+        <a href="#" 
+          class="large name"
+          onclick="sendActionOnClick(event)"
+          data-action="#{action}"
+        >
           <i class="fa-solid fa-play">
           <span>Play All
       
       $if length files > 1
         $maybe action <- markAllWatchedAction
           <a href="#" title="Mark all as watched"
-            onclick="sendActionE(event, '#{action}')"
+            onclick="sendActionOnClick(event)"
+            data-action="#{action}"
           >
             <i class="fa-regular fa-eye">
         $maybe action <- markAllUnwatchedAction
           <a href="#" title="Mark all as unwatched"
-            onclick="sendActionE(event, '#{action}')"
+            onclick="sendActionOnClick(event)"
+            data-action="#{action}"
           >
             <i class="fa-regular fa-eye-slash">
 
@@ -28,16 +34,19 @@ $if (not $ null files)
     $forall (videoName, videoPath, videoData) <- files
       <div class="row #{watchedClassM videoData.videoFileWatched}">
         <a href="#" class="name" 
-          onclick="sendActionE(event, '#{ActionPlayPath $ File videoPath}')"
+          onclick="sendActionOnClick(event)"
+          data-action="#{ActionPlayPath $ File videoPath}"
         >
           <i class="fa-solid fa-play">
           <span>#{niceFileNameT videoName}
         <a href="#" title="Mark as watched"
-          onclick="sendActionE(event, '#{ActionMarkAsWatched $ File videoPath}')"
+          onclick="sendActionOnClick(event)"
+          data-action="#{ActionMarkAsWatched $ File videoPath}"
         >
           <i class="fa-regular fa-eye">
         <a href="#" title="Mark as unwatched"
-          onclick="sendActionE(event, '#{ActionMarkAsUnwatched $ File videoPath}')"
+          onclick="sendActionOnClick(event)"
+          data-action="#{ActionMarkAsUnwatched $ File videoPath}"
         >
           <i class="fa-regular fa-eye-slash">
 
@@ -57,7 +66,8 @@ $if (not $ null dirs)
 $maybe (label, action) <- refreshDirectoryLabelAndAction
   <h3 class="refresh">
     <a href="#"
-      onclick="sendActionE(event, '#{action}')"
+      onclick="sendActionOnClick(event)"
+      data-action="#{action}"
     >
       <i class="fa-solid fa-arrows-rotate">
       #{label}

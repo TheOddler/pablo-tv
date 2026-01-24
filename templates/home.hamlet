@@ -27,6 +27,10 @@
 
   <div class="divider">
   <h2>
-    <button class="like-link" onclick="sendActionE(event, '#{ActionRefreshAllDirectoryData}')">
+    <button 
+      class="like-link"
+      onclick="sendActionOnClick(event)"
+      data-action="#{ActionRefreshAllDirectoryData}"
+    >
       <i class="fa-solid fa-arrows-rotate">
       Refresh library
