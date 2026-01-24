@@ -29,7 +29,7 @@ import System.Directory (getHomeDirectory)
 import System.FilePath
 import Text.Blaze (ToMarkup)
 import Text.Read (Read (..))
-import Util (ourAesonOptions)
+import Util (ourAesonOptionsPrefix)
 import Util.Regex (expect1Int, tryRegex)
 import Util.TextWithoutSeparator
 import Yesod (PathPiece (..))
@@ -114,11 +114,11 @@ data RootDirectoryData = RootDirectoryData
   deriving (Generic, Show, Eq)
 
 instance ToJSON RootDirectoryData where
-  toJSON = genericToJSON ourAesonOptions
-  toEncoding = genericToEncoding ourAesonOptions
+  toJSON = genericToJSON $ ourAesonOptionsPrefix "rootDirectory"
+  toEncoding = genericToEncoding $ ourAesonOptionsPrefix "rootDirectory"
 
 instance FromJSON RootDirectoryData where
-  parseJSON = genericParseJSON ourAesonOptions
+  parseJSON = genericParseJSON $ ourAesonOptionsPrefix "rootDirectory"
 
 rootDirectoryAsDirectory :: RootDirectoryData -> DirectoryData
 rootDirectoryAsDirectory root =
@@ -143,11 +143,11 @@ data DirectoryData = DirectoryData
   deriving (Generic, Show, Eq)
 
 instance ToJSON DirectoryData where
-  toJSON = genericToJSON ourAesonOptions
-  toEncoding = genericToEncoding ourAesonOptions
+  toJSON = genericToJSON $ ourAesonOptionsPrefix "directory"
+  toEncoding = genericToEncoding $ ourAesonOptionsPrefix "directory"
 
 instance FromJSON DirectoryData where
-  parseJSON = genericParseJSON ourAesonOptions
+  parseJSON = genericParseJSON $ ourAesonOptionsPrefix "directory"
 
 -- Guessing
 

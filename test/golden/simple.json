@@ -1,36 +1,36 @@
 {
     "smb-192.168.0.23-movies": {
-        "rootDirectorySubDirs": {},
-        "rootDirectoryVideoFiles": {
+        "subDirs": {},
+        "videoFiles": {
             "video.mp4": {
-                "videoFileAdded": "2000-01-01T01:01:01Z",
-                "videoFileWatched": null
+                "added": "2000-01-01T01:01:01Z",
+                "watched": null
             }
         }
     },
     "Videos": {
-        "rootDirectorySubDirs": {
+        "subDirs": {
             "dir name": {
-                "directoryImage": null,
-                "directorySubDirs": {
+                "image": null,
+                "subDirs": {
                     "sub dir": {
-                        "directoryImage": null,
-                        "directorySubDirs": {},
-                        "directoryVideoFiles": {}
+                        "image": null,
+                        "subDirs": {},
+                        "videoFiles": {}
                     }
                 },
-                "directoryVideoFiles": {
+                "videoFiles": {
                     "video.avi": {
-                        "videoFileAdded": "2000-01-01T01:01:01Z",
-                        "videoFileWatched": null
+                        "added": "2000-01-01T01:01:01Z",
+                        "watched": null
                     }
                 }
             }
         },
-        "rootDirectoryVideoFiles": {
+        "videoFiles": {
             "test.mov": {
-                "videoFileAdded": "2000-01-01T01:01:01Z",
-                "videoFileWatched": null
+                "added": "2000-01-01T01:01:01Z",
+                "watched": null
             }
         }
     }

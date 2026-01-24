@@ -6,6 +6,7 @@ import Control.Exception (Exception, displayException)
 import Control.Monad (when)
 import Control.Monad.Catch (MonadThrow (..))
 import Data.Aeson qualified as Aeson
+import Data.Char qualified as Char
 import Data.Default (def)
 import Data.List (foldl', isPrefixOf, sortBy)
 import Data.List.Extra (dropPrefix, unsnoc)
@@ -27,18 +28,15 @@ import Yesod
 import Yesod.Default.Util (widgetFileNoReload, widgetFileReload)
 import Yesod.WebSockets (race_)
 
-ourAesonOptions :: Aeson.Options
-ourAesonOptions =
-  Aeson.defaultOptions
-    { Aeson.unwrapUnaryRecords = True,
-      Aeson.omitNothingFields = True
-    }
-
 ourAesonOptionsPrefix :: String -> Aeson.Options
 ourAesonOptionsPrefix prefix =
-  ourAesonOptions
-    { Aeson.constructorTagModifier = dropPrefix prefix,
-      Aeson.fieldLabelModifier = dropPrefix prefix
+  Aeson.defaultOptions
+    { Aeson.unwrapUnaryRecords = True,
+      Aeson.omitNothingFields = True,
+      Aeson.constructorTagModifier = dropPrefix prefix,
+      Aeson.fieldLabelModifier = \s -> case dropPrefix prefix s of
+        "" -> ""
+        f : rest -> Char.toLower f : rest
     }
 
 -- | Load a widget file, automatically reloading it in development.

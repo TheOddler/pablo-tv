@@ -1,0 +1,131 @@
+[
+    {
+        "button": "Left",
+        "tag": "ClickMouse"
+    },
+    {
+        "button": "Right",
+        "tag": "ClickMouse"
+    },
+    {
+        "button": "Backspace",
+        "tag": "PressKeyboard"
+    },
+    {
+        "button": "Delete",
+        "tag": "PressKeyboard"
+    },
+    {
+        "button": "Enter",
+        "tag": "PressKeyboard"
+    },
+    {
+        "button": "LeftArrow",
+        "tag": "PressKeyboard"
+    },
+    {
+        "button": "RightArrow",
+        "tag": "PressKeyboard"
+    },
+    {
+        "button": "UpArrow",
+        "tag": "PressKeyboard"
+    },
+    {
+        "button": "DownArrow",
+        "tag": "PressKeyboard"
+    },
+    {
+        "button": "VolumeUp",
+        "tag": "PressKeyboard"
+    },
+    {
+        "button": "VolumeDown",
+        "tag": "PressKeyboard"
+    },
+    {
+        "tag": "MoveMouse",
+        "x": 4,
+        "y": 2
+    },
+    {
+        "leftRight": 1,
+        "tag": "PointMouse",
+        "upDown": 2
+    },
+    {
+        "amount": 3,
+        "tag": "MouseScroll"
+    },
+    {
+        "tag": "Write",
+        "text": "test string"
+    },
+    {
+        "path": "Videos/path/to/folder",
+        "tag": "PlayPath"
+    },
+    {
+        "path": "smb-192.168.0.0-movies/path/to/file.mov",
+        "tag": "MarkAsWatched"
+    },
+    {
+        "path": "smb-192.168.0.0-movies/path/to/another/file.mov",
+        "tag": "MarkAsUnwatched"
+    },
+    {
+        "tag": "OpenUrlOnTV",
+        "url": "https://www.pabloproductions.be/"
+    },
+    {
+        "tag": "RefreshAllDirectoryData"
+    },
+    {
+        "path": "Videos/path/to/folder 2",
+        "tag": "RefreshDirectoryData"
+    },
+    {
+        "action": "Quit",
+        "tag": "Media"
+    },
+    {
+        "action": "PlayPause",
+        "tag": "Media"
+    },
+    {
+        "action": "Stop",
+        "tag": "Media"
+    },
+    {
+        "action": "Next",
+        "tag": "Media"
+    },
+    {
+        "action": "Previous",
+        "tag": "Media"
+    },
+    {
+        "action": "ForwardStep",
+        "tag": "Media"
+    },
+    {
+        "action": "BackwardStep",
+        "tag": "Media"
+    },
+    {
+        "action": "ForwardJump",
+        "tag": "Media"
+    },
+    {
+        "action": "BackwardJump",
+        "tag": "Media"
+    },
+    {
+        "action": "GoFullscreen",
+        "tag": "Media"
+    },
+    {
+        "action": "GoWindowed",
+        "tag": "Media"
+    }
+]

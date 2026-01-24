@@ -31,7 +31,7 @@ import GHC.Generics (Generic)
 import Orphanage ()
 import SafeConvert (bsToBase64Text)
 import System.FilePath (takeBaseName, takeExtension)
-import Util (ourAesonOptions, safeMinimumOn)
+import Util (ourAesonOptionsPrefix, safeMinimumOn)
 import Util.Regex
 import Util.TextWithoutSeparator
 import Yesod (ContentType, ToContent, typeJpeg)
@@ -48,11 +48,11 @@ data VideoFileData = VideoFileData
   deriving (Generic, Eq, Show)
 
 instance ToJSON VideoFileData where
-  toJSON = genericToJSON ourAesonOptions
-  toEncoding = genericToEncoding ourAesonOptions
+  toJSON = genericToJSON $ ourAesonOptionsPrefix "videoFile"
+  toEncoding = genericToEncoding $ ourAesonOptionsPrefix "videoFile"
 
 instance FromJSON VideoFileData where
-  parseJSON = genericParseJSON ourAesonOptions
+  parseJSON = genericParseJSON $ ourAesonOptionsPrefix "videoFile"
 
 -- Images
 

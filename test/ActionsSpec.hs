@@ -13,6 +13,7 @@ import Samba (SmbServer (..), SmbShare (..))
 import Test.QuickCheck (property)
 import Test.QuickCheck.Instances ()
 import Test.Syd
+import Test.Syd.Aeson (pureGoldenJSONValueFile)
 import Util.TextWithoutSeparator (twsQQ)
 
 spec :: Spec
@@ -22,6 +23,56 @@ spec = do
 
   describe "Encoding to json" $ do
     mapM_ encodeSpec encodingExamples
+
+  it "keeps consistent encoding" $ do
+    pureGoldenJSONValueFile "test/golden/actions.json" $
+      concat
+        [ ActionClickMouse <$> [minBound .. maxBound],
+          ActionPressKeyboard <$> [minBound .. maxBound],
+          [ActionMoveMouse 4 2],
+          [ActionPointMouse 1 2],
+          [ActionMouseScroll 3],
+          [ActionWrite "test string"],
+          [ ActionPlayPath $
+              Dir $
+                DirectoryPath
+                  RootLocalVideos
+                  [ DirectoryName [twsQQ|path|],
+                    DirectoryName [twsQQ|to|],
+                    DirectoryName [twsQQ|folder|]
+                  ]
+          ],
+          [ ActionMarkAsWatched $
+              File $
+                VideoFilePath
+                  (RootSamba (SmbServer "192.168.0.0") (SmbShare "movies"))
+                  [ DirectoryName [twsQQ|path|],
+                    DirectoryName [twsQQ|to|]
+                  ]
+                  (VideoFileName [twsQQ|file.mov|])
+          ],
+          [ ActionMarkAsUnwatched $
+              File $
+                VideoFilePath
+                  (RootSamba (SmbServer "192.168.0.0") (SmbShare "movies"))
+                  [ DirectoryName [twsQQ|path|],
+                    DirectoryName [twsQQ|to|],
+                    DirectoryName [twsQQ|another|]
+                  ]
+                  (VideoFileName [twsQQ|file.mov|])
+          ],
+          [ActionOpenUrlOnTV "https://www.pabloproductions.be/"],
+          [ActionRefreshAllDirectoryData],
+          [ ActionRefreshDirectoryData $
+              DirectoryPath
+                RootLocalVideos
+                [ DirectoryName [twsQQ|path|],
+                  DirectoryName [twsQQ|to|],
+                  DirectoryName [twsQQ|folder 2|]
+                ]
+          ],
+          ActionMedia <$> [minBound .. maxBound]
+        ]
 
   it "can roundtrip JSON" $ property $ \(action :: Action) ->
     let encoded = encode action
