@@ -100,6 +100,9 @@ showIpV4OrV6WithPort port i =
     ++ ":"
     ++ show port
 
+showT :: (Show a) => a -> T.Text
+showT = T.pack . show
+
 mapLeft :: (t -> a) -> Either t b -> Either a b
 mapLeft f (Left x) = Left $ f x
 mapLeft _ (Right x) = Right x

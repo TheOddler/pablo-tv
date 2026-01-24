@@ -86,6 +86,7 @@ import Util
     naturalSortBy,
     networkInterfaceWorthiness,
     raceAll,
+    showT,
     shuffle,
     unsnocNE,
     widgetFile,
@@ -308,8 +309,8 @@ getDebugR = do
   app <- getYesod
   rootDirPVarState' <- liftIO $ readPVarState app.appRootDirs
   let rootDirPVarState = case rootDirPVarState' of
-        PVarReady -> "ready" :: Text
-        PVarUpdating -> "updating"
+        PVarReady -> "Ready" :: Text
+        PVarUpdating desc -> "Updating: " <> desc
 
   defaultLayout "Debug" $(widgetFile "debug")
 
@@ -331,7 +332,7 @@ mountAllSambaShares roots = do
       ++ intercalate "\t\n" (showResult <$> zip sambaShares results)
 
 mediaListenerHandler :: (MonadIO m, Logger m) => PVar RootDirectories -> FilePath -> m ()
-mediaListenerHandler rootDirsPVar absFilePath = modifyPVar_ rootDirsPVar $ \roots -> do
+mediaListenerHandler rootDirsPVar absFilePath = modifyPVar_ rootDirsPVar ("Media listener handler: " <> showT absFilePath) $ \roots -> do
   let tryRoot rootLoc = do
         rootAbsPath <- rootDirectoryLocationToAbsPath rootLoc
         let mRest = stripPrefix (rootAbsPath ++ [pathSeparator]) absFilePath

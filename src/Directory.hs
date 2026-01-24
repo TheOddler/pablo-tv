@@ -36,6 +36,7 @@ import Util
   ( failE,
     firstRightM,
     logDuration,
+    showT,
     unsnocNE,
   )
 import Util.TextWithoutSeparator
@@ -104,7 +105,7 @@ getMemoryFileDir = liftIO $ getXdgDirectory XdgData ""
 -- Blocks other threads from changing the PVar while writing to disk, so we can't get any race conditions in the value changing between calls.
 saveRootsToDisk :: (MonadIO m, Logger m) => PVar RootDirectories -> m ()
 saveRootsToDisk rootsPvar = logDuration "Saved roots to disk" $ do
-  modifyPVar_ rootsPvar $ \roots -> do
+  modifyPVar_ rootsPvar "Saving roots to disk" $ \roots -> do
     memoryDir <- getMemoryFileDir
     liftIO $ do
       createDirectoryIfMissing True memoryDir
@@ -319,7 +320,8 @@ recursiveUpdateDirectoryNoSave rootsPVar startingDirPath = do
     loop :: [DirectoryPath] -> m ()
     loop [] = pure ()
     loop (dirPath : rest) = do
-      updatedRoots <- modifyPVar rootsPVar $ \roots -> do
+      let desc = "Updating dir: " <> showT dirPath <> "; rest: " <> showT rest
+      updatedRoots <- modifyPVar rootsPVar desc $ \roots -> do
         shallowUpdRes <- shallowUpdateDirectory roots dirPath
         absDirPath <- directoryPathToAbsPath dirPath
         case shallowUpdRes of

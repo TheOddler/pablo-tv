@@ -42,7 +42,7 @@ import TVState (TVState (..))
 import Text.Blaze qualified as Blaze
 import Text.Julius (ToJavascript (..))
 import UnliftIO.Exception (catch)
-import Util (ourAesonOptionsPrefix)
+import Util (ourAesonOptionsPrefix, showT)
 import Yesod (MonadIO, getYesod, lift, liftIO)
 import Yesod.WebSockets (WebSocketsT, receiveData)
 
@@ -270,10 +270,10 @@ performAction action = do
           absPath
         ]
     ActionMarkAsWatched dirOrFile -> do
-      modifyPVar_ app.appRootDirs $ markDirOrFileAsWatched dirOrFile
+      modifyPVar_ app.appRootDirs ("Marking " <> showT dirOrFile <> " as watched") $ markDirOrFileAsWatched dirOrFile
       saveRootsToDisk app.appRootDirs
     ActionMarkAsUnwatched dirOrFile -> do
-      modifyPVar_ app.appRootDirs $ markDirOrFileAsUnwatched dirOrFile
+      modifyPVar_ app.appRootDirs ("Marking " <> showT dirOrFile <> " as unwatched") $ markDirOrFileAsUnwatched dirOrFile
       saveRootsToDisk app.appRootDirs
     ActionOpenUrlOnTV url ->
       liftIO $ atomically $ do
