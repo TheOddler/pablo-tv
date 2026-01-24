@@ -24,6 +24,10 @@ spec = do
   describe "Encoding to json" $ do
     mapM_ encodeSpec encodingExamples
 
+  it "can roundtrip JSON" $ property $ \(action :: Action) ->
+    let encoded = encode action
+     in eitherDecode encoded `shouldBe` Right action
+
   it "keeps consistent encoding" $ do
     pureGoldenJSONValueFile "test/golden/actions.json" $
       concat

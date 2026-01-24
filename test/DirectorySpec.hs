@@ -2,8 +2,7 @@
 
 module DirectorySpec where
 
-import Actions
-import Data.Aeson (eitherDecode, eitherDecodeFileStrict, encode)
+import Data.Aeson (eitherDecodeFileStrict)
 import Data.Either (isRight)
 import Data.Map.Strict qualified as Map
 import Directory
@@ -11,7 +10,6 @@ import Directory.Directories
 import Directory.Files
 import Orphanage ()
 import Samba (SmbServer (..), SmbShare (..))
-import Test.QuickCheck (property)
 import Test.QuickCheck.Instances ()
 import Test.Syd
 import Test.Syd.Aeson
@@ -19,10 +17,6 @@ import Util.TextWithoutSeparator (twsQQ)
 
 spec :: Spec
 spec = do
-  it "can roundtrip JSON" $ property $ \(action :: Action) ->
-    let encoded = encode action
-     in eitherDecode encoded `shouldBe` Right action
-
   it "can decode file where I manually added a samba share" $ do
     (decoded :: Either String RootDirectories) <- eitherDecodeFileStrict "test/golden/manual-add-root.json"
     decoded `shouldSatisfy` isRight
