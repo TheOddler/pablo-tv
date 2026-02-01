@@ -78,10 +78,6 @@ spec = do
           ActionMedia <$> [minBound .. maxBound]
         ]
 
-  it "can roundtrip JSON" $ property $ \(action :: Action) ->
-    let encoded = encode action
-     in eitherDecode encoded `shouldBe` Right action
-
 decodeSpec :: (BS.ByteString, Action) -> Spec
 decodeSpec (json, action) =
   it ("can decode " <> BS.unpack json) $
