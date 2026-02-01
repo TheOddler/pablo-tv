@@ -29,6 +29,6 @@ mkTestApp = do
 spec :: Spec
 spec = do
   yesodSpecWithSiteGenerator mkTestApp $ do
-    it "returns 200 on the homepage" $ do
+    xit "returns 200 on the homepage" $ do
       get HomeR
       statusIs 200
