@@ -124,6 +124,7 @@ test-suite pablo-tv-test
         ActionsSpec
         DirectorySpec
         Orphanage
+        PVarSpec
         TestUtils
         WebSpec
     build-depends:

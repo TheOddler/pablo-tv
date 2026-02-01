@@ -337,7 +337,7 @@ mountAllSambaShares roots = do
     "Mounted sambas:\n\t"
       ++ intercalate "\t\n" (showResult <$> zip sambaShares results)
 
-mediaListenerHandler :: (MonadIO m, Logger m) => PVar RootDirectories -> FilePath -> m ()
+mediaListenerHandler :: (MonadUnliftIO m, Logger m) => PVar RootDirectories -> FilePath -> m ()
 mediaListenerHandler rootDirsPVar absFilePath = modifyPVar_ rootDirsPVar ("Media listener handler: " <> showT absFilePath) $ \roots -> do
   let tryRoot rootLoc = do
         rootAbsPath <- rootDirectoryLocationToAbsPath rootLoc

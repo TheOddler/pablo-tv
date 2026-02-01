@@ -103,7 +103,7 @@ getMemoryFileDir = liftIO $ getXdgDirectory XdgData ""
 
 -- | Writes the known disks to a json file on disk, so we can read it on startup next time.
 -- Blocks other threads from changing the PVar while writing to disk, so we can't get any race conditions in the value changing between calls.
-saveRootsToDisk :: (MonadIO m, Logger m) => PVar RootDirectories -> m ()
+saveRootsToDisk :: (MonadUnliftIO m, Logger m) => PVar RootDirectories -> m ()
 saveRootsToDisk rootsPvar = logDuration "Saved roots to disk" $ do
   modifyPVar_ rootsPvar "Saving roots to disk" $ \roots -> do
     memoryDir <- getMemoryFileDir
@@ -301,7 +301,7 @@ getImageFromWebFor DirectoryPath {directoryPathRoot, directoryPathNames} = do
 
 -- | Recursively updates the directory, each time a directory is updated it's saved to the root directories pvar.
 -- It also saves all the directories data to disk at the end.
-recursiveUpdateDirectory :: forall m. (MonadIO m, MonadThrow m, Logger m) => PVar RootDirectories -> DirectoryPath -> m ()
+recursiveUpdateDirectory :: forall m. (MonadUnliftIO m, MonadThrow m, Logger m) => PVar RootDirectories -> DirectoryPath -> m ()
 recursiveUpdateDirectory rootsPVar startingDirPath = do
   -- Update
   recursiveUpdateDirectoryNoSave rootsPVar startingDirPath
@@ -309,7 +309,7 @@ recursiveUpdateDirectory rootsPVar startingDirPath = do
   saveRootsToDisk rootsPVar
 
 -- `recursiveUpdateDirectory` but doesn't save to disk at the end.
-recursiveUpdateDirectoryNoSave :: forall m. (MonadIO m, MonadThrow m, Logger m) => PVar RootDirectories -> DirectoryPath -> m ()
+recursiveUpdateDirectoryNoSave :: forall m. (MonadUnliftIO m, MonadThrow m, Logger m) => PVar RootDirectories -> DirectoryPath -> m ()
 recursiveUpdateDirectoryNoSave rootsPVar startingDirPath = do
   absStartingDirPath <- directoryPathToAbsPath startingDirPath
   logDuration ("Fully updated dir " ++ absStartingDirPath) $
@@ -361,7 +361,7 @@ recursiveUpdateDirectoryNoSave rootsPVar startingDirPath = do
           nextDirPaths = addSubDir dirPath <$> nextDirNames
       loop $ rest ++ nextDirPaths
 
-recursivelyUpdateAllDirectories :: (MonadIO m, MonadThrow m, Logger m) => PVar RootDirectories -> m ()
+recursivelyUpdateAllDirectories :: (MonadUnliftIO m, MonadThrow m, Logger m) => PVar RootDirectories -> m ()
 recursivelyUpdateAllDirectories rootsPVar = do
   -- Do all updates without saving
   logDuration "Updated all directories" $ do
