@@ -136,11 +136,15 @@ getHomeR = do
   randomGenerator <- mkRandom
   let isUnwatched d = aggDirPlayedVideoFileCount d < aggDirVideoFileCount d
       unwatched = filter isUnwatched homeData
+      isWatching d = aggDirPlayedVideoFileCount d >= 1 && isUnwatched d
+      watching = filter isWatching homeData
       recentlyAdded d = Down $ aggDirLastModified d
       recentlyWatched = aggDirLastWatched
 
   let sections =
-        [ LocalVideos "New" $
+        [ LocalVideos "Watching" $
+            sortWith recentlyWatched watching,
+          LocalVideos "New" $
             sortWith recentlyAdded unwatched,
           LocalVideos "Random" $
             shuffle unwatched randomGenerator,
