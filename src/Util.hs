@@ -8,7 +8,7 @@ import Control.Monad.Catch (MonadThrow (..))
 import Data.Aeson qualified as Aeson
 import Data.Char qualified as Char
 import Data.Default (def)
-import Data.List (foldl', isPrefixOf, sortBy)
+import Data.List (isPrefixOf, sortBy)
 import Data.List.Extra (dropPrefix, unsnoc)
 import Data.List.NonEmpty qualified as NE
 import Data.List.NonEmpty.Extra qualified as NE

@@ -66,7 +66,7 @@ downloadImage imageUrl = do
         contentType <- lookupHeader "Content-Type" headers
         pure (contentType, HTTP.responseBody img)
 
-    lookupHeader :: (Eq a, Show a, Show b) => a -> [(a, b)] -> Either String b
+    lookupHeader :: (Eq a, Show a, Show (a, b)) => a -> [(a, b)] -> Either String b
     lookupHeader x xs = case lookup x xs of
       Just y -> Right y
       Nothing -> Left $ "Failed to find " <> show x <> " in headers: " <> show xs
