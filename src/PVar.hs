@@ -51,27 +51,3 @@ modifyPVar (PVar inner) desc update = do
 modifyPVar_ :: (MonadIO m) => PVar a -> Text -> (a -> m a) -> m ()
 modifyPVar_ pVar desc update = do
   void $ modifyPVar pVar desc update
-
--- | Tries to modify the PVar but, rather than wait, won't if it's already being updated.
--- Returns whether it did an update or not.
-tryModifyPVar :: (MonadIO m) => PVar a -> Text -> (a -> m a) -> m (Maybe a)
-tryModifyPVar (PVar inner) desc update = do
-  mValue <- liftIO $ atomically $ do
-    (state, val) <- readTVar inner
-    case state of
-      PVarReady -> do
-        writeTVar inner (PVarUpdating desc, val) -- We will update, so mark as being updated
-        pure $ Just val
-      PVarUpdating _ ->
-        -- Someone else is already updating, so we do nothing
-        pure Nothing
-  case mValue of
-    Nothing -> pure Nothing
-    Just value -> do
-      newValue <- update value
-      liftIO $ atomically $ writeTVar inner (PVarReady, newValue)
-      pure $ Just newValue
-
-tryModifyPVar_ :: (MonadIO m) => PVar a -> Text -> (a -> m a) -> m ()
-tryModifyPVar_ pVar desc update =
-  void $ tryModifyPVar pVar desc update
