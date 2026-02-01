@@ -125,6 +125,7 @@ test-suite pablo-tv-test
         DirectorySpec
         Orphanage
         TestUtils
+        WebSpec
     build-depends:
         aeson
       , bytestring
@@ -136,4 +137,5 @@ test-suite pablo-tv-test
       , sydtest
       , sydtest-aeson
       , sydtest-discover
+      , sydtest-yesod
       , unordered-containers
