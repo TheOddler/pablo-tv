@@ -330,6 +330,7 @@ mountAllSambaShares roots = do
         mapMaybe
           ( \case
               RootLocalVideos -> Nothing
+              RootAbsPath _ -> Nothing
               RootSamba srv shr -> Just (srv, shr)
           )
           (Map.keys roots)
@@ -396,6 +397,7 @@ main = do
     let rootDirsDefault =
           Map.fromList
             [ (RootLocalVideos, emptyRootData),
+              (RootAbsPath "/home/pablo/Downloads/Torrents", emptyRootData),
               -- TODO: I'll have to add an interface somewhere to add these
               (RootSamba (SmbServer "192.168.0.99") (SmbShare "videos"), emptyRootData)
             ]

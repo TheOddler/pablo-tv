@@ -23,7 +23,9 @@ import Data.Text qualified as T
 import Directory.Files
 import GHC.Data.Maybe (firstJusts, orElse)
 import GHC.Generics (Generic)
+import Network.HTTP.Types (urlDecode, urlEncode)
 import Orphanage ()
+import SafeConvert (mapTextThroughBS)
 import Samba (SmbServer (..), SmbShare (..), mkMountPath)
 import System.Directory (getHomeDirectory)
 import System.FilePath
@@ -39,6 +41,7 @@ import Yesod (PathPiece (..))
 data RootDirectoryLocation
   = RootSamba Samba.SmbServer Samba.SmbShare
   | RootLocalVideos
+  | RootAbsPath FilePath
   deriving (Eq, Ord, Generic)
 
 unRootDirectoryLocation :: RootDirectoryLocation -> TextWithoutSeparator
@@ -52,6 +55,7 @@ unRootDirectoryLocation rd = case rd of
           "-",
           shr.unSmbShare
         ]
+  RootAbsPath fp -> removeSeparatorsFromText $ mapTextThroughBS (urlEncode False) $ T.pack fp
 
 rootDirectoryLocation :: (MonadFail m) => TextWithoutSeparator -> m RootDirectoryLocation
 rootDirectoryLocation tws = do
@@ -64,7 +68,11 @@ rootDirectoryLocation tws = do
           RootSamba
             (SmbServer srv)
             (SmbShare shr)
-      _ -> fail $ "Unknown root directory structure: " ++ T.unpack t
+      _ ->
+        let fp = T.unpack $ mapTextThroughBS (urlDecode False) t
+         in if isValid fp && isAbsolute fp
+              then pure $ RootAbsPath fp
+              else fail $ "Unknown root directory structure: " ++ T.unpack t
 
 rootDirectoryLocationToAbsPath :: (MonadIO m) => RootDirectoryLocation -> m FilePath
 rootDirectoryLocationToAbsPath = \case
@@ -72,6 +80,7 @@ rootDirectoryLocationToAbsPath = \case
   RootLocalVideos -> do
     home <- liftIO getHomeDirectory
     pure $ home </> "Videos"
+  RootAbsPath fp -> pure fp
 
 instance Read RootDirectoryLocation where
   readPrec = readPrec >>= rootDirectoryLocation
