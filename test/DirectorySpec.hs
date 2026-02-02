@@ -10,7 +10,6 @@ import Directory.Directories
 import Directory.Files
 import Orphanage ()
 import Samba (SmbServer (..), SmbShare (..))
-import Test.QuickCheck.Instances ()
 import Test.Syd
 import Test.Syd.Aeson
 import Util.TextWithoutSeparator (twsQQ)

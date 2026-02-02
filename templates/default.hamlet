@@ -17,7 +17,7 @@
     $# <a href="#" onclick="sendAction('#{ActionOpenUrlOnTV currentUrl}')">
     $#   <i class="fa-solid fa-arrow-up-from-bracket">
 
-  <a href=@{DirectoryHomeR}>
+  <a href=@{DirectoryR $ RawWebPath []}>
     <i class="fa-solid fa-file-video">
   <a href=@{HomeR}>
     <i class="fa-solid fa-house">

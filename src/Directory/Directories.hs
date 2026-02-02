@@ -1,5 +1,4 @@
 {-# LANGUAGE DerivingStrategies #-}
-{-# LANGUAGE QuasiQuotes #-}
 
 module Directory.Directories where
 
@@ -15,7 +14,7 @@ import Data.Aeson
     genericToEncoding,
     genericToJSON,
   )
-import Data.Aeson.Types (FromJSONKey (..), Parser, toJSONKeyText)
+import Data.Aeson.Types (FromJSONKey (..), toJSONKeyText)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (isJust)
 import Data.Text (Text)
@@ -23,43 +22,61 @@ import Data.Text qualified as T
 import Directory.Files
 import GHC.Data.Maybe (firstJusts, orElse)
 import GHC.Generics (Generic)
-import Network.HTTP.Types (urlDecode, urlEncode)
 import Orphanage ()
-import SafeConvert (mapTextThroughBS)
 import Samba (SmbServer (..), SmbShare (..), mkMountPath)
 import System.Directory (getHomeDirectory)
 import System.FilePath
 import Text.Blaze (ToMarkup)
 import Text.Read (Read (..))
 import Util (ourAesonOptionsPrefix)
+import Util.AbsFilePath (AbsFilePath (..), absFilePath)
 import Util.Regex (expect1Int, tryRegex)
 import Util.TextWithoutSeparator
 import Yesod (PathPiece (..))
 
 -- Roots
 
+type RootDirectories = Map.Map RootDirectoryLocation RootDirectoryData
+
 data RootDirectoryLocation
   = RootSamba Samba.SmbServer Samba.SmbShare
   | RootLocalVideos
-  | RootAbsPath FilePath
+  | RootAbsPath AbsFilePath
   deriving (Eq, Ord, Generic)
 
-unRootDirectoryLocation :: RootDirectoryLocation -> TextWithoutSeparator
-unRootDirectoryLocation rd = case rd of
-  RootLocalVideos -> [twsQQ|Videos|]
+rootDirectoryLocationToAbsPath :: (MonadIO m) => RootDirectoryLocation -> m FilePath
+rootDirectoryLocationToAbsPath = \case
+  RootSamba srv shr -> mkMountPath srv shr
+  RootLocalVideos -> do
+    home <- liftIO getHomeDirectory
+    pure $ home </> "Videos"
+  RootAbsPath fp -> pure $ T.unpack $ unAbsFilePath fp
+
+rootDirectoryLocationToText :: RootDirectoryLocation -> Text
+rootDirectoryLocationToText rd = case rd of
+  RootLocalVideos -> "Videos"
   RootSamba srv shr ->
-    removeSeparatorsFromText . T.pack $
+    T.pack $
       concat
         [ "smb-",
           srv.unSmbServer,
           "-",
           shr.unSmbShare
         ]
-  RootAbsPath fp -> removeSeparatorsFromText $ mapTextThroughBS (urlEncode False) $ T.pack fp
+  RootAbsPath a -> unAbsFilePath a
 
-rootDirectoryLocation :: (MonadFail m) => TextWithoutSeparator -> m RootDirectoryLocation
-rootDirectoryLocation tws = do
-  let t = unwrap tws
+instance Show RootDirectoryLocation where
+  show = T.unpack . rootDirectoryLocationToText
+
+instance ToJSON RootDirectoryLocation where
+  toJSON = toJSON . rootDirectoryLocationToText
+  toEncoding = toEncoding . rootDirectoryLocationToText
+
+instance ToJSONKey RootDirectoryLocation where
+  toJSONKey = toJSONKeyText rootDirectoryLocationToText
+
+parseRootDirectoryLocationFromText :: (MonadFail m) => Text -> m RootDirectoryLocation
+parseRootDirectoryLocationFromText t = do
   if t == "Videos"
     then pure RootLocalVideos
     else case T.unpack <$> T.split (== '-') t of
@@ -69,47 +86,17 @@ rootDirectoryLocation tws = do
             (SmbServer srv)
             (SmbShare shr)
       _ ->
-        let fp = T.unpack $ mapTextThroughBS (urlDecode False) t
-         in if isValid fp && isAbsolute fp
-              then pure $ RootAbsPath fp
-              else fail $ "Unknown root directory structure: " ++ T.unpack t
-
-rootDirectoryLocationToAbsPath :: (MonadIO m) => RootDirectoryLocation -> m FilePath
-rootDirectoryLocationToAbsPath = \case
-  RootSamba srv shr -> mkMountPath srv shr
-  RootLocalVideos -> do
-    home <- liftIO getHomeDirectory
-    pure $ home </> "Videos"
-  RootAbsPath fp -> pure fp
+        case absFilePath t of
+          Nothing -> fail $ "Unknown root directory structure: " ++ T.unpack t
+          Just a -> pure $ RootAbsPath a
 
 instance Read RootDirectoryLocation where
-  readPrec = readPrec >>= rootDirectoryLocation
-
-instance Show RootDirectoryLocation where
-  show = T.unpack . unTextWithoutSeparator . unRootDirectoryLocation
-
-instance ToJSON RootDirectoryLocation where
-  toJSON = toJSON . unRootDirectoryLocation
-  toEncoding = toEncoding . unRootDirectoryLocation
-
-instance PathPiece RootDirectoryLocation where
-  toPathPiece :: RootDirectoryLocation -> Text
-  toPathPiece = unwrap . unRootDirectoryLocation
-
-  fromPathPiece :: Text -> Maybe RootDirectoryLocation
-  fromPathPiece text = textWithoutSeparator text >>= rootDirectoryLocation
-
-parseRootDirectoryLocationFromText :: Text -> Parser RootDirectoryLocation
-parseRootDirectoryLocationFromText text =
-  textWithoutSeparator text >>= rootDirectoryLocation
+  readPrec = readPrec >>= parseRootDirectoryLocationFromText
 
 instance FromJSON RootDirectoryLocation where
   parseJSON v = do
     (asText :: Text) <- parseJSON v
     parseRootDirectoryLocationFromText asText
-
-instance ToJSONKey RootDirectoryLocation where
-  toJSONKey = toJSONKeyText (unwrap . unRootDirectoryLocation)
 
 instance FromJSONKey RootDirectoryLocation where
   fromJSONKey = FromJSONKeyTextParser parseRootDirectoryLocationFromText

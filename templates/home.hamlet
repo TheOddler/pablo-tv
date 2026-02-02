@@ -6,8 +6,8 @@
           <h1>#{name}
           <div class="row">
             $forall dir <- dirs
-              <a class="el" href=@{DirectoryR dir.aggDirPath.directoryPathRoot dir.aggDirPath.directoryPathNames}>
-                <img src=@{ImageR dir.aggDirPath.directoryPathRoot dir.aggDirPath.directoryPathNames} alt="#{dir.aggDirName}" loading="lazy">
+              <a class="el" href=@{DirectoryR $ rawWebPathFromDirectory dir.aggDirPath}>
+                <img src=@{ImageR $ rawWebPathFromDirectory dir.aggDirPath} alt="#{dir.aggDirName}" loading="lazy">
                 <div class="watched">
                   $if aggDirPlayedVideoFileCount dir < aggDirVideoFileCount dir
                     <i class="fa-regular fa-eye">
@@ -23,7 +23,7 @@
               <img src="@{l.linkImage}" alt="#{l.linkName}" loading="lazy">
   
   <h1 class="center">
-    <a href=@{DirectoryHomeR}>View all
+    <a href=@{DirectoryR $ RawWebPath []}>View all
 
   <div class="divider">
   <h2>

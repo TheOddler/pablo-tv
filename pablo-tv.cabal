@@ -58,6 +58,7 @@ library
         Samba
         TVState
         Util
+        Util.AbsFilePath
         Util.Regex
         Util.TextWithoutSeparator
     if flag(development)
@@ -126,6 +127,7 @@ test-suite pablo-tv-test
         Orphanage
         PVarSpec
         TestUtils
+        TextWithoutSeparatorSpec
         WebSpec
     build-depends:
         aeson
@@ -134,9 +136,10 @@ test-suite pablo-tv-test
       , generic-random
       , pablo-tv
       , QuickCheck
-      , quickcheck-instances
+      , scientific
       , sydtest
       , sydtest-aeson
       , sydtest-discover
       , sydtest-yesod
+      , text
       , unordered-containers

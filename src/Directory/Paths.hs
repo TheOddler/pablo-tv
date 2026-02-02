@@ -1,20 +1,108 @@
 module Directory.Paths where
 
-import Data.Aeson
-  ( FromJSON (..),
-    ToJSON (..),
-    withText,
-  )
-import Data.Aeson.Types (parseFail)
-import Data.List (intercalate)
+import Control.Monad (forM)
+import Data.Aeson (FromJSON (..), ToJSON (..), withText)
+import Data.List (intercalate, stripPrefix)
 import Data.List.NonEmpty qualified as NE
+import Data.Map.Strict qualified as Map
 import Data.Text qualified as T
 import Directory.Directories
 import Directory.Files
+import GHC.Data.Maybe (firstJusts)
 import Orphanage ()
-import System.FilePath (takeExtension)
+import System.FilePath (joinPath, takeExtension, (</>))
+import Text.Read (Read (..))
 import Util.TextWithoutSeparator
-import Yesod (MonadIO (..))
+import Yesod (MonadIO (..), PathMultiPiece (..))
+
+-- Raw Web Path
+
+newtype RawWebPath = RawWebPath {unRawWebPath :: [TextWithoutSeparator]}
+  deriving (Eq, Semigroup)
+
+instance Show RawWebPath where
+  show = T.unpack . unsplitSeparatedText . unRawWebPath
+
+instance ToJSON RawWebPath where
+  toJSON = toJSON . unsplitSeparatedText . unRawWebPath
+
+instance Read RawWebPath where
+  readPrec = RawWebPath . splitAtSeparator <$> readPrec
+
+instance FromJSON RawWebPath where
+  parseJSON = withText "RawWebPath" $ pure . RawWebPath . splitAtSeparator
+
+instance PathMultiPiece RawWebPath where
+  fromPathMultiPiece :: [T.Text] -> Maybe RawWebPath
+  fromPathMultiPiece parts = RawWebPath <$> forM parts textWithoutSeparator
+  toPathMultiPiece :: RawWebPath -> [T.Text]
+  toPathMultiPiece = map unTextWithoutSeparator . unRawWebPath
+
+rawWebPathFromRoot :: RootDirectoryLocation -> RawWebPath
+rawWebPathFromRoot root =
+  RawWebPath . splitAtSeparator $
+    rootDirectoryLocationToText root
+
+rawWebPathToRoot :: RootDirectories -> RawWebPath -> Maybe (RootDirectoryLocation, [TextWithoutSeparator])
+rawWebPathToRoot roots raw = do
+  let rootLocs = Map.keys roots
+      stripRoot :: [TextWithoutSeparator] -> RootDirectoryLocation -> Maybe (RootDirectoryLocation, [TextWithoutSeparator])
+      stripRoot ts r = case unRawWebPath (rawWebPathFromRoot r) `stripPrefix` ts of
+        Nothing -> Nothing
+        Just parts -> Just (r, parts)
+  firstJusts $ stripRoot (unRawWebPath raw) <$> rootLocs
+
+rawWebPathFromDirectoryNames :: [DirectoryName] -> RawWebPath
+rawWebPathFromDirectoryNames = RawWebPath . map unDirectoryName
+
+rawWebPathFromDirectory :: DirectoryPath -> RawWebPath
+rawWebPathFromDirectory dirPath =
+  rawWebPathFromRoot dirPath.directoryPathRoot
+    <> rawWebPathFromDirectoryNames dirPath.directoryPathNames
+
+rawWebPathToDirectory :: RootDirectories -> RawWebPath -> Maybe DirectoryPath
+rawWebPathToDirectory roots raw = case rawWebPathToVideoFileOrDirectory roots raw of
+  Just (Left d) -> Just d
+  _ -> Nothing
+
+rawWebPathFromVideoFile :: VideoFilePath -> RawWebPath
+rawWebPathFromVideoFile video =
+  rawWebPathFromRoot video.videoFilePathRoot
+    <> rawWebPathFromDirectoryNames video.videoFilePathNames
+    <> RawWebPath [unVideoFileName video.videoFilePathName]
+
+rawWebPathToVideoFile :: RootDirectories -> RawWebPath -> Maybe VideoFilePath
+rawWebPathToVideoFile roots raw = case rawWebPathToVideoFileOrDirectory roots raw of
+  Just (Right v) -> Just v
+  _ -> Nothing
+
+rawWebPathToVideoFileOrDirectory :: RootDirectories -> RawWebPath -> Maybe (Either DirectoryPath VideoFilePath)
+rawWebPathToVideoFileOrDirectory roots raw =
+  case rawWebPathToRoot roots raw of
+    Nothing -> Nothing
+    Just (root, []) -> Just $ Left $ DirectoryPath root []
+    Just (root, n : ns) -> do
+      let namesNE = n NE.:| ns
+          potentialFileName = NE.last namesNE
+          lastIsFile =
+            hasVideoFileExt potentialFileName
+              || hasImageFileExt potentialFileName
+              || hasCommonFileExt potentialFileName
+          dirNames = map DirectoryName $ NE.init namesNE
+      Just $
+        if lastIsFile
+          then Right $ VideoFilePath root dirNames (VideoFileName potentialFileName)
+          else Left $ DirectoryPath root $ map DirectoryName (n : ns)
+
+rawWebPathToAbsPath :: (MonadIO m) => RootDirectories -> RawWebPath -> m (Maybe FilePath)
+rawWebPathToAbsPath roots raw =
+  case rawWebPathToRoot roots raw of
+    Nothing -> pure Nothing
+    Just (root, parts) -> do
+      absRoot <- rootDirectoryLocationToAbsPath root
+      let partsStr :: FilePath
+          partsStr = joinPath $ map (T.unpack . unTextWithoutSeparator) parts
+      pure $ Just $ absRoot </> partsStr
 
 -- Directory paths
 
@@ -23,22 +111,6 @@ data DirectoryPath = DirectoryPath
     directoryPathNames :: [DirectoryName]
   }
   deriving (Show, Eq)
-
-instance ToJSON DirectoryPath where
-  toJSON (DirectoryPath root names) =
-    toJSON . unsplitSeparatedText $
-      unRootDirectoryLocation root : (unDirectoryName <$> names)
-
-instance FromJSON DirectoryPath where
-  parseJSON = withText "DirectoryPath" $ \text ->
-    case parseRootAndNames $ splitAtSeparatorNE text of
-      Just (root, names) -> pure $ DirectoryPath root names
-      Nothing -> parseFail $ "Couldn't parse DirectoryPath: " ++ T.unpack text
-
-parseRootAndNames :: (MonadFail m) => NE.NonEmpty TextWithoutSeparator -> m (RootDirectoryLocation, [DirectoryName])
-parseRootAndNames (mRoot NE.:| names) = do
-  root <- rootDirectoryLocation mRoot
-  pure (root, DirectoryName <$> names)
 
 addSubDir :: DirectoryPath -> DirectoryName -> DirectoryPath
 addSubDir (DirectoryPath root names) newName = DirectoryPath root $ names ++ [newName]
@@ -56,28 +128,6 @@ data VideoFilePath = VideoFilePath
     videoFilePathName :: VideoFileName
   }
   deriving (Show, Eq)
-
-instance ToJSON VideoFilePath where
-  toJSON (VideoFilePath root dirNames videoName) =
-    toJSON . unsplitSeparatedText $
-      unRootDirectoryLocation root
-        : (unDirectoryName <$> dirNames)
-        ++ [videoName.unVideoFileName]
-
-instance FromJSON VideoFilePath where
-  parseJSON = withText "VideoFilePath" $ \text -> do
-    let pieces = splitAtSeparatorNE text
-        fileNameT = NE.last pieces
-        fileName = VideoFileName fileNameT
-        isVideoFile :: Bool
-        isVideoFile = hasVideoFileExt fileNameT
-        dirPathPieces = NE.nonEmpty $ NE.init pieces
-    if isVideoFile
-      then case parseRootAndNames <$> dirPathPieces of
-        Just (Right (root, names)) -> pure $ VideoFilePath root names fileName
-        Just (Left err) -> parseFail $ "Couldn't parse VideoFilePath: " ++ err
-        Nothing -> parseFail "Couldn't parse VideoFilePath, no directory found in path."
-      else parseFail "Not a video file, wrong extension."
 
 videoFilePathToAbsPath :: VideoFilePath -> IO FilePath
 videoFilePathToAbsPath (VideoFilePath root dirNames fileName) = do

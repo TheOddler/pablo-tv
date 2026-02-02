@@ -32,17 +32,9 @@ import System.Directory
   )
 import System.FilePath ((</>))
 import UnliftIO (MonadUnliftIO, catchAny)
-import Util
-  ( failE,
-    firstRightM,
-    logDuration,
-    showT,
-    unsnocNE,
-  )
+import Util (failE, firstRightM, logDuration, showT, unsnocNE)
 import Util.TextWithoutSeparator
 import Yesod (MonadIO (..))
-
-type RootDirectories = Map.Map RootDirectoryLocation RootDirectoryData
 
 getDirectoryAtPath :: RootDirectories -> DirectoryPath -> Maybe DirectoryData
 getDirectoryAtPath roots (DirectoryPath wantedRoot []) = do
@@ -282,22 +274,24 @@ shallowUpdateDirectory roots dirPath = do
 -- | Returns a (potentially empty) list of errors of failed attempts with the search string that was tried,
 -- and hopefully a successful result.
 getImageFromWebFor :: forall m. (MonadIO m) => DirectoryPath -> m ([(T.Text, ImageSearchFailure)], Maybe (ImageFileName, ImageFileData))
-getImageFromWebFor DirectoryPath {directoryPathRoot, directoryPathNames} = do
-  let dirName =
-        DirectoryName . NE.last $
-          unRootDirectoryLocation directoryPathRoot NE.:| map unDirectoryName directoryPathNames
-      (dirTitle, _dirSubTitle) = splitTitleFromDir dirName
-      tryFindImage' :: T.Text -> m (Either (T.Text, ImageSearchFailure) (ImageFileName, ImageFileData))
-      tryFindImage' searchTerm = do
-        res <- tryFindImage searchTerm
-        pure $ case res of
-          Left err -> Left (searchTerm, err)
-          Right (contentType, img) ->
-            Right (imageFileNameForContentType contentType, ImageFileData img)
-  firstRightM
-    [ tryFindImage' $ unwrap dirName,
-      tryFindImage' dirTitle
-    ]
+getImageFromWebFor dirPath = case NE.nonEmpty $ unRawWebPath $ rawWebPathFromDirectory dirPath of
+  Nothing -> pure ([], Nothing)
+  Just partsNE -> do
+    let dirName :: DirectoryName
+        dirName = DirectoryName $ NE.last partsNE
+
+        (dirTitle, _dirSubTitle) = splitTitleFromDir dirName
+        tryFindImage' :: T.Text -> m (Either (T.Text, ImageSearchFailure) (ImageFileName, ImageFileData))
+        tryFindImage' searchTerm = do
+          res <- tryFindImage searchTerm
+          pure $ case res of
+            Left err -> Left (searchTerm, err)
+            Right (contentType, img) ->
+              Right (imageFileNameForContentType contentType, ImageFileData img)
+    firstRightM
+      [ tryFindImage' $ unwrap dirName,
+        tryFindImage' dirTitle
+      ]
 
 -- | Recursively updates the directory, each time a directory is updated it's saved to the root directories pvar.
 -- It also saves all the directories data to disk at the end.

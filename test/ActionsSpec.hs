@@ -10,8 +10,7 @@ import Directory.Files (VideoFileName (..))
 import Directory.Paths (DirectoryPath (..), VideoFilePath (..))
 import Orphanage ()
 import Samba (SmbServer (..), SmbShare (..))
-import Test.QuickCheck (property)
-import Test.QuickCheck.Instances ()
+import Test.QuickCheck (property, withMaxSuccess)
 import Test.Syd
 import Test.Syd.Aeson (pureGoldenJSONValueFile)
 import Util.TextWithoutSeparator (twsQQ)
@@ -24,7 +23,7 @@ spec = do
   describe "Encoding to json" $ do
     mapM_ encodeSpec encodingExamples
 
-  it "can roundtrip JSON" $ property $ \(action :: Action) ->
+  it "can roundtrip JSON" $ withMaxSuccess 1000 $ property $ \(action :: Action) ->
     let encoded = encode action
      in eitherDecode encoded `shouldBe` Right action
 

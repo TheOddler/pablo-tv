@@ -1,3 +1,4 @@
+{-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE ViewPatterns #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
@@ -6,7 +7,6 @@ module LibMain where
 
 import Actions
   ( Action (..),
-    DirOrFile (..),
     KeyboardButton (..),
     MouseButton (..),
     actionsWebSocket,
@@ -30,7 +30,6 @@ import Data.Time (UTCTime)
 import Data.Tuple.Extra (fst3)
 import Directory
   ( AggDirInfo (..),
-    RootDirectories,
     findDirWithImageFor,
     getDirectoryAtPath,
     getSubDirAggInfo,
@@ -39,6 +38,7 @@ import Directory
 import Directory.Directories
   ( DirectoryData (..),
     DirectoryName (..),
+    RootDirectories,
     RootDirectoryData (..),
     RootDirectoryLocation (..),
     rootDirectoryAsDirectory,
@@ -53,7 +53,11 @@ import Directory.Files
   )
 import Directory.Paths
   ( DirectoryPath (..),
+    RawWebPath (..),
     VideoFilePath (..),
+    rawWebPathFromDirectory,
+    rawWebPathFromVideoFile,
+    rawWebPathToDirectory,
     rootDirectoryPath,
   )
 import Foundation
@@ -95,6 +99,7 @@ import Util
     unsnocNE,
     widgetFile,
   )
+import Util.AbsFilePath (absFilePathQQ)
 import Util.TextWithoutSeparator (splitAtSeparatorNE, unwrap)
 import Yesod hiding (defaultLayout, replace)
 import Yesod.WebSockets (race_, webSockets)
@@ -197,90 +202,90 @@ watchedClassDir dirInfo =
 
 type VideoFileWithNameAndPath = (VideoFileName, VideoFilePath, VideoFileData)
 
-getDirectoryHomeR :: Handler Html
-getDirectoryHomeR = do
+withDirectoryFromRaw :: (DirectoryPath -> Handler a) -> RawWebPath -> Handler a
+withDirectoryFromRaw handler = withMDirectoryFromRaw $ \case
+  Nothing -> notFound
+  Just dirPath -> handler dirPath
+
+withMDirectoryFromRaw :: (Maybe DirectoryPath -> Handler a) -> RawWebPath -> Handler a
+withMDirectoryFromRaw handler rawWebPath = do
   roots <- liftIO . readPVar =<< getsYesod appRootDirs
-  let dirs :: [AggDirInfo]
-      dirs =
-        naturalSortBy (unwrap . aggDirName) $
-          concatMap
-            ( \(rootLocation, rootData) ->
-                getSubDirAggInfo
-                  (rootDirectoryPath rootLocation)
-                  (rootDirectoryAsDirectory rootData)
-            )
-            (Map.toList roots)
-  let files :: [VideoFileWithNameAndPath]
-      files =
-        naturalSortBy (unwrap . fst3) $
-          concatMap
-            ( \(rootLocation, rootData) -> do
-                (videoName, videoData) <- Map.toList rootData.rootDirectoryVideoFiles
-                pure
+  handler $ rawWebPathToDirectory roots rawWebPath
+
+getDirectoryR :: RawWebPath -> Handler Html
+getDirectoryR = withMDirectoryFromRaw $ \mDirPath -> do
+  roots <- liftIO . readPVar =<< getsYesod appRootDirs
+  (dirs, files) <- case mDirPath of
+    Nothing ->
+      pure
+        ( naturalSortBy (unwrap . aggDirName) $
+            concatMap
+              ( \(rootLocation, rootData) ->
+                  getSubDirAggInfo
+                    (rootDirectoryPath rootLocation)
+                    (rootDirectoryAsDirectory rootData)
+              )
+              (Map.toList roots),
+          naturalSortBy (unwrap . fst3) $
+            concatMap
+              ( \(rootLocation, rootData) -> do
+                  (videoName, videoData) <- Map.toList rootData.rootDirectoryVideoFiles
+                  pure
+                    ( videoName,
+                      VideoFilePath rootLocation [] videoName,
+                      videoData
+                    )
+              )
+              (Map.toList roots)
+        )
+    Just dirPath -> do
+      let mDir = getDirectoryAtPath roots dirPath
+      dir <- case mDir of
+        Nothing -> redirect $ DirectoryR $ RawWebPath []
+        Just d -> pure d
+      pure
+        ( naturalSortBy (unwrap . aggDirName) $ getSubDirAggInfo dirPath dir,
+          naturalSortBy (unwrap . fst3) $
+            map
+              ( \(videoName, videoData) ->
                   ( videoName,
-                    VideoFilePath rootLocation [] videoName,
+                    VideoFilePath
+                      dirPath.directoryPathRoot
+                      dirPath.directoryPathNames
+                      videoName,
                     videoData
                   )
-            )
-            (Map.toList roots)
+              )
+              (Map.toList dir.directoryVideoFiles)
+        )
 
-  -- We share the widget with directory, so we need these, but they are all hidden on the home dir
-  let imagePath = Nothing :: Maybe DirectoryPath
-  let playAllAction = Nothing :: Maybe Actions.Action
-  let markAllWatchedAction = Nothing :: Maybe Actions.Action
-  let markAllUnwatchedAction = Nothing :: Maybe Actions.Action
+  let mDirPathRaw = rawWebPathFromDirectory <$> mDirPath
+  let imagePath :: Maybe DirectoryPath
+      imagePath = findDirWithImageFor roots =<< mDirPath
+  let playAllAction = ActionPlayPath <$> mDirPathRaw
+  let markAllWatchedAction = ActionMarkAsWatched <$> mDirPathRaw
+  let markAllUnwatchedAction = ActionMarkAsUnwatched <$> mDirPathRaw
   let refreshDirectoryLabelAndAction =
-        Just
-          ( "Refresh Library" :: String,
-            ActionRefreshAllDirectoryData
-          )
-  let title = "Videos"
-  let subTitle = "" :: Text
-  defaultLayout title $(widgetFile "directory")
-
-getDirectoryR :: RootDirectoryLocation -> [DirectoryName] -> Handler Html
-getDirectoryR rootLoc dirNames = do
-  roots <- liftIO . readPVar =<< getsYesod appRootDirs
-  dirNamesNE <- case dirNames of
-    [] -> redirect DirectoryHomeR
-    f : r -> pure $ f NE.:| r
-  let dirPath = DirectoryPath rootLoc dirNames
-  let mDir = getDirectoryAtPath roots dirPath
-  dir <- case mDir of
-    Nothing -> redirect DirectoryHomeR
-    Just d -> pure d
-  let dirs :: [AggDirInfo]
-      dirs =
-        naturalSortBy (unwrap . aggDirName) $
-          getSubDirAggInfo dirPath dir
-  let files :: [VideoFileWithNameAndPath]
-      files =
-        naturalSortBy (unwrap . fst3) $
-          map
-            ( \(videoName, videoData) ->
-                ( videoName,
-                  VideoFilePath rootLoc dirNames videoName,
-                  videoData
-                )
-            )
-            (Map.toList dir.directoryVideoFiles)
-
-  let imagePath = findDirWithImageFor roots dirPath
-  let playAllAction = Just $ ActionPlayPath $ Dir dirPath
-  let markAllWatchedAction = Just $ ActionMarkAsWatched $ Dir dirPath
-  let markAllUnwatchedAction = Just $ ActionMarkAsUnwatched $ Dir dirPath
-  let refreshDirectoryLabelAndAction =
-        Just
-          ( "Refresh this directory" :: String,
-            ActionRefreshDirectoryData dirPath
-          )
-  let (title, subTitle) = splitTitleFromDir $ NE.last dirNamesNE
+        case mDirPathRaw of
+          Nothing ->
+            Just
+              ( "Refresh Library" :: String,
+                ActionRefreshAllDirectoryData
+              )
+          Just dirPathRaw ->
+            Just
+              ( "Refresh this directory" :: String,
+                ActionRefreshDirectoryData dirPathRaw
+              )
+  let (title, subTitle) = case NE.nonEmpty . directoryPathNames <$> mDirPath of
+        Nothing -> ("Videos", "")
+        Just Nothing -> ("Videos", "")
+        Just (Just ne) -> splitTitleFromDir $ NE.last ne
   defaultLayout (toHtml title) $(widgetFile "directory")
 
-getImageR :: RootDirectoryLocation -> [DirectoryName] -> Handler TypedContent
-getImageR rootLoc dirNames = do
+getImageR :: RawWebPath -> Handler TypedContent
+getImageR = withDirectoryFromRaw $ \dirPath -> do
   roots <- liftIO . readPVar =<< getsYesod appRootDirs
-  let dirPath = DirectoryPath rootLoc dirNames
   -- We find the directory with the image for a path in the directory endpoint,
   -- so here we just have to check the directory itself, not its parents.
   -- This makes sure that the browser gets a consistent path and can do better caching.
@@ -362,8 +367,8 @@ mediaListenerHandler rootDirsPVar absFilePath = modifyPVar_ rootDirsPVar ("Media
       putLog Info $ "Path did not match any known files, so didn't mark any file as watched: " ++ absFilePath
       pure roots
     Just path -> do
-      putLog Info $ "Marked file as watched: " ++ show path
-      markDirOrFileAsWatched (File path) roots
+      putLog Info $ "Marking file as watched: " ++ show path
+      markDirOrFileAsWatched (Right path) roots
 
 playerListenerHandler :: (MonadIO m) => TVar (Maybe MediaPlayer) -> MediaPlayer -> m ()
 playerListenerHandler lastActivePlayerTVar playerName = do
@@ -397,7 +402,7 @@ main = do
     let rootDirsDefault =
           Map.fromList
             [ (RootLocalVideos, emptyRootData),
-              (RootAbsPath "/home/pablo/Downloads/Torrents", emptyRootData),
+              (RootAbsPath [absFilePathQQ|/home/pablo/Downloads/Torrents|], emptyRootData),
               -- TODO: I'll have to add an interface somewhere to add these
               (RootSamba (SmbServer "192.168.0.99") (SmbShare "videos"), emptyRootData)
             ]

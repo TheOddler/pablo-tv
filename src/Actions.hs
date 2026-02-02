@@ -2,7 +2,6 @@
 
 module Actions where
 
-import Control.Applicative ((<|>))
 import Control.Exception (Exception (..))
 import Control.Monad (forever)
 import Data.Aeson (FromJSON (..), Object, ToJSON (toJSON), Value, eitherDecode, encode, genericParseJSON, genericToJSON, object, withObject, (.:), (.=))
@@ -18,15 +17,14 @@ import Data.Text qualified as T
 import Data.Text.Lazy.Encoding qualified as T
 import Data.Time (getCurrentTime)
 import Directory
-  ( RootDirectories,
-    recursiveUpdateDirectory,
+  ( recursiveUpdateDirectory,
     recursivelyUpdateAllDirectories,
     saveRootsToDisk,
     updateDirectoryAtPath,
   )
-import Directory.Directories (DirectoryData (..))
+import Directory.Directories (DirectoryData (..), RootDirectories)
 import Directory.Files (VideoFileData (..))
-import Directory.Paths (DirectoryPath (..), VideoFilePath (..), directoryPathToAbsPath, videoFilePathToAbsPath)
+import Directory.Paths (DirectoryPath (..), RawWebPath, VideoFilePath (..), rawWebPathToAbsPath, rawWebPathToDirectory, rawWebPathToVideoFileOrDirectory)
 import Evdev.Codes
 import Evdev.Uinput
 import Foundation (App (..), Handler)
@@ -35,7 +33,7 @@ import GHC.Generics (Generic)
 import Logging (LogLevel (..), putLog)
 import Mpris qualified
 import Network.WebSockets qualified as WS
-import PVar (modifyPVar_)
+import PVar (modifyPVar_, readPVar)
 import SafeConvert (int32ToInteger)
 import System.Process (callProcess, readProcess)
 import TVState (TVState (..))
@@ -45,19 +43,6 @@ import UnliftIO.Exception (catch)
 import Util (ourAesonOptionsPrefix, showT)
 import Yesod (MonadIO, getYesod, lift, liftIO)
 import Yesod.WebSockets (WebSocketsT, receiveData)
-
-data DirOrFile
-  = Dir DirectoryPath
-  | File VideoFilePath
-  deriving (Show, Eq)
-
-instance ToJSON DirOrFile where
-  toJSON = \case
-    Dir d -> toJSON d
-    File f -> toJSON f
-
-instance FromJSON DirOrFile where
-  parseJSON v = File <$> parseJSON v <|> Dir <$> parseJSON v
 
 data Action
   = ActionClickMouse MouseButton
@@ -73,12 +58,12 @@ data Action
     ActionPointMouse Scientific Scientific -- leftRight, upDown
   | ActionMouseScroll Int32
   | ActionWrite {text :: String}
-  | ActionPlayPath DirOrFile
-  | ActionMarkAsWatched DirOrFile
-  | ActionMarkAsUnwatched DirOrFile
+  | ActionPlayPath RawWebPath
+  | ActionMarkAsWatched RawWebPath
+  | ActionMarkAsUnwatched RawWebPath
   | ActionOpenUrlOnTV Text
   | ActionRefreshAllDirectoryData
-  | ActionRefreshDirectoryData DirectoryPath
+  | ActionRefreshDirectoryData RawWebPath
   | ActionMedia Mpris.MprisAction
   deriving (Show, Eq)
 
@@ -260,27 +245,65 @@ performAction action = do
     ActionWrite text -> do
       let events = concatMap (clickKeyCombo . charToKey) text
       liftIO $ writeBatch app.appInputDevice events
-    ActionPlayPath dirOrFile -> liftIO $ do
-      defaultVideoPlayer' <- readProcess "xdg-mime" ["query", "default", "video/x-msvideo"] ""
-      let defaultVideoPlayer = dropWhileEnd isSpace defaultVideoPlayer'
-      absPath <- dirOrFileToAbsPath dirOrFile
-      callProcess
-        "gtk-launch"
-        [ defaultVideoPlayer,
-          absPath
-        ]
-    ActionMarkAsWatched dirOrFile -> do
-      modifyPVar_ app.appRootDirs ("Marking " <> showT dirOrFile <> " as watched") $ markDirOrFileAsWatched dirOrFile
+    ActionPlayPath rawWebPath -> do
+      roots <- readPVar app.appRootDirs
+      mAbsPath <- rawWebPathToAbsPath roots rawWebPath
+      case mAbsPath of
+        Nothing ->
+          putLog Warning $
+            "Could not play path "
+              ++ show rawWebPath
+              ++ ": Unable to convert raw to absolute path."
+        Just absPath -> liftIO $ do
+          defaultVideoPlayer' <-
+            readProcess
+              "xdg-mime"
+              ["query", "default", "video/x-msvideo"]
+              ""
+          let defaultVideoPlayer = dropWhileEnd isSpace defaultVideoPlayer'
+          callProcess
+            "gtk-launch"
+            [ defaultVideoPlayer,
+              absPath
+            ]
+    ActionMarkAsWatched rawWebPath -> do
+      modifyPVar_ app.appRootDirs ("Marking " <> showT rawWebPath <> " as watched") $ \roots -> do
+        let mDirOrFile = rawWebPathToVideoFileOrDirectory roots rawWebPath
+        case mDirOrFile of
+          Nothing -> do
+            putLog Warning $
+              "Could not mark as watched "
+                ++ show rawWebPath
+                ++ ": Unable to convert raw to directory path."
+            pure roots
+          Just dirOrFile -> markDirOrFileAsWatched dirOrFile roots
       saveRootsToDisk app.appRootDirs
-    ActionMarkAsUnwatched dirOrFile -> do
-      modifyPVar_ app.appRootDirs ("Marking " <> showT dirOrFile <> " as unwatched") $ markDirOrFileAsUnwatched dirOrFile
+    ActionMarkAsUnwatched rawWebPath -> do
+      modifyPVar_ app.appRootDirs ("Marking " <> showT rawWebPath <> " as unwatched") $ \roots -> do
+        let mDirOrFile = rawWebPathToVideoFileOrDirectory roots rawWebPath
+        case mDirOrFile of
+          Nothing -> do
+            putLog Warning $
+              "Could not mark as unwatched "
+                ++ show rawWebPath
+                ++ ": Unable to convert raw to directory path."
+            pure roots
+          Just dirOrFile -> markDirOrFileAsUnwatched dirOrFile roots
       saveRootsToDisk app.appRootDirs
     ActionOpenUrlOnTV url ->
       liftIO $ atomically $ do
         tvState <- readTVar app.appTVState
         writeTVar app.appTVState $ tvState {tvPage = url}
-    ActionRefreshDirectoryData dirPath -> do
-      recursiveUpdateDirectory app.appRootDirs dirPath
+    ActionRefreshDirectoryData rawWebPath -> do
+      roots <- readPVar app.appRootDirs
+      let mDirPath = rawWebPathToDirectory roots rawWebPath
+      case mDirPath of
+        Nothing ->
+          putLog Warning $
+            "Could not refresh directory "
+              ++ show rawWebPath
+              ++ ": Unable to convert raw to directory path."
+        Just dirPath -> recursiveUpdateDirectory app.appRootDirs dirPath
     ActionRefreshAllDirectoryData -> do
       recursivelyUpdateAllDirectories app.appRootDirs
     ActionMedia a -> do
@@ -295,16 +318,11 @@ performAction action = do
         ++ map (`KeyEvent` Released) (reverse keys)
         ++ [SyncEvent SynReport]
 
-    dirOrFileToAbsPath :: DirOrFile -> IO FilePath
-    dirOrFileToAbsPath = \case
-      Dir d -> directoryPathToAbsPath d
-      File f -> videoFilePathToAbsPath f
-
-markDirOrFileAsWatched :: (MonadIO m) => DirOrFile -> RootDirectories -> m RootDirectories
+markDirOrFileAsWatched :: (MonadIO m) => Either DirectoryPath VideoFilePath -> RootDirectories -> m RootDirectories
 markDirOrFileAsWatched dirOrFile rootDirs = do
   let dirPath = case dirOrFile of
-        Dir p -> p
-        File (VideoFilePath r p _) -> DirectoryPath r p
+        Left p -> p
+        Right (VideoFilePath r p _) -> DirectoryPath r p
   now <- liftIO getCurrentTime
   let applyWatched fileData =
         case fileData.videoFileWatched of
@@ -312,34 +330,34 @@ markDirOrFileAsWatched dirOrFile rootDirs = do
           Nothing -> fileData {videoFileWatched = Just now}
   pure $ updateDirectoryAtPath rootDirs dirPath $ \dir ->
     case dirOrFile of
-      Dir _ ->
+      Left _ ->
         dir
           { directoryVideoFiles =
               Map.map applyWatched dir.directoryVideoFiles
           }
-      File (VideoFilePath _ _ fileName) ->
+      Right (VideoFilePath _ _ fileName) ->
         dir
           { directoryVideoFiles =
               Map.adjust applyWatched fileName dir.directoryVideoFiles
           }
 
-markDirOrFileAsUnwatched :: (MonadIO m) => DirOrFile -> RootDirectories -> m RootDirectories
+markDirOrFileAsUnwatched :: (MonadIO m) => Either DirectoryPath VideoFilePath -> RootDirectories -> m RootDirectories
 markDirOrFileAsUnwatched dirOrFile rootDirs = do
   let dirPath = case dirOrFile of
-        Dir p -> p
-        File (VideoFilePath r p _) -> DirectoryPath r p
+        Left p -> p
+        Right (VideoFilePath r p _) -> DirectoryPath r p
   let applyUnwatched fileData =
         case fileData.videoFileWatched of
           Just _ -> fileData {videoFileWatched = Nothing}
           Nothing -> fileData
   pure $ updateDirectoryAtPath rootDirs dirPath $ \dir ->
     case dirOrFile of
-      Dir _ ->
+      Left _ ->
         dir
           { directoryVideoFiles =
               Map.map applyUnwatched dir.directoryVideoFiles
           }
-      File (VideoFilePath _ _ fileName) ->
+      Right (VideoFilePath _ _ fileName) ->
         dir
           { directoryVideoFiles =
               Map.adjust applyUnwatched fileName dir.directoryVideoFiles

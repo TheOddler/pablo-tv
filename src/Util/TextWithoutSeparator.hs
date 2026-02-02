@@ -2,15 +2,15 @@
 {-# LANGUAGE TemplateHaskellQuotes #-}
 
 module Util.TextWithoutSeparator
-  ( TextWithoutSeparator,
+  ( TextWithoutSeparator (unTextWithoutSeparator),
     Unwrap (..),
     textWithoutSeparator,
-    unTextWithoutSeparator,
     removeSeparatorsFromText,
     splitAtSeparator,
     splitAtSeparatorNE,
     unsplitSeparatedText,
     unsplitSeparatedTextNE,
+    splitNE,
     safeCleanListDirectory,
     twsQQ,
     isSuffixOf,
@@ -107,6 +107,9 @@ unsplitSeparatedText = T.intercalate (T.singleton separator) . map unTextWithout
 
 unsplitSeparatedTextNE :: NE.NonEmpty TextWithoutSeparator -> T.Text
 unsplitSeparatedTextNE = unsplitSeparatedText . NE.toList
+
+splitNE :: (Char -> Bool) -> TextWithoutSeparator -> NE.NonEmpty TextWithoutSeparator
+splitNE sep t = UnsafeTextWithoutSeparator <$> splitTextNE sep (unTextWithoutSeparator t)
 
 -- | A safer version of `listDirectory` that also returns a cleaner result that
 -- encodes the fact there are no separators in the paths in the type.

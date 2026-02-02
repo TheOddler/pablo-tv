@@ -11,8 +11,8 @@ module Foundation where
 import Control.Monad (when)
 import Data.ByteString.Char8 qualified as BS
 import Data.Maybe (listToMaybe)
-import Directory (RootDirectories)
-import Directory.Directories (DirectoryName, RootDirectoryLocation)
+import Directory.Directories (RootDirectories)
+import Directory.Paths (RawWebPath (..))
 import Evdev.Uinput (Device)
 import GHC.Conc (TVar)
 import GHC.Utils.Misc (sortWith)
@@ -38,8 +38,6 @@ data App = App
     appRootDirs :: PVar RootDirectories
   }
 
-type DirectoryNames = [DirectoryName]
-
 mkYesodData
   "App"
   [parseRoutes|
@@ -48,11 +46,10 @@ mkYesodData
 /debug DebugR GET
 /input InputR GET
 /remote RemoteR GET
-/dir DirectoryHomeR GET
-/dir/#RootDirectoryLocation/+DirectoryNames DirectoryR GET
+/dir/+RawWebPath DirectoryR GET
 
 -- Other
-/image/#RootDirectoryLocation/+DirectoryNames ImageR GET
+/image/+RawWebPath ImageR GET
 /static StaticR EmbeddedStatic appGetStatic
 |]
 
