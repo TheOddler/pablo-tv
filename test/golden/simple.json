@@ -1,11 +1,7 @@
 {
-    "smb-192.168.0.23-movies": {
+    "/absPath/to/home": {
         "subDirs": {},
-        "videoFiles": {
-            "video.mp4": {
-                "added": "2000-01-01T01:01:01Z"
-            }
-        }
+        "videoFiles": {}
     },
     "Videos": {
         "subDirs": {
@@ -33,8 +29,12 @@
         "subDirs": {},
         "videoFiles": {}
     },
-    "/absPath/to/home": {
+    "smb-192.168.0.23-movies": {
         "subDirs": {},
-        "videoFiles": {}
+        "videoFiles": {
+            "video.mp4": {
+                "added": "2000-01-01T01:01:01Z"
+            }
+        }
     }
 }
