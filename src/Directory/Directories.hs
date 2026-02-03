@@ -29,7 +29,7 @@ import System.FilePath
 import Text.Blaze (ToMarkup)
 import Text.Read (Read (..))
 import Util (ourAesonOptionsPrefix)
-import Util.AbsFilePath (AbsFilePath (..), absFilePath)
+import Util.DirPath (Abs, DirPath (..), Rel, absPath, relPath, unDirPath)
 import Util.Regex (expect1Int, tryRegex)
 import Util.TextWithoutSeparator
 import Yesod (PathPiece (..))
@@ -40,21 +40,21 @@ type RootDirectories = Map.Map RootDirectoryLocation RootDirectoryData
 
 data RootDirectoryLocation
   = RootSamba Samba.SmbServer Samba.SmbShare
-  | RootLocalVideos
-  | RootAbsPath AbsFilePath
+  | RootRelToHome (DirPath Rel)
+  | RootAbsPath (DirPath Abs)
   deriving (Eq, Ord, Generic)
 
 rootDirectoryLocationToAbsPath :: (MonadIO m) => RootDirectoryLocation -> m FilePath
 rootDirectoryLocationToAbsPath = \case
   RootSamba srv shr -> mkMountPath srv shr
-  RootLocalVideos -> do
+  RootRelToHome r -> do
     home <- liftIO getHomeDirectory
-    pure $ home </> "Videos"
-  RootAbsPath fp -> pure $ T.unpack $ unAbsFilePath fp
+    pure $ home </> T.unpack (unDirPath r)
+  RootAbsPath a -> pure $ T.unpack $ unDirPath a
 
 rootDirectoryLocationToText :: RootDirectoryLocation -> Text
 rootDirectoryLocationToText rd = case rd of
-  RootLocalVideos -> "Videos"
+  RootRelToHome r -> unDirPath r
   RootSamba srv shr ->
     T.pack $
       concat
@@ -63,7 +63,7 @@ rootDirectoryLocationToText rd = case rd of
           "-",
           shr.unSmbShare
         ]
-  RootAbsPath a -> unAbsFilePath a
+  RootAbsPath a -> unDirPath a
 
 instance Show RootDirectoryLocation where
   show = T.unpack . rootDirectoryLocationToText
@@ -77,18 +77,21 @@ instance ToJSONKey RootDirectoryLocation where
 
 parseRootDirectoryLocationFromText :: (MonadFail m) => Text -> m RootDirectoryLocation
 parseRootDirectoryLocationFromText t = do
-  if t == "Videos"
-    then pure RootLocalVideos
-    else case T.unpack <$> T.split (== '-') t of
-      ["smb", srv, shr] ->
-        pure $
-          RootSamba
-            (SmbServer srv)
-            (SmbShare shr)
-      _ ->
-        case absFilePath t of
-          Nothing -> fail $ "Unknown root directory structure: " ++ T.unpack t
-          Just a -> pure $ RootAbsPath a
+  case T.unpack <$> T.split (== '-') t of
+    ["smb", srv, shr] ->
+      pure $
+        RootSamba
+          (SmbServer srv)
+          (SmbShare shr)
+    _ -> do
+      let attempts :: [Maybe RootDirectoryLocation]
+          attempts =
+            [ RootAbsPath <$> absPath t,
+              RootRelToHome <$> relPath t
+            ]
+      case firstJusts attempts of
+        Nothing -> fail $ "Couldn't parse root directory from " ++ show t
+        Just root -> pure root
 
 instance Read RootDirectoryLocation where
   readPrec = readPrec >>= parseRootDirectoryLocationFromText

@@ -99,7 +99,7 @@ import Util
     unsnocNE,
     widgetFile,
   )
-import Util.AbsFilePath (absFilePathQQ)
+import Util.DirPath (absPathQQ, relPathQQ)
 import Util.TextWithoutSeparator (splitAtSeparatorNE, unwrap)
 import Yesod hiding (defaultLayout, replace)
 import Yesod.WebSockets (race_, webSockets)
@@ -334,7 +334,7 @@ mountAllSambaShares roots = do
   let sambaShares =
         mapMaybe
           ( \case
-              RootLocalVideos -> Nothing
+              RootRelToHome _ -> Nothing
               RootAbsPath _ -> Nothing
               RootSamba srv shr -> Just (srv, shr)
           )
@@ -401,8 +401,8 @@ main = do
     let emptyRootData = RootDirectoryData Map.empty Map.empty
     let rootDirsDefault =
           Map.fromList
-            [ (RootLocalVideos, emptyRootData),
-              (RootAbsPath [absFilePathQQ|/home/pablo/Downloads/Torrents|], emptyRootData),
+            [ (RootRelToHome [relPathQQ|Videos|], emptyRootData),
+              (RootAbsPath [absPathQQ|/home/pablo/Downloads/Torrents|], emptyRootData),
               -- TODO: I'll have to add an interface somewhere to add these
               (RootSamba (SmbServer "192.168.0.99") (SmbShare "videos"), emptyRootData)
             ]

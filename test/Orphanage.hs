@@ -16,7 +16,7 @@ import Mpris qualified
 import Samba (SmbServer (..), SmbShare (..))
 import Test.QuickCheck (Arbitrary (..), elements, genericShrink, listOf1, suchThat, suchThatMap)
 import Test.QuickCheck.Instances ()
-import Util.AbsFilePath (AbsFilePath (..), absFilePath)
+import Util.DirPath (Abs, DirPath (..), Rel, absPath, relPath)
 import Util.TextWithoutSeparator (TextWithoutSeparator (..), removeSeparatorsFromText, textWithoutSeparator, twsQQ)
 
 instance Arbitrary TextWithoutSeparator where
@@ -40,9 +40,13 @@ instance Arbitrary DirectoryName where
   arbitrary = DirectoryName <$> arbitrary
   shrink x = DirectoryName <$> shrink (unDirectoryName x)
 
-instance Arbitrary AbsFilePath where
-  arbitrary = arbitrary `suchThatMap` absFilePath
-  shrink a = mapMaybe absFilePath $ shrink $ unAbsFilePath a
+instance Arbitrary (DirPath Abs) where
+  arbitrary = arbitrary `suchThatMap` absPath
+  shrink a = mapMaybe absPath $ shrink $ unDirPath a
+
+instance Arbitrary (DirPath Rel) where
+  arbitrary = arbitrary `suchThatMap` relPath
+  shrink a = mapMaybe relPath $ shrink $ unDirPath a
 
 instance Arbitrary RootDirectoryLocation where
   arbitrary = genericArbitrary uniform

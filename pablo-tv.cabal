@@ -58,7 +58,7 @@ library
         Samba
         TVState
         Util
-        Util.AbsFilePath
+        Util.DirPath
         Util.Regex
         Util.TextWithoutSeparator
     if flag(development)

@@ -11,6 +11,7 @@ import Orphanage ()
 import Samba (SmbServer (..), SmbShare (..))
 import Test.Syd
 import Test.Syd.Aeson
+import Util.DirPath (relPathQQ)
 import Util.TextWithoutSeparator (twsQQ)
 
 spec :: Spec
@@ -24,7 +25,7 @@ spec = do
       let example :: RootDirectories
           example =
             Map.fromList
-              [ ( RootLocalVideos,
+              [ ( RootRelToHome [relPathQQ|Videos|],
                   RootDirectoryData
                     { rootDirectorySubDirs =
                         Map.fromList
