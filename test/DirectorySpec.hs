@@ -5,7 +5,6 @@ module DirectorySpec where
 import Data.Aeson (eitherDecodeFileStrict)
 import Data.Either (isRight)
 import Data.Map.Strict qualified as Map
-import Directory
 import Directory.Directories
 import Directory.Files
 import Orphanage ()

@@ -1,3 +1,5 @@
+{-# LANGUAGE QuasiQuotes #-}
+
 module Directory.Paths where
 
 import Control.Monad (forM)
@@ -11,26 +13,25 @@ import Directory.Files
 import GHC.Data.Maybe (firstJusts)
 import Orphanage ()
 import System.FilePath (joinPath, takeExtension, (</>))
-import Text.Read (Read (..))
 import Util.TextWithoutSeparator
 import Yesod (MonadIO (..), PathMultiPiece (..))
 
 -- Raw Web Path
 
 newtype RawWebPath = RawWebPath {unRawWebPath :: [TextWithoutSeparator]}
-  deriving (Eq, Semigroup)
-
-instance Show RawWebPath where
-  show = T.unpack . unsplitSeparatedText . unRawWebPath
+  deriving (Eq, Show, Read, Semigroup)
 
 instance ToJSON RawWebPath where
   toJSON = toJSON . unsplitSeparatedText . unRawWebPath
 
-instance Read RawWebPath where
-  readPrec = RawWebPath . splitAtSeparator <$> readPrec
-
 instance FromJSON RawWebPath where
-  parseJSON = withText "RawWebPath" $ pure . RawWebPath . splitAtSeparator
+  parseJSON = withText "RawWebPath" $ \t -> do
+    let split = splitAtSeparator t
+    pure $
+      if split == [[twsQQ||]]
+        -- We can't really differentiate between [] and [""] so we prefer []
+        then RawWebPath []
+        else RawWebPath split
 
 instance PathMultiPiece RawWebPath where
   fromPathMultiPiece :: [T.Text] -> Maybe RawWebPath

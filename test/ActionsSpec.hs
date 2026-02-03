@@ -5,11 +5,8 @@ module ActionsSpec where
 import Actions
 import Data.Aeson (Value, eitherDecode, encode)
 import Data.ByteString.Lazy.Char8 qualified as BS
-import Directory.Directories (DirectoryName (..), RootDirectoryLocation (..))
-import Directory.Files (VideoFileName (..))
-import Directory.Paths (DirectoryPath (..), VideoFilePath (..))
+import Directory.Paths (RawWebPath (..))
 import Orphanage ()
-import Samba (SmbServer (..), SmbShare (..))
 import Test.QuickCheck (property, withMaxSuccess)
 import Test.Syd
 import Test.Syd.Aeson (pureGoldenJSONValueFile)
@@ -23,9 +20,10 @@ spec = do
   describe "Encoding to json" $ do
     mapM_ encodeSpec encodingExamples
 
-  it "can roundtrip JSON" $ withMaxSuccess 1000 $ property $ \(action :: Action) ->
+  it "can roundtrip JSON" $ withMaxSuccess 1000 $ property $ \(action :: Action) -> do
     let encoded = encode action
-     in eitherDecode encoded `shouldBe` Right action
+    context ("encoded was: " ++ show encoded) $
+      eitherDecode encoded `shouldBe` Right action
 
   it "keeps consistent encoding" $ do
     pureGoldenJSONValueFile "test/golden/actions.json" $
@@ -37,41 +35,38 @@ spec = do
           [ActionMouseScroll 3],
           [ActionWrite "test string"],
           [ ActionPlayPath $
-              Dir $
-                DirectoryPath
-                  RootLocalVideos
-                  [ DirectoryName [twsQQ|path|],
-                    DirectoryName [twsQQ|to|],
-                    DirectoryName [twsQQ|folder|]
-                  ]
+              RawWebPath
+                [ [twsQQ|Videos|],
+                  [twsQQ|path|],
+                  [twsQQ|to|],
+                  [twsQQ|folder|]
+                ]
           ],
           [ ActionMarkAsWatched $
-              File $
-                VideoFilePath
-                  (RootSamba (SmbServer "192.168.0.0") (SmbShare "movies"))
-                  [ DirectoryName [twsQQ|path|],
-                    DirectoryName [twsQQ|to|]
-                  ]
-                  (VideoFileName [twsQQ|file.mov|])
+              RawWebPath
+                [ [twsQQ|smb-192.168.0.0-movies|],
+                  [twsQQ|path|],
+                  [twsQQ|to|],
+                  [twsQQ|file.mov|]
+                ]
           ],
           [ ActionMarkAsUnwatched $
-              File $
-                VideoFilePath
-                  (RootSamba (SmbServer "192.168.0.0") (SmbShare "movies"))
-                  [ DirectoryName [twsQQ|path|],
-                    DirectoryName [twsQQ|to|],
-                    DirectoryName [twsQQ|another|]
-                  ]
-                  (VideoFileName [twsQQ|file.mov|])
+              RawWebPath
+                [ [twsQQ|smb-192.168.0.0-movies|],
+                  [twsQQ|path|],
+                  [twsQQ|to|],
+                  [twsQQ|another|],
+                  [twsQQ|file.mov|]
+                ]
           ],
           [ActionOpenUrlOnTV "https://www.pabloproductions.be/"],
           [ActionRefreshAllDirectoryData],
           [ ActionRefreshDirectoryData $
-              DirectoryPath
-                RootLocalVideos
-                [ DirectoryName [twsQQ|path|],
-                  DirectoryName [twsQQ|to|],
-                  DirectoryName [twsQQ|folder 2|]
+              RawWebPath
+                [ [twsQQ|Videos|],
+                  [twsQQ|path|],
+                  [twsQQ|to|],
+                  [twsQQ|folder 2|]
                 ]
           ],
           ActionMedia <$> [minBound .. maxBound]
@@ -119,21 +114,21 @@ encodingExamples =
       ActionWrite "w () r |_ |}"
     ),
     ( "{\"tag\":\"PlayPath\",\"path\":\"Videos/path/to/folder\"}",
-      ActionPlayPath . Dir $
-        DirectoryPath
-          RootLocalVideos
-          [ DirectoryName [twsQQ|path|],
-            DirectoryName [twsQQ|to|],
-            DirectoryName [twsQQ|folder|]
+      ActionPlayPath $
+        RawWebPath
+          [ [twsQQ|Videos|],
+            [twsQQ|path|],
+            [twsQQ|to|],
+            [twsQQ|folder|]
           ]
     ),
     ( "{\"tag\":\"PlayPath\",\"path\":\"smb-192.168.0.0-movies/path/to/file.mov\"}",
-      ActionPlayPath . File $
-        VideoFilePath
-          (RootSamba (SmbServer "192.168.0.0") (SmbShare "movies"))
-          [ DirectoryName [twsQQ|path|],
-            DirectoryName [twsQQ|to|]
+      ActionPlayPath $
+        RawWebPath
+          [ [twsQQ|smb-192.168.0.0-movies|],
+            [twsQQ|path|],
+            [twsQQ|to|],
+            [twsQQ|file.mov|]
           ]
-          (VideoFileName [twsQQ|file.mov|])
     )
   ]

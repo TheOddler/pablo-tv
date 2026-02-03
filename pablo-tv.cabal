@@ -127,7 +127,6 @@ test-suite pablo-tv-test
         Orphanage
         PVarSpec
         TestUtils
-        TextWithoutSeparatorSpec
         WebSpec
     build-depends:
         aeson
@@ -136,7 +135,7 @@ test-suite pablo-tv-test
       , generic-random
       , pablo-tv
       , QuickCheck
-      , scientific
+      , quickcheck-instances
       , sydtest
       , sydtest-aeson
       , sydtest-discover

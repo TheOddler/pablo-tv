@@ -3,32 +3,21 @@
 
 module Orphanage () where
 
-import Actions (Action (..), DirOrFile (..), KeyboardButton (..), MouseButton (..))
+import Actions (Action (..), KeyboardButton (..), MouseButton (..))
 import Data.HashSet qualified as Set
-import Data.List.NonEmpty qualified as NE
 import Data.Maybe (mapMaybe)
-import Data.Scientific qualified as Scientific
 import Data.Text qualified as T
 import Directory.Directories (DirectoryName (..), RootDirectoryLocation (..))
 import Directory.Files (VideoFileName (..), videoFileExts)
-import Directory.Paths (DirectoryPath (..), VideoFilePath (..))
+import Directory.Paths (DirectoryPath (..), RawWebPath (..), VideoFilePath (..))
 import GHC.Generics (Generic)
 import Generic.Random (genericArbitrary, uniform)
 import Mpris qualified
 import Samba (SmbServer (..), SmbShare (..))
-import Test.QuickCheck (Arbitrary (..), elements, genericShrink, listOf1, suchThatMap)
+import Test.QuickCheck (Arbitrary (..), elements, genericShrink, listOf1, suchThat, suchThatMap)
+import Test.QuickCheck.Instances ()
 import Util.AbsFilePath (AbsFilePath (..), absFilePath)
-import Util.TextWithoutSeparator (TextWithoutSeparator (..), textWithoutSeparator, twsQQ)
-import Util.TextWithoutSeparator qualified as TWS
-
-instance Arbitrary T.Text where
-  arbitrary =
-    arbitrary `suchThatMap` \str ->
-      -- In tests we don't generate strings with NUL in it, as we don't really want to bother supporting that anyway
-      if '\NUL' `elem` str
-        then Nothing
-        else Just $ T.pack str
-  shrink xs = T.pack <$> shrink (T.unpack xs)
+import Util.TextWithoutSeparator (TextWithoutSeparator (..), removeSeparatorsFromText, textWithoutSeparator, twsQQ)
 
 instance Arbitrary TextWithoutSeparator where
   arbitrary = arbitrary `suchThatMap` textWithoutSeparator
@@ -59,10 +48,13 @@ instance Arbitrary RootDirectoryLocation where
   arbitrary = genericArbitrary uniform
   shrink = genericShrink
 
--- shrink = \case
---   RootSamba _ _ -> []
---   RootLocalVideos -> []
---   RootAbsPath a -> RootAbsPath <$> shrink a
+deriving instance Generic RawWebPath
+
+instance Arbitrary RawWebPath where
+  -- We can't differentiate between [] and [""] here, and we don't really care either.
+  -- So in the test, just don't generate [""] as we don't care for it.
+  arbitrary = RawWebPath <$> arbitrary `suchThat` (/= [[twsQQ||]])
+  shrink = filter (/= RawWebPath [[twsQQ||]]) . genericShrink
 
 deriving instance Generic DirectoryPath
 
@@ -76,13 +68,11 @@ instance Arbitrary VideoFileName where
     ext <- elements $ Set.toList videoFileExts
     pure . VideoFileName $ name <> ext
   shrink x =
-    case TWS.splitNE (== '.') $ unVideoFileName x of
-      a NE.:| [] -> VideoFileName <$> shrink a
-      parts ->
-        let ext = NE.last parts
-            name :: TextWithoutSeparator
-            name = foldl (<>) [twsQQ||] $ NE.init parts
-            mk n = VideoFileName $ n <> ext
+    case T.breakOnEnd "." $ unTextWithoutSeparator $ unVideoFileName x of
+      (name, "") -> VideoFileName . removeSeparatorsFromText <$> shrink name
+      (name, ext') ->
+        let ext = "." <> ext'
+            mk n = VideoFileName . removeSeparatorsFromText $ n <> ext
          in mk <$> shrink name
 
 deriving instance Generic VideoFilePath
@@ -91,20 +81,7 @@ instance Arbitrary VideoFilePath where
   arbitrary = genericArbitrary uniform
   shrink = genericShrink
 
-deriving instance Generic DirOrFile
-
-instance Arbitrary DirOrFile where
-  arbitrary = genericArbitrary uniform
-  shrink = genericShrink
-
 deriving instance Generic Action
-
-instance Arbitrary Scientific.Scientific where
-  arbitrary = do
-    Scientific.scientific <$> arbitrary <*> arbitrary
-  shrink s =
-    map (uncurry Scientific.scientific) $
-      shrink (Scientific.coefficient s, Scientific.base10Exponent s)
 
 instance Arbitrary Action where
   arbitrary = genericArbitrary uniform
