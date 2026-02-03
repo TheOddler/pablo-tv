@@ -14,7 +14,7 @@ where
 
 import Data.Text (Text)
 import Data.Text qualified as T
-import Language.Haskell.TH (Exp, Q)
+import Language.Haskell.TH (Exp, Q, Type (..))
 import Language.Haskell.TH.Quote (QuasiQuoter (..))
 import Orphanage ()
 import System.FilePath (isAbsolute, isRelative, isValid)
@@ -40,13 +40,13 @@ mkPathUnsafe name checker t =
         else fail $ "Text is not a valid " ++ name ++ " file path"
 
 absPathQQ :: QuasiQuoter
-absPathQQ = mkPathQQUnsafe absPath
+absPathQQ = mkPathQQUnsafe [t|Abs|] absPath
 
 relPathQQ :: QuasiQuoter
-relPathQQ = mkPathQQUnsafe relPath
+relPathQQ = mkPathQQUnsafe [t|Rel|] relPath
 
-mkPathQQUnsafe :: (Text -> Either String (DirPath a)) -> QuasiQuoter
-mkPathQQUnsafe mkPath =
+mkPathQQUnsafe :: Q Type -> (Text -> Either String (DirPath a)) -> QuasiQuoter
+mkPathQQUnsafe qType mkPath =
   QuasiQuoter
     { quoteExp = quoteAgeExp,
       quotePat = unsupported "patterns",
@@ -59,5 +59,6 @@ mkPathQQUnsafe mkPath =
     quoteAgeExp str = do
       let txt = T.pack str
       case mkPath txt of
-        Right _ -> [|UnsafeDirPath txt|]
+        Right _ -> do
+          [|UnsafeDirPath @($qType) txt|]
         Left err -> fail err

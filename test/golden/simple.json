@@ -3,35 +3,38 @@
         "subDirs": {},
         "videoFiles": {
             "video.mp4": {
-                "added": "2000-01-01T01:01:01Z",
-                "watched": null
+                "added": "2000-01-01T01:01:01Z"
             }
         }
     },
     "Videos": {
         "subDirs": {
             "dir name": {
-                "image": null,
                 "subDirs": {
                     "sub dir": {
-                        "image": null,
                         "subDirs": {},
                         "videoFiles": {}
                     }
                 },
                 "videoFiles": {
                     "video.avi": {
-                        "added": "2000-01-01T01:01:01Z",
-                        "watched": null
+                        "added": "2000-01-01T01:01:01Z"
                     }
                 }
             }
         },
         "videoFiles": {
             "test.mov": {
-                "added": "2000-01-01T01:01:01Z",
-                "watched": null
+                "added": "2000-01-01T01:01:01Z"
             }
         }
+    },
+    "relative/to/home": {
+        "subDirs": {},
+        "videoFiles": {}
+    },
+    "/absPath/to/home": {
+        "subDirs": {},
+        "videoFiles": {}
     }
 }
