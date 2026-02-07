@@ -42,7 +42,7 @@ data RootDirectoryLocation
   = RootSamba Samba.SmbServer Samba.SmbShare
   | RootRelToHome (DirPath Rel)
   | RootAbsPath (DirPath Abs)
-  deriving (Eq, Ord, Generic)
+  deriving (Show, Eq, Ord, Generic)
 
 rootDirectoryLocationToAbsPath :: (MonadIO m) => RootDirectoryLocation -> m FilePath
 rootDirectoryLocationToAbsPath = \case
@@ -64,9 +64,6 @@ rootDirectoryLocationToText rd = case rd of
           shr.unSmbShare
         ]
   RootAbsPath a -> unDirPath a
-
-instance Show RootDirectoryLocation where
-  show = T.unpack . rootDirectoryLocationToText
 
 instance ToJSON RootDirectoryLocation where
   toJSON = toJSON . rootDirectoryLocationToText

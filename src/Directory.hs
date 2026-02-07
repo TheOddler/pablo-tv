@@ -374,6 +374,7 @@ data AggDirInfo = AggDirInfo
     aggDirVideoFileCount :: Int,
     aggDirPlayedVideoFileCount :: Int
   }
+  deriving (Show)
 
 foldFilesDataRecur :: forall a. (VideoFileData -> a -> a) -> a -> DirectoryData -> a
 foldFilesDataRecur updateAgg agg dir = loop agg [dir]
