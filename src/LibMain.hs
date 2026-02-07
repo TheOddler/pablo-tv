@@ -139,20 +139,24 @@ getHomeR = do
         -- keeps changing which is annoying.
         if isDevelopment then pure (mkStdGen 2) else initStdGen
   randomGenerator <- mkRandom
-  let isUnwatched d = aggDirPlayedVideoFileCount d < aggDirVideoFileCount d
-      unwatched = filter isUnwatched homeData
-      isWatching d = aggDirPlayedVideoFileCount d >= 1 && isUnwatched d
+  let isFinished d = aggDirPlayedVideoFileCount d == aggDirVideoFileCount d
+      finished = filter isFinished homeData
+      isUnstarted d = aggDirPlayedVideoFileCount d == 0
+      unstarted = filter isUnstarted homeData
+      isUnfinished d = aggDirPlayedVideoFileCount d < aggDirVideoFileCount d
+      unfinished = filter isUnfinished homeData
+      isWatching d = aggDirPlayedVideoFileCount d >= 1 && isUnfinished d
       watching = filter isWatching homeData
-      recentlyAdded d = Down $ aggDirLastModified d
-      recentlyWatched = aggDirLastWatched
+      recentlyAdded = Down . aggDirLastModified
+      recentlyWatched = Down . aggDirLastWatched
 
   let sections =
         [ LocalVideos "Watching" $
             sortWith recentlyWatched watching,
           LocalVideos "New" $
-            sortWith recentlyAdded unwatched,
+            sortWith recentlyAdded unstarted,
           LocalVideos "Random" $
-            shuffle unwatched randomGenerator,
+            shuffle unfinished randomGenerator,
           ExternalLinks
             "External Links"
             [ NamedLink
@@ -172,8 +176,8 @@ getHomeR = do
             sortWith recentlyAdded homeData,
           LocalVideos "Random (All)" $
             shuffle homeData randomGenerator,
-          LocalVideos "Recently Watched" . reverse $
-            sortWith recentlyWatched homeData
+          LocalVideos "Recently Finished" $
+            sortWith recentlyWatched finished
         ]
 
   defaultLayout "Home" $(widgetFile "home")
