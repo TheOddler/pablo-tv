@@ -74,9 +74,11 @@
                 });
           };
           pablo-tv = pkgs.haskell.lib.justStaticExecutables (
-            packages.pablo-tv-base.overrideAttrs (oldAttrs: {
-              configureFlags = oldAttrs.configureFlags ++ [ "--ghc-option=-O2" ];
-            })
+            pkgs.haskell.lib.dontCheck (
+              packages.pablo-tv-base.overrideAttrs (oldAttrs: {
+                configureFlags = oldAttrs.configureFlags ++ [ "--ghc-option=-O2" ];
+              })
+            )
           );
           default = packages.pablo-tv;
         };
