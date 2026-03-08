@@ -9,23 +9,39 @@ const clickEvent = isTouchDevice() ? "touchend" : "click";
 
 // Trackpad
 const trackpad = document.getElementById("trackpad");
+/** @typedef {{ touchX: number, touchY: number }} Touch  */
+/** @type {Touch[]} */
 let previousTouches;
+/**
+ * @param {TouchList} eventTouches
+ * @returns {Touch[]}
+ */
+function mkTouches(eventTouches) {
+  return [...eventTouches].map((t) => {
+    return {
+      // iOS has partial pixels, so we need to round here
+      touchX: Math.round(t.pageX),
+      touchY: Math.round(t.pageY)
+    }
+  });
+}
 const handleTouchMove = async (event) => {
-  const currentTouches = event.touches;
+  /** @type {Touch[]} */
+  const currentTouches = mkTouches(event.touches);
   let action = null;
 
   if (currentTouches.length == 1 && previousTouches?.length == 1) {
     // Move mouse
     const touch = currentTouches[0];
     const previousTouch = previousTouches[0];
-    const x = touch.pageX - previousTouch.pageX;
-    const y = touch.pageY - previousTouch.pageY;
+    const x = touch.touchX - previousTouch.touchX;
+    const y = touch.touchY - previousTouch.touchY;
     action = { tag: "MoveMouse", x, y };
   }
   else if (currentTouches.length == 2 && previousTouches?.length == 2) {
     // Simulate scrolling
-    const startY = (currentTouches[0].pageY + currentTouches[1].pageY) / 2;
-    const previousStartY = (previousTouches[0].pageY + previousTouches[1].pageY) / 2;
+    const startY = (currentTouches[0].touchY + currentTouches[1].touchY) / 2;
+    const previousStartY = (previousTouches[0].touchY + previousTouches[1].touchY) / 2;
     const scrollY = Math.round((previousStartY - startY) / 10);
     action = { tag: "MouseScroll", amount: scrollY };
   }
@@ -33,7 +49,7 @@ const handleTouchMove = async (event) => {
   previousTouches = currentTouches;
   if (action) await sendAction(action);
 };
-trackpad.addEventListener("touchstart", e => previousTouches = e.touches);
+trackpad.addEventListener("touchstart", e => previousTouches = mkTouches(e.touches));
 trackpad.addEventListener("touchmove", handleTouchMove);
 trackpad.addEventListener("click", async () => await sendAction('#{ActionClickMouse MouseButtonLeft}')); // Don't use clickEvent as that would make the touchpad click way too much
 
