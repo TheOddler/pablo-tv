@@ -53,14 +53,11 @@ $if (not $ null files)
 $if (not $ null dirs)
   <div class="section">
     $forall dir <- dirs
-      <div class="row #{watchedClassDir dir}"> 
+      <div class="row #{watchedClassDir dir}">
         <a href=@{DirectoryR $ rawWebPathFromDirectory dir.aggDirPath } class="name">
           <i class="fa-regular fa-folder-open">
           <span>#{dir.aggDirName}
-        $if isWatchedDir dir
-          <i class="fa-solid fa-check">
-        $else
-          <div>
+        <i class="#{watchedIconDir dir}">
         <span>#{aggDirPlayedVideoFileCount dir}/#{aggDirVideoFileCount dir}
 
 $maybe (label, action) <- refreshDirectoryLabelAndAction

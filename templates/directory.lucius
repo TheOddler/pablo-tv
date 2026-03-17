@@ -55,6 +55,10 @@ img.header {
 
     i {
       font-size: 1.5em;
+
+      &.fa-78 {
+        font-size: calc(1.5em * 0.78);
+      }
     }
   }
 
@@ -66,8 +70,12 @@ img.header {
     color: lightblue;
   }
 
-  .watched {
+  .watching {
     color: pink;
+  }
+
+  .watched {
+    color: grey;
   }
 }
 

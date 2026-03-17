@@ -191,18 +191,46 @@ postHomeR =
     Aeson.Success action -> do
       performAction action
 
-watchedClass :: Bool -> Html
-watchedClass watched = if watched then "watched" else "unwatched"
+data WatchState = Unwatched | Watching | Watched
+
+watchedClass :: WatchState -> Html
+watchedClass state = case state of
+  Unwatched -> "unwatched"
+  Watching -> "watching"
+  Watched -> "watched"
 
 watchedClassM :: Maybe UTCTime -> Html
-watchedClassM = watchedClass . isJust
+watchedClassM watchTime =
+  watchedClass $
+    if isJust watchTime
+      then Watched
+      else Unwatched
 
-isWatchedDir :: AggDirInfo -> Bool
-isWatchedDir dirInfo = aggDirPlayedVideoFileCount dirInfo >= aggDirVideoFileCount dirInfo
+dirWatchedState :: AggDirInfo -> WatchState
+dirWatchedState dirInfo =
+  let total = aggDirVideoFileCount dirInfo
+      watched = aggDirPlayedVideoFileCount dirInfo
+   in if watched == 0
+        then Unwatched
+        else
+          if watched == total
+            then Watched
+            else Watching
 
 watchedClassDir :: AggDirInfo -> Html
-watchedClassDir dirInfo =
-  watchedClass $ isWatchedDir dirInfo
+watchedClassDir = watchedClass . dirWatchedState
+
+watchedIcon :: WatchState -> Maybe Html
+watchedIcon state = case state of
+  Unwatched -> Nothing
+  Watching -> Just "fa-regular fa-hourglass-half fa-78" -- or fa-spinner
+  Watched -> Just "fa-solid fa-check"
+
+watchedIconDir :: AggDirInfo -> Html
+watchedIconDir = fromMaybe "" . watchedIcon . dirWatchedState
+
+watchedIconDirHome :: AggDirInfo -> Html
+watchedIconDirHome = fromMaybe "fa-regular fa-eye" . watchedIcon . dirWatchedState
 
 type VideoFileWithNameAndPath = (VideoFileName, VideoFilePath, VideoFileData)
 
