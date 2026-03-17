@@ -9,6 +9,7 @@ import Actions
   ( Action (..),
     KeyboardButton (..),
     MouseButton (..),
+    OverwritePreviouslyWatched (..),
     actionsWebSocket,
     markDirOrFileAsWatched,
     mkInputDevice,
@@ -400,7 +401,7 @@ mediaListenerHandler rootDirsPVar absFilePath = modifyPVar_ rootDirsPVar ("Media
       pure roots
     Just path -> do
       putLog Info $ "Marking file as watched: " ++ show path
-      markDirOrFileAsWatched True (Right path) roots
+      markDirOrFileAsWatched OverwritePreviouslyWatched (Right path) roots
 
 playerListenerHandler :: (MonadIO m) => TVar (Maybe MediaPlayer) -> MediaPlayer -> m ()
 playerListenerHandler lastActivePlayerTVar playerName = do

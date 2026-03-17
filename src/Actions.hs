@@ -277,7 +277,7 @@ performAction action = do
                 ++ show rawWebPath
                 ++ ": Unable to convert raw to directory path."
             pure roots
-          Just dirOrFile -> markDirOrFileAsWatched False dirOrFile roots
+          Just dirOrFile -> markDirOrFileAsWatched DoNotOverwritePreviouslyWatched dirOrFile roots
       saveRootsToDisk app.appRootDirs
     ActionMarkAsUnwatched rawWebPath -> do
       modifyPVar_ app.appRootDirs ("Marking " <> showT rawWebPath <> " as unwatched") $ \roots -> do
@@ -319,14 +319,18 @@ performAction action = do
         ++ map (`KeyEvent` Released) (reverse keys)
         ++ [SyncEvent SynReport]
 
-markDirOrFileAsWatched :: (MonadIO m) => Bool -> Either DirectoryPath VideoFilePath -> RootDirectories -> m RootDirectories
+data OverwritePreviouslyWatched = OverwritePreviouslyWatched | DoNotOverwritePreviouslyWatched
+  deriving (Eq)
+
+markDirOrFileAsWatched :: (MonadIO m) => OverwritePreviouslyWatched -> Either DirectoryPath VideoFilePath -> RootDirectories -> m RootDirectories
 markDirOrFileAsWatched overwritePreviouslyWatched dirOrFile rootDirs = do
   let dirPath = case dirOrFile of
         Left p -> p
         Right (VideoFilePath r p _) -> DirectoryPath r p
   now <- liftIO getCurrentTime
   let applyWatched fileData =
-        if overwritePreviouslyWatched || isNothing fileData.videoFileWatched
+        if overwritePreviouslyWatched == OverwritePreviouslyWatched
+          || isNothing fileData.videoFileWatched
           then fileData {videoFileWatched = Just now}
           else fileData
   pure $ updateDirectoryAtPath rootDirs dirPath $ \dir ->
