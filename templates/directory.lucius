@@ -63,7 +63,8 @@ img.header {
   }
 
   .unwatched {
-    color: lightblue;
+    /* slightly punchier lightblue */
+    color: hsl(195, 75%, 79%);
   }
 
   .watching {
