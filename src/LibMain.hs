@@ -224,7 +224,7 @@ watchedClassDir = watchedClass . dirWatchedState
 watchedIcon :: WatchState -> Maybe Html
 watchedIcon state = case state of
   Unwatched -> Nothing
-  Watching -> Just "fa-regular fa-hourglass-half fa-78" -- or fa-spinner
+  Watching -> Just "fa-solid fa-angle-right" -- or fa-spinner
   Watched -> Just "fa-solid fa-check"
 
 watchedIconDir :: AggDirInfo -> Html
