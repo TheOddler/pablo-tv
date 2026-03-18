@@ -80,7 +80,7 @@ instance Yesod App where
     -- value passed to hamletToRepHtml cannot be a widget, this allows
     -- you to use normal widget features in default-layout.
     pc <- widgetToPageContent $ do
-      -- when isDevelopment $ addScriptRemote "https://pabloproductions.be/LiveJS/live.js"
+      when isDevelopment $ addScriptRemote "https://pabloproductions.be/LiveJS/live.js"
 
       when (isDevelopment && not isTv) $ do
         addScriptRemote "//cdn.jsdelivr.net/npm/eruda" -- Console for mobile
