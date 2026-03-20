@@ -31,23 +31,23 @@ $if (length files + length dirs) > 1
 
 $if (not $ null files)
   <div class="section">
-    $forall (videoName, videoPath, videoData) <- files
-      <div class="row #{fileWatchedClass videoData}">
+    $forall (fileName, filePath, fileData) <- files
+      <div class="row #{fileWatchedClass fileData}">
         <a href="#" class="name" 
           onclick="sendActionOnClick(event)"
-          data-action="#{ActionPlayPath $ rawWebPathFromVideoFile videoPath}"
+          data-action="#{ActionPlayPath $ rawWebPathFromVideoFile filePath}"
         >
           <i class="fa-solid fa-play">
-          <span>#{niceFileNameT videoName}
-        <i class="#{fileIcon videoData}">
+          <span>#{niceFileNameT fileName}
+        <i class="#{fileIcon fileData}">
         <a href="#" title="Mark as watched"
           onclick="sendActionOnClick(event)"
-          data-action="#{ActionMarkAsWatched $ rawWebPathFromVideoFile videoPath}"
+          data-action="#{ActionMarkAsWatched $ rawWebPathFromVideoFile filePath}"
         >
           <i class="fa-regular fa-eye">
         <a href="#" title="Mark as unwatched"
           onclick="sendActionOnClick(event)"
-          data-action="#{ActionMarkAsUnwatched $ rawWebPathFromVideoFile videoPath}"
+          data-action="#{ActionMarkAsUnwatched $ rawWebPathFromVideoFile filePath}"
         >
           <i class="fa-regular fa-eye-slash">
 
