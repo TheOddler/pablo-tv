@@ -39,6 +39,7 @@ $if (not $ null files)
         >
           <i class="fa-solid fa-play">
           <span>#{niceFileNameT videoName}
+        <i class="#{fileIcon videoData}">
         <a href="#" title="Mark as watched"
           onclick="sendActionOnClick(event)"
           data-action="#{ActionMarkAsWatched $ rawWebPathFromVideoFile videoPath}"
@@ -57,6 +58,7 @@ $if (not $ null dirs)
         <a href=@{DirectoryR $ rawWebPathFromDirectory dir.aggDirPath } class="name">
           <i class="fa-regular fa-folder-open">
           <span>#{dir.aggDirName}
+        <div>
         <i class="#{dirIcon dir}">
         <span>#{aggDirPlayedVideoFileCount dir}/#{aggDirVideoFileCount dir}
 

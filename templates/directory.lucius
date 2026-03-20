@@ -21,7 +21,7 @@ img.header {
   padding: 0 0 1rem 0;
   margin: 0;
   display: grid;
-  grid-template-columns: auto max-content max-content;
+  grid-template-columns: auto max-content max-content max-content;
 
   h1,
   h2 {

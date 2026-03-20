@@ -206,6 +206,12 @@ fileWatchedClass file =
       then Watched
       else Unwatched
 
+fileIcon :: VideoFileData -> Html
+fileIcon file =
+  if isJust file.videoFileWatched
+    then "fa-solid fa-check"
+    else ""
+
 dirWatchedState :: AggDirInfo -> WatchState
 dirWatchedState dirInfo =
   let total = aggDirVideoFileCount dirInfo
