@@ -27,7 +27,6 @@ import Data.Ord (Down (..))
 import Data.Text (Text, unpack)
 import Data.Text qualified as T
 import Data.Text qualified as Text
-import Data.Time (UTCTime)
 import Data.Tuple.Extra (fst3)
 import Directory
   ( AggDirInfo (..),
@@ -200,10 +199,10 @@ watchedClass state = case state of
   Watching -> "watching"
   Watched -> "watched"
 
-watchedClassM :: Maybe UTCTime -> Html
-watchedClassM watchTime =
+fileWatchedClass :: VideoFileData -> Html
+fileWatchedClass file =
   watchedClass $
-    if isJust watchTime
+    if isJust file.videoFileWatched
       then Watched
       else Unwatched
 
@@ -218,20 +217,20 @@ dirWatchedState dirInfo =
             then Watched
             else Watching
 
-watchedClassDir :: AggDirInfo -> Html
-watchedClassDir = watchedClass . dirWatchedState
+dirWatchedClass :: AggDirInfo -> Html
+dirWatchedClass = watchedClass . dirWatchedState
 
-watchedIcon :: WatchState -> Maybe Html
-watchedIcon state = case state of
+dirIcon' :: WatchState -> Maybe Html
+dirIcon' state = case state of
   Unwatched -> Nothing
   Watching -> Just "fa-solid fa-play"
   Watched -> Just "fa-solid fa-check"
 
-watchedIconDir :: AggDirInfo -> Html
-watchedIconDir = fromMaybe "" . watchedIcon . dirWatchedState
+dirIcon :: AggDirInfo -> Html
+dirIcon = fromMaybe "" . dirIcon' . dirWatchedState
 
-watchedIconDirHome :: AggDirInfo -> Html
-watchedIconDirHome = fromMaybe "fa-regular fa-eye" . watchedIcon . dirWatchedState
+dirIconHome :: AggDirInfo -> Html
+dirIconHome = fromMaybe "fa-regular fa-eye" . dirIcon' . dirWatchedState
 
 type VideoFileWithNameAndPath = (VideoFileName, VideoFilePath, VideoFileData)
 

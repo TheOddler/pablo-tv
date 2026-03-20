@@ -9,7 +9,7 @@
               <a class="el" href=@{DirectoryR $ rawWebPathFromDirectory dir.aggDirPath}>
                 <img src=@{ImageR $ rawWebPathFromDirectory dir.aggDirPath} alt="#{dir.aggDirName}" loading="lazy">
                 <div class="watched">
-                  <i class="#{watchedIconDirHome dir}">
+                  <i class="#{dirIconHome dir}">
                   #{aggDirPlayedVideoFileCount dir}/#{aggDirVideoFileCount dir}
 
       $of ExternalLinks name links

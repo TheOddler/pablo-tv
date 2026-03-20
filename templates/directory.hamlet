@@ -32,7 +32,7 @@ $if (length files + length dirs) > 1
 $if (not $ null files)
   <div class="section">
     $forall (videoName, videoPath, videoData) <- files
-      <div class="row #{watchedClassM videoData.videoFileWatched}">
+      <div class="row #{fileWatchedClass videoData}">
         <a href="#" class="name" 
           onclick="sendActionOnClick(event)"
           data-action="#{ActionPlayPath $ rawWebPathFromVideoFile videoPath}"
@@ -53,11 +53,11 @@ $if (not $ null files)
 $if (not $ null dirs)
   <div class="section">
     $forall dir <- dirs
-      <div class="row #{watchedClassDir dir}">
+      <div class="row #{dirWatchedClass dir}">
         <a href=@{DirectoryR $ rawWebPathFromDirectory dir.aggDirPath } class="name">
           <i class="fa-regular fa-folder-open">
           <span>#{dir.aggDirName}
-        <i class="#{watchedIconDir dir}">
+        <i class="#{dirIcon dir}">
         <span>#{aggDirPlayedVideoFileCount dir}/#{aggDirVideoFileCount dir}
 
 $maybe (label, action) <- refreshDirectoryLabelAndAction
