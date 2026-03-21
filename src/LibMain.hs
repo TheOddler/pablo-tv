@@ -34,6 +34,7 @@ import Directory
     getDirectoryAtPath,
     getSubDirAggInfo,
     loadRootsFromDisk,
+    saveRootsToDisk,
   )
 import Directory.Directories
   ( DirectoryData (..),
@@ -386,27 +387,29 @@ mountAllSambaShares roots = do
       ++ intercalate "\t\n" (showResult <$> zip sambaShares results)
 
 mediaListenerHandler :: (MonadUnliftIO m, Logger m) => PVar RootDirectories -> FilePath -> m ()
-mediaListenerHandler rootDirsPVar absFilePath = modifyPVar_ rootDirsPVar ("Media listener handler: " <> showT absFilePath) $ \roots -> do
-  let tryRoot rootLoc = do
-        rootAbsPath <- rootDirectoryLocationToAbsPath rootLoc
-        let mRest = stripPrefix (rootAbsPath ++ [pathSeparator]) absFilePath
-        case mRest of
-          Nothing -> pure Nothing
-          Just rest -> do
-            let pathPieces = splitAtSeparatorNE $ T.pack rest
-            let (dirNames', fileName) = unsnocNE pathPieces
-            let dirNames = DirectoryName <$> dirNames'
-            -- We'll pretend that this filename is always a video file, if not we just won't find the file and not update it, so that's fine too.
-            let videoFileName = VideoFileName fileName
-            pure $ Just $ VideoFilePath rootLoc dirNames videoFileName
-  mPath <- firstJustsM $ tryRoot <$> Map.keys roots
-  case mPath of
-    Nothing -> do
-      putLog Info $ "Path did not match any known files, so didn't mark any file as watched: " ++ absFilePath
-      pure roots
-    Just path -> do
-      putLog Info $ "Marking file as watched: " ++ show path
-      markDirOrFileAsWatched OverwritePreviouslyWatched (Right path) roots
+mediaListenerHandler rootDirsPVar absFilePath = do
+  modifyPVar_ rootDirsPVar ("Media listener handler: " <> showT absFilePath) $ \roots -> do
+    let tryRoot rootLoc = do
+          rootAbsPath <- rootDirectoryLocationToAbsPath rootLoc
+          let mRest = stripPrefix (rootAbsPath ++ [pathSeparator]) absFilePath
+          case mRest of
+            Nothing -> pure Nothing
+            Just rest -> do
+              let pathPieces = splitAtSeparatorNE $ T.pack rest
+              let (dirNames', fileName) = unsnocNE pathPieces
+              let dirNames = DirectoryName <$> dirNames'
+              -- We'll pretend that this filename is always a video file, if not we just won't find the file and not update it, so that's fine too.
+              let videoFileName = VideoFileName fileName
+              pure $ Just $ VideoFilePath rootLoc dirNames videoFileName
+    mPath <- firstJustsM $ tryRoot <$> Map.keys roots
+    case mPath of
+      Nothing -> do
+        putLog Info $ "Path did not match any known files, so didn't mark any file as watched: " ++ absFilePath
+        pure roots
+      Just path -> do
+        putLog Info $ "Marking file as watched: " ++ show path
+        markDirOrFileAsWatched OverwritePreviouslyWatched (Right path) roots
+  saveRootsToDisk rootDirsPVar
 
 playerListenerHandler :: (MonadIO m) => TVar (Maybe MediaPlayer) -> MediaPlayer -> m ()
 playerListenerHandler lastActivePlayerTVar playerName = do
