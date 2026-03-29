@@ -8,13 +8,14 @@ import PVar (newPVar)
 import TVState (startingTVState)
 import Test.Syd
 import Test.Syd.Yesod
+import TestUtils (TestIO (..))
 
 mkTestApp :: IO App
 mkTestApp = do
   inputDevice <- mkInputDevice
   tvState <- newTVarIO startingTVState
   lastActivePlayerTVar <- newTVarIO Nothing
-  rootDirsPVar <- newPVar mempty
+  rootDirsPVar <- runTestIO $ newPVar mempty
   pure
     App
       { appPort = 8080,

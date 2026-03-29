@@ -18,7 +18,6 @@ module Util.TextWithoutSeparator
   )
 where
 
-import Control.Monad.IO.Class (MonadIO (..))
 import Data.Aeson
   ( FromJSON (..),
     FromJSONKey (..),
@@ -29,11 +28,11 @@ import Data.Aeson
 import Data.Hashable (Hashable)
 import Data.List.NonEmpty qualified as NE
 import Data.Text qualified as T
-import GHC.Utils.Exception (tryIO)
 import Language.Haskell.TH (Exp, Q)
 import Language.Haskell.TH.Quote (QuasiQuoter (..))
 import Orphanage ()
 import SafeConvert (splitTextNE)
+import SafeIO (SafeIO (..))
 import System.Directory (listDirectory)
 import Text.Blaze (ToMarkup)
 import Text.Read (Read (..))
@@ -113,9 +112,9 @@ splitNE sep t = UnsafeTextWithoutSeparator <$> splitTextNE sep (unTextWithoutSep
 
 -- | A safer version of `listDirectory` that also returns a cleaner result that
 -- encodes the fact there are no separators in the paths in the type.
-safeCleanListDirectory :: (MonadIO m) => FilePath -> m (Either IOError [TextWithoutSeparator])
+safeCleanListDirectory :: (SafeIO m) => FilePath -> m (Either IOError [TextWithoutSeparator])
 safeCleanListDirectory dirPath = do
-  namesOrErr <- liftIO $ tryIO $ listDirectory dirPath
+  namesOrErr <- runIOSafely $ listDirectory dirPath
   pure $ case namesOrErr of
     Left err -> Left err
     Right names ->

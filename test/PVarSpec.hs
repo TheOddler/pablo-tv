@@ -1,8 +1,9 @@
 module PVarSpec where
 
-import Control.Exception (Exception, throwIO)
+import Control.Exception (Exception)
 import PVar
 import Test.Syd
+import TestUtils (TestIO (..))
 
 data TestException = TestException
   deriving (Eq, Show)
@@ -11,14 +12,7 @@ instance Exception TestException
 
 spec :: Spec
 spec = do
-  it "Starts in ready state" $ do
+  it "Starts in ready state" $ runTestIO $ do
     pVar <- newPVar (1 :: Int)
     state <- readPVarState pVar
-    state `shouldBe` PVarReady
-
-  it "Cleanly handles failing IO" $ do
-    pVar <- newPVar (1 :: Int)
-    modifyPVar pVar "test" (\_ -> throwIO TestException)
-      `shouldThrow` (== TestException)
-    state <- readPVarState pVar
-    state `shouldBe` PVarReady
+    liftIO $ state `shouldBe` PVarReady

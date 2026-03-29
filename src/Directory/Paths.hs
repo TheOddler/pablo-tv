@@ -12,9 +12,10 @@ import Directory.Directories
 import Directory.Files
 import GHC.Data.Maybe (firstJusts)
 import Orphanage ()
+import SafeIO (SafeIO)
 import System.FilePath (joinPath, takeExtension, (</>))
 import Util.TextWithoutSeparator
-import Yesod (MonadIO (..), PathMultiPiece (..))
+import Yesod (PathMultiPiece (..))
 
 -- Raw Web Path
 
@@ -95,7 +96,7 @@ rawWebPathToVideoFileOrDirectory roots raw =
           then Right $ VideoFilePath root dirNames (VideoFileName potentialFileName)
           else Left $ DirectoryPath root $ map DirectoryName (n : ns)
 
-rawWebPathToAbsPath :: (MonadIO m) => RootDirectories -> RawWebPath -> m (Maybe FilePath)
+rawWebPathToAbsPath :: (SafeIO m) => RootDirectories -> RawWebPath -> m (Maybe FilePath)
 rawWebPathToAbsPath roots raw =
   case rawWebPathToRoot roots raw of
     Nothing -> pure Nothing
@@ -116,7 +117,7 @@ data DirectoryPath = DirectoryPath
 addSubDir :: DirectoryPath -> DirectoryName -> DirectoryPath
 addSubDir (DirectoryPath root names) newName = DirectoryPath root $ names ++ [newName]
 
-directoryPathToAbsPath :: (MonadIO m) => DirectoryPath -> m FilePath
+directoryPathToAbsPath :: (SafeIO m) => DirectoryPath -> m FilePath
 directoryPathToAbsPath (DirectoryPath root dirNames) = do
   rootAbsPath <- rootDirectoryLocationToAbsPath root
   pure $ intercalate "/" $ rootAbsPath : (T.unpack . unwrap <$> dirNames)
@@ -130,7 +131,7 @@ data VideoFilePath = VideoFilePath
   }
   deriving (Show, Eq)
 
-videoFilePathToAbsPath :: VideoFilePath -> IO FilePath
+videoFilePathToAbsPath :: (SafeIO m) => VideoFilePath -> m FilePath
 videoFilePathToAbsPath (VideoFilePath root dirNames fileName) = do
   dirAbsPath <- directoryPathToAbsPath $ DirectoryPath root dirNames
   pure $ dirAbsPath ++ "/" ++ T.unpack (unwrap fileName)

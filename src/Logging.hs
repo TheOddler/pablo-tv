@@ -2,20 +2,16 @@ module Logging
   ( Logger (..),
     LogFunc,
     LogLevel (..),
-    LoggerT (..),
     putLog,
-    runLoggerT,
+    putLogWithMinLvlIO,
   )
 where
 
 import Control.Monad (when)
-import Control.Monad.Catch (MonadThrow)
 import Control.Monad.IO.Class (MonadIO, liftIO)
-import Control.Monad.Trans.Class (MonadTrans (..))
-import Control.Monad.Trans.Reader (ReaderT (..), ask)
 import Data.ByteString qualified as BS
 import Data.ByteString.UTF8 qualified as BS
-import UnliftIO (MonadUnliftIO)
+import Yesod (lift)
 import Yesod.WebSockets (WebSocketsT)
 
 data LogLevel
@@ -58,17 +54,6 @@ putLogWithMinLvlIO minLogLevel level msg =
           "\n"
         ]
 
-newtype LoggerT m a = LoggerT {unLoggerT :: ReaderT (LogFunc m) m a}
-  deriving (Functor, Applicative, Monad, MonadIO, MonadUnliftIO, MonadThrow)
-
-instance (Monad m) => Logger (LoggerT m) where
-  putLogBS lvl msg = LoggerT $ do
-    logFunc <- ask
-    lift $ logFunc lvl msg
-
 instance (Monad m, Logger m) => Logger (WebSocketsT m) where
   putLogBS lvl msg = do
     lift $ putLogBS lvl msg
-
-runLoggerT :: (MonadIO m) => LogLevel -> LoggerT m a -> m a
-runLoggerT minLogLevel loggerT = runReaderT (unLoggerT loggerT) (putLogWithMinLvlIO minLogLevel)

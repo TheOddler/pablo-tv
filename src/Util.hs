@@ -14,7 +14,7 @@ import Data.List.NonEmpty qualified as NE
 import Data.List.NonEmpty.Extra qualified as NE
 import Data.Ord (Down)
 import Data.Text qualified as T
-import Data.Time (NominalDiffTime, diffUTCTime, getCurrentTime)
+import Data.Time (NominalDiffTime, diffUTCTime)
 import GHC.Conc (TVar, atomically, readTVar, readTVarIO, retry)
 import GHC.Exception (errorCallException, errorCallWithCallStackException)
 import GHC.Stack (HasCallStack, callStack, prettyCallStack, withFrozenCallStack)
@@ -22,6 +22,7 @@ import IsDevelopment (isDevelopment)
 import Language.Haskell.TH.Syntax (Exp, Q)
 import Logging (LogLevel (..), Logger, putLog)
 import Network.Info (IPv4 (..), NetworkInterface (..))
+import SafeIO (SafeIO (..), getCurrentTime)
 import System.Random (RandomGen)
 import System.Random.Shuffle (shuffle')
 import Yesod
@@ -147,11 +148,11 @@ naturalCompareBy f a b = Natural.compare (T.toLower $ f a) (T.toLower $ f b)
 naturalSortBy :: (a -> T.Text) -> [a] -> [a]
 naturalSortBy f = sortBy $ naturalCompareBy f
 
-withDuration :: (MonadIO m) => m a -> m (a, NominalDiffTime)
+withDuration :: (SafeIO m) => m a -> m (a, NominalDiffTime)
 withDuration f = do
-  startTime <- liftIO getCurrentTime
+  startTime <- getCurrentTime
   a <- f
-  endTime <- liftIO getCurrentTime
+  endTime <- getCurrentTime
   pure (a, diffUTCTime endTime startTime)
 
 safeMinimumOn :: (Ord o) => (a -> o) -> [a] -> Maybe a
@@ -159,7 +160,7 @@ safeMinimumOn scale as = case NE.nonEmpty as of
   Nothing -> Nothing
   Just neA -> Just $ NE.minimumOn1 scale neA
 
-logDuration :: (Logger m, MonadIO m) => String -> m a -> m a
+logDuration :: (Logger m, SafeIO m) => String -> m a -> m a
 logDuration label action = do
   (result, duration) <- withDuration action
   putLog Info $ label ++ " (" ++ show duration ++ ")"
@@ -207,3 +208,10 @@ failE label e = do
         prettyCallStack callStack
       ]
   throwM e
+
+logOnErrorIO :: (SafeIO m, Logger m) => Logging.LogLevel -> String -> IO () -> m ()
+logOnErrorIO logLevel prefix io = do
+  resultOrErr <- runIOSafely io
+  case resultOrErr of
+    Right result -> pure result
+    Left e -> putLog logLevel $ prefix ++ ": " ++ displayException e

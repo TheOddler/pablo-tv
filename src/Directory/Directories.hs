@@ -3,7 +3,6 @@
 module Directory.Directories where
 
 import Control.Applicative ((<|>))
-import Control.Monad.IO.Class (MonadIO (..))
 import Data.Aeson
   ( FromJSON (..),
     FromJSONKey,
@@ -23,8 +22,8 @@ import Directory.Files
 import GHC.Data.Maybe (firstJusts, orElse)
 import GHC.Generics (Generic)
 import Orphanage ()
+import SafeIO (SafeIO (..))
 import Samba (SmbServer (..), SmbShare (..), mkMountPath)
-import System.Directory (getHomeDirectory)
 import System.FilePath
 import Text.Blaze (ToMarkup)
 import Text.Read (Read (..))
@@ -44,11 +43,11 @@ data RootDirectoryLocation
   | RootAbsPath (DirPath Abs)
   deriving (Show, Eq, Ord, Generic)
 
-rootDirectoryLocationToAbsPath :: (MonadIO m) => RootDirectoryLocation -> m FilePath
+rootDirectoryLocationToAbsPath :: (SafeIO m) => RootDirectoryLocation -> m FilePath
 rootDirectoryLocationToAbsPath = \case
   RootSamba srv shr -> mkMountPath srv shr
   RootRelToHome r -> do
-    home <- liftIO getHomeDirectory
+    home <- getHomeDirectory
     pure $ home </> T.unpack (unDirPath r)
   RootAbsPath a -> pure $ T.unpack $ unDirPath a
 

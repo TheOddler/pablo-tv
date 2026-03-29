@@ -16,7 +16,6 @@ import Data.Scientific (Scientific, scientific)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Lazy.Encoding qualified as T
-import Data.Time (getCurrentTime)
 import Directory
   ( recursiveUpdateDirectory,
     recursivelyUpdateAllDirectories,
@@ -36,6 +35,7 @@ import Mpris qualified
 import Network.WebSockets qualified as WS
 import PVar (modifyPVar_, readPVar)
 import SafeConvert (int32ToInteger)
+import SafeIO (SafeIO, getCurrentTime)
 import System.Process (callProcess, readProcess)
 import TVState (TVState (..))
 import Text.Blaze qualified as Blaze
@@ -289,7 +289,7 @@ performAction action = do
                 ++ show rawWebPath
                 ++ ": Unable to convert raw to directory path."
             pure roots
-          Just dirOrFile -> markDirOrFileAsUnwatched dirOrFile roots
+          Just dirOrFile -> pure $ markDirOrFileAsUnwatched dirOrFile roots
       saveRootsToDisk app.appRootDirs
     ActionOpenUrlOnTV url ->
       liftIO $ atomically $ do
@@ -322,12 +322,12 @@ performAction action = do
 data OverwritePreviouslyWatched = OverwritePreviouslyWatched | DoNotOverwritePreviouslyWatched
   deriving (Eq)
 
-markDirOrFileAsWatched :: (MonadIO m) => OverwritePreviouslyWatched -> Either DirectoryPath VideoFilePath -> RootDirectories -> m RootDirectories
+markDirOrFileAsWatched :: (SafeIO m) => OverwritePreviouslyWatched -> Either DirectoryPath VideoFilePath -> RootDirectories -> m RootDirectories
 markDirOrFileAsWatched overwritePreviouslyWatched dirOrFile rootDirs = do
   let dirPath = case dirOrFile of
         Left p -> p
         Right (VideoFilePath r p _) -> DirectoryPath r p
-  now <- liftIO getCurrentTime
+  now <- getCurrentTime
   let applyWatched fileData =
         if overwritePreviouslyWatched == OverwritePreviouslyWatched
           || isNothing fileData.videoFileWatched
@@ -346,7 +346,7 @@ markDirOrFileAsWatched overwritePreviouslyWatched dirOrFile rootDirs = do
               Map.adjust applyWatched fileName dir.directoryVideoFiles
           }
 
-markDirOrFileAsUnwatched :: (MonadIO m) => Either DirectoryPath VideoFilePath -> RootDirectories -> m RootDirectories
+markDirOrFileAsUnwatched :: Either DirectoryPath VideoFilePath -> RootDirectories -> RootDirectories
 markDirOrFileAsUnwatched dirOrFile rootDirs = do
   let dirPath = case dirOrFile of
         Left p -> p
@@ -355,7 +355,7 @@ markDirOrFileAsUnwatched dirOrFile rootDirs = do
         case fileData.videoFileWatched of
           Just _ -> fileData {videoFileWatched = Nothing}
           Nothing -> fileData
-  pure $ updateDirectoryAtPath rootDirs dirPath $ \dir ->
+  updateDirectoryAtPath rootDirs dirPath $ \dir ->
     case dirOrFile of
       Left _ ->
         dir

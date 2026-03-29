@@ -17,7 +17,7 @@ import PVar (newPVar, readPVar)
 import Samba (SmbServer (..), SmbShare (..))
 import Test.Syd
 import Test.Syd.Aeson
-import TestUtils (runTestIO)
+import TestUtils (runTestIO, testModificationTime)
 import UnliftIO.Directory (getCurrentDirectory)
 import Util.DirPath (absPath, absPathQQ, relPathQQ)
 import Util.TextWithoutSeparator (twsQQ)
@@ -122,7 +122,7 @@ rootSpec = do
                       directoryVideoFiles =
                         [ ( VideoFileName [twsQQ|video-file.mp4|],
                             VideoFileData
-                              { videoFileAdded = read "2026-03-29 08:19:09.495531321 UTC",
+                              { videoFileAdded = testModificationTime,
                                 videoFileWatched = Nothing
                               }
                           )
@@ -140,13 +140,13 @@ rootSpec = do
                                 directoryVideoFiles =
                                   [ ( VideoFileName [twsQQ|File 1.1 - Test.mkv|],
                                       VideoFileData
-                                        { videoFileAdded = read "2026-03-29 08:20:30.170967939 UTC",
+                                        { videoFileAdded = testModificationTime,
                                           videoFileWatched = Nothing
                                         }
                                     ),
                                     ( VideoFileName [twsQQ|File 1.2 - Second.avi|],
                                       VideoFileData
-                                        { videoFileAdded = read "2026-03-29 08:20:52.777086274 UTC",
+                                        { videoFileAdded = testModificationTime,
                                           videoFileWatched = Nothing
                                         }
                                     )
@@ -160,7 +160,7 @@ rootSpec = do
                                 directoryVideoFiles =
                                   [ ( VideoFileName [twsQQ|Video 2.mov|],
                                       VideoFileData
-                                        { videoFileAdded = read "2026-03-29 08:22:20.267529609 UTC",
+                                        { videoFileAdded = testModificationTime,
                                           videoFileWatched = Nothing
                                         }
                                     )
@@ -186,7 +186,7 @@ rootSpec = do
                       directoryVideoFiles =
                         [ ( VideoFileName [twsQQ|my-home-video.mp4|],
                             VideoFileData
-                              { videoFileAdded = read "2026-03-29 10:52:23.457432536 UTC",
+                              { videoFileAdded = testModificationTime,
                                 videoFileWatched = Nothing
                               }
                           )
@@ -203,23 +203,23 @@ rootSpec = do
           ("root 2", root2Location, expectedRoot2)
         ]
   forM_ rootsInfo $ \(name, loc, expected) -> do
-    it ("can read example " ++ name) $ do
+    it ("can read example " ++ name) $ runTestIO $ do
       rootsPVar <- newPVar [(loc, RootDirectoryData Map.empty Map.empty)]
       let examplePath = DirectoryPath loc []
-      runTestIO $ recursiveUpdateDirectoryNoSave rootsPVar examplePath
+      recursiveUpdateDirectoryNoSave rootsPVar examplePath
       updated <- readPVar rootsPVar
-      updated `shouldBe` [(loc, expected)]
+      liftIO $ updated `shouldBe` [(loc, expected)]
 
-  it "can read all roots together" $ do
+  it "can read all roots together" $ runTestIO $ do
     rootsPVar <-
       newPVar
         [ (root1Location, RootDirectoryData Map.empty Map.empty),
           (root2Location, RootDirectoryData Map.empty Map.empty)
         ]
-    runTestIO $ recursivelyUpdateAllDirectoriesNoSave rootsPVar
+    recursivelyUpdateAllDirectoriesNoSave rootsPVar
     updated <- readPVar rootsPVar
     let expected =
           [ (root1Location, expectedRoot1),
             (root2Location, expectedRoot2)
           ]
-    updated `shouldBe` expected
+    liftIO $ updated `shouldBe` expected

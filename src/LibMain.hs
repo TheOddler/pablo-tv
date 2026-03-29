@@ -77,18 +77,20 @@ import GHC.Data.Maybe (firstJustsM)
 import GHC.Stats (GCDetails (..), RTSStats (..), getRTSStats)
 import GHC.Utils.Misc (sortWith)
 import IsDevelopment (isDevelopment)
-import Logging (LogLevel (..), Logger, LoggerT (..), putLog, runLoggerT)
+import Logging (LogLevel (..), Logger, putLog)
 import Mpris (MediaPlayer, MprisAction (..), getFirstMediaPlayer, mediaListener)
 import Network.Info (NetworkInterface (..), getNetworkInterfaces)
 import Network.Wai.Handler.Warp (run)
 import PVar (PVar, PVarState (..), modifyPVar_, newPVar, readPVar, readPVarState)
 import SafeConvert (humanReadableBytes)
+import SafeIO (SafeIO)
 import Samba (MountResult, SmbServer (..), SmbShare (..), mount)
 import System.Environment (getArgs)
 import System.FilePath (pathSeparator)
 import System.Process (callProcess)
 import System.Random (initStdGen, mkStdGen)
 import TVState (startingTVState, tvStateWebSocket)
+import Transformers (LoggerT (..), SafeIOT (..), runLoggerT)
 import UnliftIO (tryAny)
 import Util
   ( logDuration,
@@ -123,7 +125,7 @@ getHomeR = do
   tvStateTVar <- getsYesod appTVState
   webSockets $ race_ actionsWebSocket (tvStateWebSocket tvStateTVar)
 
-  roots <- liftIO . readPVar =<< getsYesod appRootDirs
+  roots <- readPVar =<< getsYesod appRootDirs
   homeData <-
     logDuration "Calculated home dir agg data" . pure $
       concatMap
@@ -248,12 +250,12 @@ withDirectoryFromRaw handler = withMDirectoryFromRaw $ \case
 
 withMDirectoryFromRaw :: (Maybe DirectoryPath -> Handler a) -> RawWebPath -> Handler a
 withMDirectoryFromRaw handler rawWebPath = do
-  roots <- liftIO . readPVar =<< getsYesod appRootDirs
+  roots <- readPVar =<< getsYesod appRootDirs
   handler $ rawWebPathToDirectory roots rawWebPath
 
 getDirectoryR :: RawWebPath -> Handler Html
 getDirectoryR = withMDirectoryFromRaw $ \mDirPath -> do
-  roots <- liftIO . readPVar =<< getsYesod appRootDirs
+  roots <- readPVar =<< getsYesod appRootDirs
   (dirs, files) <- case mDirPath of
     Nothing ->
       pure
@@ -324,7 +326,7 @@ getDirectoryR = withMDirectoryFromRaw $ \mDirPath -> do
 
 getImageR :: RawWebPath -> Handler TypedContent
 getImageR = withDirectoryFromRaw $ \dirPath -> do
-  roots <- liftIO . readPVar =<< getsYesod appRootDirs
+  roots <- readPVar =<< getsYesod appRootDirs
   -- We find the directory with the image for a path in the directory endpoint,
   -- so here we just have to check the directory itself, not its parents.
   -- This makes sure that the browser gets a consistent path and can do better caching.
@@ -359,7 +361,7 @@ getAllIPsR = do
 getDebugR :: Handler Html
 getDebugR = do
   app <- getYesod
-  rootDirPVarState' <- liftIO $ readPVarState app.appRootDirs
+  rootDirPVarState' <- readPVarState app.appRootDirs
   let rootDirPVarState = case rootDirPVarState' of
         PVarReady -> "Ready" :: Text
         PVarUpdating desc -> "Updating: " <> desc
@@ -386,7 +388,7 @@ mountAllSambaShares roots = do
     "Mounted sambas:\n\t"
       ++ intercalate "\t\n" (showResult <$> zip sambaShares results)
 
-mediaListenerHandler :: (MonadUnliftIO m, Logger m) => PVar RootDirectories -> FilePath -> m ()
+mediaListenerHandler :: (SafeIO m, Logger m) => PVar RootDirectories -> FilePath -> m ()
 mediaListenerHandler rootDirsPVar absFilePath = do
   modifyPVar_ rootDirsPVar ("Media listener handler: " <> showT absFilePath) $ \roots -> do
     let tryRoot rootLoc = do
@@ -422,7 +424,7 @@ main = do
         if "--log-debug" `elem` args
           then Debug
           else Info
-  runLoggerT minLogLevel $ do
+  runLoggerT minLogLevel . runSafeIOT $ do
     putLog Info $ "Terminal arguments: " ++ show args
     putLog Info $ "Min log level: " ++ show minLogLevel
 
@@ -454,7 +456,7 @@ main = do
     mountAllSambaShares rootDirs
 
     -- Get the log func
-    logFunc <- LoggerT ask
+    logFunc <- SafeIOT $ LoggerT ask
 
     -- The thread for the app
     let app =

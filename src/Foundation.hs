@@ -21,8 +21,10 @@ import Logging (LogFunc, Logger (..))
 import Mpris (MediaPlayer)
 import Network.Info (getNetworkInterfaces)
 import PVar (PVar)
+import SafeIO (SafeIO (..))
 import TVState (TVState)
 import Text.Hamlet (hamletFile)
+import Transformers (SafeIOT (..))
 import Util (networkInterfaceWorthiness, showIpV4OrV6WithPort, widgetFile)
 import Yesod hiding (LogLevel, defaultLayout, replace)
 import Yesod qualified
@@ -122,3 +124,10 @@ instance Logger Handler where
   putLogBS lvl msg = do
     logFunc <- getsYesod appLogFunc
     liftIO $ logFunc lvl msg
+
+instance SafeIO Handler where
+  runIOSafely = runSafeIOT . runIOSafely
+  unsafePinkyPromiseThisIsSafe = runSafeIOT . unsafePinkyPromiseThisIsSafe
+  getCurrentTime = runSafeIOT getCurrentTime
+  getModificationTime = runSafeIOT . getModificationTime
+  getHomeDirectory = runSafeIOT getHomeDirectory

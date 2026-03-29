@@ -3,7 +3,6 @@
 module Directory where
 
 import Control.Monad (forM, forM_)
-import Control.Monad.Catch (MonadThrow)
 import Data.Aeson (eitherDecodeFileStrict, encodeFile)
 import Data.ByteString qualified as BS
 import Data.List ((\\))
@@ -23,18 +22,11 @@ import ImageScraper (ImageScraper, ImageSearchFailure (..), tryFindImage)
 import Logging (LogLevel (..), Logger, putLog)
 import Orphanage ()
 import PVar (PVar, modifyPVar, modifyPVar_, readPVar)
-import System.Directory
-  ( XdgDirectory (..),
-    createDirectoryIfMissing,
-    getModificationTime,
-    getXdgDirectory,
-    renameFile,
-  )
+import SafeIO (SafeIO (..), catchAny, resolveError)
+import System.Directory (XdgDirectory (..), createDirectoryIfMissing, getXdgDirectory, renameFile)
 import System.FilePath ((</>))
-import UnliftIO (MonadUnliftIO, catchAny)
-import Util (firstRightM, logDuration, showT, unsnocNE)
+import Util (firstRightM, logDuration, logOnErrorIO, showT, unsnocNE)
 import Util.TextWithoutSeparator
-import Yesod (MonadIO (..))
 
 getDirectoryAtPath :: RootDirectories -> DirectoryPath -> Maybe DirectoryData
 getDirectoryAtPath roots (DirectoryPath wantedRoot []) = do
@@ -90,33 +82,32 @@ updateDirectoryAtPath roots (DirectoryPath wantedRoot wantedDirNames) updateFunc
 memoryFileName :: FilePath
 memoryFileName = "pablo-tv.json"
 
-getMemoryFileDir :: (MonadIO m) => m FilePath
-getMemoryFileDir = liftIO $ getXdgDirectory XdgData ""
+getMemoryFileDir :: (SafeIO m) => m FilePath
+getMemoryFileDir = unsafePinkyPromiseThisIsSafe $ getXdgDirectory XdgData ""
 
 -- | Writes the known disks to a json file on disk, so we can read it on startup next time.
 -- Blocks other threads from changing the PVar while writing to disk, so we can't get any race conditions in the value changing between calls.
-saveRootsToDisk :: (MonadUnliftIO m, Logger m) => PVar RootDirectories -> m ()
-saveRootsToDisk rootsPvar = logDuration "Saved roots to disk" $ do
+saveRootsToDisk :: (SafeIO m, Logger m) => PVar RootDirectories -> m ()
+saveRootsToDisk rootsPvar = logDuration "Saved roots to disk" $
   modifyPVar_ rootsPvar "Saving roots to disk" $ \roots -> do
     memoryDir <- getMemoryFileDir
-    liftIO $ do
+    logOnErrorIO Error "Failed saving roots to disk" $ do
       createDirectoryIfMissing True memoryDir
       encodeFile (memoryDir </> memoryFileName) roots
-      pure roots
+    pure roots
 
-loadRootsFromDisk :: (Logger m, MonadUnliftIO m) => m (Maybe RootDirectories)
+loadRootsFromDisk :: (Logger m, SafeIO m) => m (Maybe RootDirectories)
 loadRootsFromDisk = logDuration "Loaded roots from disk" $ do
   memoryDir <- getMemoryFileDir
   let memoryFile = memoryDir </> memoryFileName
-  let safeDecode =
-        eitherDecodeFileStrict memoryFile
-          `catchAny` \e -> pure $ Left $ displayException e
-  rootsOrErr <- liftIO safeDecode
+  rootsOrErr <-
+    eitherDecodeFileStrict memoryFile
+      `catchAny` \e -> pure $ Left $ displayException e
   case rootsOrErr of
     Right roots -> pure $ Just roots
     Left err -> do
       putLog Error $ "Failed loading roots from disk, marking as broken. Error was: " ++ err
-      liftIO (renameFile memoryFile (memoryFile ++ ".broken"))
+      renameFile memoryFile (memoryFile ++ ".broken")
         `catchAny` \e -> putLog Error $ "Failed marking as broken: " ++ displayException e
       pure Nothing
 
@@ -131,7 +122,7 @@ data ShallowDirUpdateResult
 -- | Does a shallow update, so updates only the directory itself, no sub-directories.
 -- If it found new folders, it'll add them as empty folder, and do no further updates to them.
 -- Can still throw if some some error happens we can't recover from and that probably indicated a bug or something I should look at at least.
-shallowUpdateDirectory :: forall m. (MonadUnliftIO m, Logger m, ImageScraper m) => RootDirectories -> DirectoryPath -> m ShallowDirUpdateResult
+shallowUpdateDirectory :: forall m. (SafeIO m, Logger m, ImageScraper m) => RootDirectories -> DirectoryPath -> m ShallowDirUpdateResult
 shallowUpdateDirectory roots dirPath = do
   absDirPath <- directoryPathToAbsPath dirPath
   logDuration ("Shallow updated dir " ++ absDirPath) $ do
@@ -150,7 +141,7 @@ shallowUpdateDirectory roots dirPath = do
           Right names -> do
             let typeGuesses = guessType <$> names
             let (subDirGuesses, videoGuesses, imageGuesses, _ignored) = partitionPathTypes typeGuesses
-            updatedSubDirs <- updateSubDirs subDirGuesses
+            let updatedSubDirs = updateSubDirs subDirGuesses
             updatedVideoFiles <- updateVideoFiles videoGuesses
             updatedImageFile <- updateImageFile imageGuesses
 
@@ -167,12 +158,12 @@ shallowUpdateDirectory roots dirPath = do
                         updatedSubDirs `orElse` currentDirData.directorySubDirs
                     }
             where
-              updateSubDirs :: [DirectoryName] -> m (Maybe (Map.Map DirectoryName DirectoryData))
+              updateSubDirs :: [DirectoryName] -> Maybe (Map.Map DirectoryName DirectoryData)
               updateSubDirs subDirGuesses = do
                 let knownSubDirs = Map.keys currentDirData.directorySubDirs
                 let newDirs = subDirGuesses \\ knownSubDirs
                 let noLongerExist = knownSubDirs \\ subDirGuesses
-                pure $ case (newDirs, noLongerExist) of
+                case (newDirs, noLongerExist) of
                   ([], []) -> Nothing -- Nothing indicates no changes were found
                   _ -> do
                     -- Step 1: Remove dirs that that no longer exist
@@ -198,7 +189,10 @@ shallowUpdateDirectory roots dirPath = do
                     newVideos <- forM newVideoNames $ \newVideoName -> do
                       let fullFilePath = absDirPath ++ "/" ++ T.unpack (unwrap newVideoName.unVideoFileName)
                       modTime <-
-                        liftIO (getModificationTime fullFilePath)
+                        getModificationTime fullFilePath
+                          `resolveError` \e -> do
+                            putLog Error $ "Failed getting modification (defaulting to now): " ++ displayException e
+                            getCurrentTime
 
                       pure
                         ( newVideoName,
@@ -221,20 +215,26 @@ shallowUpdateDirectory roots dirPath = do
                     isRootDir = null dirPath.directoryPathNames
                     isSeasonDirOrSubDir = any isSeasonDir dirPath.directoryPathNames
 
-                    getImageFromDisk :: ImageFileName -> m (ImageFileName, ImageFileData)
+                    getImageFromDisk :: ImageFileName -> m (Maybe (ImageFileName, ImageFileData))
                     getImageFromDisk imgName = do
-                      putLog Info $ "Getting image from disk for: " ++ absDirPath
-                      imgFile <- liftIO $ BS.readFile $ absDirPath </> T.unpack (unwrap imgName)
-                      pure (imgName, ImageFileData imgFile)
+                      let imgPath = absDirPath </> T.unpack (unwrap imgName)
+                      imgOrErr <- runIOSafely $ BS.readFile imgPath
+                      case imgOrErr of
+                        Right imgFile -> do
+                          putLog Info $ "Read image from disk: " ++ imgPath
+                          pure $ Just (imgName, ImageFileData imgFile)
+                        Left err -> do
+                          putLog Error $ "Failed reading image from disk: " ++ displayException err
+                          pure Nothing
 
                 case (currentImageName, diskImageName) of
                   (Nothing, Just diskImg) ->
                     -- We currently don't know about an image, but there's one on disk, use that.
-                    Just <$> getImageFromDisk diskImg
+                    getImageFromDisk diskImg
                   (Just img, Just diskImg)
                     | img /= diskImg ->
                         -- The image we know about is different from the one on disk, update it!
-                        Just <$> getImageFromDisk diskImg
+                        getImageFromDisk diskImg
                   (Just _img, Just _diskImg) ->
                     -- The image we know about is the same as on disk, so no need to update, save some IO
                     pure Nothing
@@ -298,7 +298,7 @@ getImageFromWebFor dirPath = case NE.nonEmpty $ unRawWebPath $ rawWebPathFromDir
 
 -- | Recursively updates the directory, each time a directory is updated it's saved to the root directories pvar.
 -- It also saves all the directories data to disk at the end.
-recursiveUpdateDirectory :: forall m. (MonadUnliftIO m, MonadThrow m, Logger m, ImageScraper m) => PVar RootDirectories -> DirectoryPath -> m ()
+recursiveUpdateDirectory :: forall m. (SafeIO m, Logger m, ImageScraper m) => PVar RootDirectories -> DirectoryPath -> m ()
 recursiveUpdateDirectory rootsPVar startingDirPath = do
   -- Update
   recursiveUpdateDirectoryNoSave rootsPVar startingDirPath
@@ -306,7 +306,7 @@ recursiveUpdateDirectory rootsPVar startingDirPath = do
   saveRootsToDisk rootsPVar
 
 -- `recursiveUpdateDirectory` but doesn't save to disk at the end.
-recursiveUpdateDirectoryNoSave :: forall m. (MonadUnliftIO m, MonadThrow m, Logger m, ImageScraper m) => PVar RootDirectories -> DirectoryPath -> m ()
+recursiveUpdateDirectoryNoSave :: forall m. (SafeIO m, Logger m, ImageScraper m) => PVar RootDirectories -> DirectoryPath -> m ()
 recursiveUpdateDirectoryNoSave rootsPVar startingDirPath = do
   absStartingDirPath <- directoryPathToAbsPath startingDirPath
   logDuration ("Fully updated dir " ++ absStartingDirPath) $
@@ -361,7 +361,7 @@ recursiveUpdateDirectoryNoSave rootsPVar startingDirPath = do
           nextDirPaths = addSubDir dirPath <$> nextDirNames
       loop $ rest ++ nextDirPaths
 
-recursivelyUpdateAllDirectoriesNoSave :: (MonadUnliftIO m, MonadThrow m, Logger m, ImageScraper m) => PVar RootDirectories -> m ()
+recursivelyUpdateAllDirectoriesNoSave :: (SafeIO m, Logger m, ImageScraper m) => PVar RootDirectories -> m ()
 recursivelyUpdateAllDirectoriesNoSave rootsPVar = do
   -- Do all updates without saving
   logDuration "Updated all directories" $ do
@@ -369,7 +369,7 @@ recursivelyUpdateAllDirectoriesNoSave rootsPVar = do
     forM_ (Map.keys roots) $ \rootLocation -> do
       recursiveUpdateDirectoryNoSave rootsPVar $ rootDirectoryPath rootLocation
 
-recursivelyUpdateAllDirectories :: (MonadUnliftIO m, MonadThrow m, Logger m, ImageScraper m) => PVar RootDirectories -> m ()
+recursivelyUpdateAllDirectories :: (SafeIO m, Logger m, ImageScraper m) => PVar RootDirectories -> m ()
 recursivelyUpdateAllDirectories rootsPVar = do
   recursivelyUpdateAllDirectoriesNoSave rootsPVar
   saveRootsToDisk rootsPVar

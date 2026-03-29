@@ -2,6 +2,7 @@ module Samba where
 
 import Data.List (isInfixOf)
 import GHC.IO.Exception (ExitCode (..))
+import SafeIO (SafeIO, unsafePinkyPromiseThisIsSafe)
 import System.Posix (getEffectiveUserID)
 import System.Process (readProcessWithExitCode)
 import Yesod (FromJSON, MonadIO (liftIO), PathPiece, ToJSON)
@@ -51,9 +52,9 @@ mount (SmbServer svr) (SmbShare shr) = do
 
 -- | Requires IO as it needs to find the user id
 -- This assumes the location where Gnome's gio mounts stuff
-mkMountPath :: (MonadIO m) => SmbServer -> SmbShare -> m FilePath
+mkMountPath :: (SafeIO m) => SmbServer -> SmbShare -> m FilePath
 mkMountPath (SmbServer svr) (SmbShare shr) = do
-  uid <- liftIO getEffectiveUserID
+  uid <- unsafePinkyPromiseThisIsSafe getEffectiveUserID
   pure $ "/run/user/" ++ show uid ++ "/gvfs/smb-share:server=" ++ svr ++ ",share=" ++ shr
 
 -- uid <- getEffectiveUserID

@@ -12,11 +12,9 @@ module PVar
 where
 
 import Control.Concurrent.STM (TVar, atomically, newTVarIO, readTVar, readTVarIO, retry, writeTVar)
-import Control.Exception (SomeException, throwIO)
 import Control.Monad (void, when)
 import Data.Text (Text)
-import UnliftIO (MonadUnliftIO (..), tryAny)
-import Yesod (MonadIO (..))
+import SafeIO (SafeIO (..))
 
 data PVarState
   = PVarReady
@@ -25,37 +23,31 @@ data PVarState
 
 newtype PVar a = PVar (TVar (PVarState, a))
 
-newPVar :: (MonadIO m) => a -> m (PVar a)
-newPVar initialState = PVar <$> liftIO (newTVarIO (PVarReady, initialState))
+newPVar :: (SafeIO m) => a -> m (PVar a)
+newPVar initialState = PVar <$> unsafePinkyPromiseThisIsSafe (newTVarIO (PVarReady, initialState))
 
-readPVar :: (MonadIO m) => PVar a -> m a
-readPVar (PVar inner) = snd <$> liftIO (readTVarIO inner)
+readPVar :: (SafeIO m) => PVar a -> m a
+readPVar (PVar inner) = snd <$> unsafePinkyPromiseThisIsSafe (readTVarIO inner)
 
-readPVarState :: (MonadIO m) => PVar a -> m PVarState
-readPVarState (PVar inner) = fst <$> liftIO (readTVarIO inner)
+readPVarState :: (SafeIO m) => PVar a -> m PVarState
+readPVarState (PVar inner) = fst <$> unsafePinkyPromiseThisIsSafe (readTVarIO inner)
 
 -- | Modify the PVar, for the duration of the IO, any other calls to modify the PVar will wait.
 -- Reading the PVar is still possible though, and will return the original value immediately.
-modifyPVar :: forall m a. (MonadUnliftIO m) => PVar a -> Text -> (a -> m a) -> m a
+modifyPVar :: forall m a. (SafeIO m) => PVar a -> Text -> (a -> m a) -> m a
 modifyPVar (PVar inner) desc update = do
-  value <- liftIO $ atomically $ do
+  value <- unsafePinkyPromiseThisIsSafe $ atomically $ do
     (state, val) <- readTVar inner
     when (state /= PVarReady) retry -- Waits until ready
     writeTVar inner (PVarUpdating desc, val) -- Mark as being updated, but the update we'll do outside atomically
     pure val
-
-  newValueOrErr <- tryAny $ update value
-  liftIO $ case newValueOrErr of
-    Left (err :: SomeException) -> do
-      -- Mark as ready for others again, even when the update failed
-      atomically $ writeTVar inner (PVarReady, value)
-      throwIO err
-    Right newValue -> do
-      -- Mark as ready for others again
-      atomically $ writeTVar inner (PVarReady, newValue)
-      pure newValue
+  -- Update
+  newValue <- update value
+  -- Mark as ready for others again
+  unsafePinkyPromiseThisIsSafe $ atomically $ writeTVar inner (PVarReady, newValue)
+  pure newValue
 
 -- | Modify but I don't care about the updated value
-modifyPVar_ :: (MonadUnliftIO m) => PVar a -> Text -> (a -> m a) -> m ()
+modifyPVar_ :: (SafeIO m) => PVar a -> Text -> (a -> m a) -> m ()
 modifyPVar_ pVar desc update = do
   void $ modifyPVar pVar desc update

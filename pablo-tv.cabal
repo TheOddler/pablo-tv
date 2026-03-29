@@ -56,8 +56,10 @@ library
     Orphanage
     PVar
     SafeConvert
+    SafeIO
     Samba
     TVState
+    Transformers
     Util
     Util.DirPath
     Util.Regex
