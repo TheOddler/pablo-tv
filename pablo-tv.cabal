@@ -132,6 +132,7 @@ test-suite pablo-tv-test
         aeson
       , bytestring
       , containers
+      , exceptions
       , generic-random
       , pablo-tv
       , QuickCheck
@@ -141,4 +142,5 @@ test-suite pablo-tv-test
       , sydtest-discover
       , sydtest-yesod
       , text
+      , unliftio
       , unordered-containers
