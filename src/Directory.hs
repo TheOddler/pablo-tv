@@ -19,7 +19,7 @@ import Directory.Paths
 import GHC.Data.Maybe (firstJust, orElse)
 import GHC.IO.Exception (IOErrorType (..), IOException (..))
 import GHC.Utils.Exception (displayException)
-import ImageScraper (ImageSearchFailure (..), tryFindImage)
+import ImageScraper (ImageScraper, ImageSearchFailure (..), tryFindImage)
 import Logging (LogLevel (..), Logger, putLog)
 import Orphanage ()
 import PVar (PVar, modifyPVar, modifyPVar_, readPVar)
@@ -32,7 +32,7 @@ import System.Directory
   )
 import System.FilePath ((</>))
 import UnliftIO (MonadUnliftIO, catchAny)
-import Util (failE, firstRightM, logDuration, showT, unsnocNE)
+import Util (firstRightM, logDuration, showT, unsnocNE)
 import Util.TextWithoutSeparator
 import Yesod (MonadIO (..))
 
@@ -126,11 +126,12 @@ data ShallowDirUpdateResult
   | ShallowDirUpdateWasNotADir -- We found it, but turned out not to be a directory, we guessed wrong somewhere
   | ShallowDirUpdateUnchanged
   | ShallowDirUpdateChanged DirectoryData
+  | ShallowDirUpdateOtherIOError IOError
 
 -- | Does a shallow update, so updates only the directory itself, no sub-directories.
 -- If it found new folders, it'll add them as empty folder, and do no further updates to them.
 -- Can still throw if some some error happens we can't recover from and that probably indicated a bug or something I should look at at least.
-shallowUpdateDirectory :: forall m. (MonadIO m, Logger m, MonadThrow m) => RootDirectories -> DirectoryPath -> m ShallowDirUpdateResult
+shallowUpdateDirectory :: forall m. (MonadUnliftIO m, Logger m, ImageScraper m) => RootDirectories -> DirectoryPath -> m ShallowDirUpdateResult
 shallowUpdateDirectory roots dirPath = do
   absDirPath <- directoryPathToAbsPath dirPath
   logDuration ("Shallow updated dir " ++ absDirPath) $ do
@@ -145,7 +146,7 @@ shallowUpdateDirectory roots dirPath = do
           Left err | err.ioe_type == NoSuchThing && null dirPath.directoryPathNames -> do
             pure ShallowDirUpdateDirNotFoundOnDisk
           Left err -> do
-            failE ("Updating directory " ++ absDirPath) err
+            pure $ ShallowDirUpdateOtherIOError err
           Right names -> do
             let typeGuesses = guessType <$> names
             let (subDirGuesses, videoGuesses, imageGuesses, _ignored) = partitionPathTypes typeGuesses
@@ -196,7 +197,9 @@ shallowUpdateDirectory roots dirPath = do
                     -- Step 2: Add new videos
                     newVideos <- forM newVideoNames $ \newVideoName -> do
                       let fullFilePath = absDirPath ++ "/" ++ T.unpack (unwrap newVideoName.unVideoFileName)
-                      modTime <- liftIO $ getModificationTime fullFilePath
+                      modTime <-
+                        liftIO (getModificationTime fullFilePath)
+
                       pure
                         ( newVideoName,
                           VideoFileData
@@ -273,7 +276,7 @@ shallowUpdateDirectory roots dirPath = do
 
 -- | Returns a (potentially empty) list of errors of failed attempts with the search string that was tried,
 -- and hopefully a successful result.
-getImageFromWebFor :: forall m. (MonadIO m) => DirectoryPath -> m ([(T.Text, ImageSearchFailure)], Maybe (ImageFileName, ImageFileData))
+getImageFromWebFor :: forall m. (ImageScraper m) => DirectoryPath -> m ([(T.Text, ImageSearchFailure)], Maybe (ImageFileName, ImageFileData))
 getImageFromWebFor dirPath = case NE.nonEmpty $ unRawWebPath $ rawWebPathFromDirectory dirPath of
   Nothing -> pure ([], Nothing)
   Just partsNE -> do
@@ -295,7 +298,7 @@ getImageFromWebFor dirPath = case NE.nonEmpty $ unRawWebPath $ rawWebPathFromDir
 
 -- | Recursively updates the directory, each time a directory is updated it's saved to the root directories pvar.
 -- It also saves all the directories data to disk at the end.
-recursiveUpdateDirectory :: forall m. (MonadUnliftIO m, MonadThrow m, Logger m) => PVar RootDirectories -> DirectoryPath -> m ()
+recursiveUpdateDirectory :: forall m. (MonadUnliftIO m, MonadThrow m, Logger m, ImageScraper m) => PVar RootDirectories -> DirectoryPath -> m ()
 recursiveUpdateDirectory rootsPVar startingDirPath = do
   -- Update
   recursiveUpdateDirectoryNoSave rootsPVar startingDirPath
@@ -303,7 +306,7 @@ recursiveUpdateDirectory rootsPVar startingDirPath = do
   saveRootsToDisk rootsPVar
 
 -- `recursiveUpdateDirectory` but doesn't save to disk at the end.
-recursiveUpdateDirectoryNoSave :: forall m. (MonadUnliftIO m, MonadThrow m, Logger m) => PVar RootDirectories -> DirectoryPath -> m ()
+recursiveUpdateDirectoryNoSave :: forall m. (MonadUnliftIO m, MonadThrow m, Logger m, ImageScraper m) => PVar RootDirectories -> DirectoryPath -> m ()
 recursiveUpdateDirectoryNoSave rootsPVar startingDirPath = do
   absStartingDirPath <- directoryPathToAbsPath startingDirPath
   logDuration ("Fully updated dir " ++ absStartingDirPath) $
@@ -344,6 +347,9 @@ recursiveUpdateDirectoryNoSave rootsPVar startingDirPath = do
                   dirData
                     { directorySubDirs = Map.delete name dirData.directorySubDirs
                     }
+          ShallowDirUpdateOtherIOError e -> do
+            putLog Error $ "Tried updating a directory " ++ absDirPath ++ "; but some unexpected error happened: " ++ displayException e
+            pure roots
           ShallowDirUpdateUnchanged ->
             pure roots
           ShallowDirUpdateChanged updatedDirData ->
@@ -355,14 +361,17 @@ recursiveUpdateDirectoryNoSave rootsPVar startingDirPath = do
           nextDirPaths = addSubDir dirPath <$> nextDirNames
       loop $ rest ++ nextDirPaths
 
-recursivelyUpdateAllDirectories :: (MonadUnliftIO m, MonadThrow m, Logger m) => PVar RootDirectories -> m ()
-recursivelyUpdateAllDirectories rootsPVar = do
+recursivelyUpdateAllDirectoriesNoSave :: (MonadUnliftIO m, MonadThrow m, Logger m, ImageScraper m) => PVar RootDirectories -> m ()
+recursivelyUpdateAllDirectoriesNoSave rootsPVar = do
   -- Do all updates without saving
   logDuration "Updated all directories" $ do
     roots <- readPVar rootsPVar
     forM_ (Map.keys roots) $ \rootLocation -> do
       recursiveUpdateDirectoryNoSave rootsPVar $ rootDirectoryPath rootLocation
-  -- At the end save to disk
+
+recursivelyUpdateAllDirectories :: (MonadUnliftIO m, MonadThrow m, Logger m, ImageScraper m) => PVar RootDirectories -> m ()
+recursivelyUpdateAllDirectories rootsPVar = do
+  recursivelyUpdateAllDirectoriesNoSave rootsPVar
   saveRootsToDisk rootsPVar
 
 -- Agg data

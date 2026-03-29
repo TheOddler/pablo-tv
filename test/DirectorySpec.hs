@@ -3,11 +3,12 @@
 
 module DirectorySpec where
 
+import Control.Monad (forM_)
 import Data.Aeson (eitherDecodeFileStrict)
 import Data.Either (isRight)
 import Data.Map.Strict qualified as Map
 import Data.Text qualified as T
-import Directory (recursiveUpdateDirectoryNoSave)
+import Directory (recursiveUpdateDirectoryNoSave, recursivelyUpdateAllDirectoriesNoSave)
 import Directory.Directories
 import Directory.Files
 import Directory.Paths (DirectoryPath (..))
@@ -16,7 +17,7 @@ import PVar (newPVar, readPVar)
 import Samba (SmbServer (..), SmbShare (..))
 import Test.Syd
 import Test.Syd.Aeson
-import TestUtils (runNoLogIO)
+import TestUtils (runTestIO)
 import UnliftIO.Directory (getCurrentDirectory)
 import Util.DirPath (absPath, absPathQQ, relPathQQ)
 import Util.TextWithoutSeparator (twsQQ)
@@ -103,87 +104,122 @@ spec = do
           )
         ]
 
-  it "can read the example root" $ do
-    curDir <- getCurrentDirectory
-    let exampleRootsDir = curDir ++ "/test/Example Roots"
-    root1Path <- absPath $ T.pack exampleRootsDir <> "/Root 1"
-    let root1Location = RootAbsPath root1Path
-    rootsPVar <-
-      newPVar . Map.singleton root1Location $
+  describe "roots" rootSpec
+
+rootSpec :: Spec
+rootSpec = do
+  curDir <- getCurrentDirectory
+  let exampleRootsDir = curDir ++ "/test/Example Roots"
+
+  root1Location <- liftIO $ RootAbsPath <$> absPath (T.pack exampleRootsDir <> "/Root 1")
+  let expectedRoot1 =
         RootDirectoryData
-          { rootDirectorySubDirs = Map.empty,
-            rootDirectoryVideoFiles = Map.empty
+          { rootDirectorySubDirs =
+              [ ( DirectoryName [twsQQ|A video|],
+                  DirectoryData
+                    { directoryImage = Just (ImageFileName [twsQQ|poster.jpg|], ImageFileData ""),
+                      directorySubDirs = [],
+                      directoryVideoFiles =
+                        [ ( VideoFileName [twsQQ|video-file.mp4|],
+                            VideoFileData
+                              { videoFileAdded = read "2026-03-29 08:19:09.495531321 UTC",
+                                videoFileWatched = Nothing
+                              }
+                          )
+                        ]
+                    }
+                ),
+                ( DirectoryName [twsQQ|With sub-folders|],
+                  DirectoryData
+                    { directoryImage = Just (ImageFileName [twsQQ|the-series-poster.png|], ImageFileData ""),
+                      directorySubDirs =
+                        [ ( DirectoryName [twsQQ|Sub 1|],
+                            DirectoryData
+                              { directoryImage = Just (ImageFileName [twsQQ|poster.webp|], ImageFileData ""),
+                                directorySubDirs = [],
+                                directoryVideoFiles =
+                                  [ ( VideoFileName [twsQQ|File 1.1 - Test.mkv|],
+                                      VideoFileData
+                                        { videoFileAdded = read "2026-03-29 08:20:30.170967939 UTC",
+                                          videoFileWatched = Nothing
+                                        }
+                                    ),
+                                    ( VideoFileName [twsQQ|File 1.2 - Second.avi|],
+                                      VideoFileData
+                                        { videoFileAdded = read "2026-03-29 08:20:52.777086274 UTC",
+                                          videoFileWatched = Nothing
+                                        }
+                                    )
+                                  ]
+                              }
+                          ),
+                          ( DirectoryName [twsQQ|Sub 2|],
+                            DirectoryData
+                              { directoryImage = Nothing,
+                                directorySubDirs = [],
+                                directoryVideoFiles =
+                                  [ ( VideoFileName [twsQQ|Video 2.mov|],
+                                      VideoFileData
+                                        { videoFileAdded = read "2026-03-29 08:22:20.267529609 UTC",
+                                          videoFileWatched = Nothing
+                                        }
+                                    )
+                                  ]
+                              }
+                          )
+                        ],
+                      directoryVideoFiles = []
+                    }
+                )
+              ],
+            rootDirectoryVideoFiles = []
           }
-    let examplePath =
-          DirectoryPath
-            { directoryPathRoot = root1Location,
-              directoryPathNames = []
-            }
-    runNoLogIO $ recursiveUpdateDirectoryNoSave rootsPVar examplePath
+
+  root2Location <- liftIO $ RootAbsPath <$> absPath (T.pack exampleRootsDir <> "/Root 2")
+  let expectedRoot2 =
+        RootDirectoryData
+          { rootDirectorySubDirs =
+              [ ( DirectoryName [twsQQ|My Folder|],
+                  DirectoryData
+                    { directoryImage = Nothing,
+                      directorySubDirs = [],
+                      directoryVideoFiles =
+                        [ ( VideoFileName [twsQQ|my-home-video.mp4|],
+                            VideoFileData
+                              { videoFileAdded = read "2026-03-29 10:52:23.457432536 UTC",
+                                videoFileWatched = Nothing
+                              }
+                          )
+                        ]
+                    }
+                )
+              ],
+            rootDirectoryVideoFiles = []
+          }
+
+  let rootsInfo :: [(String, RootDirectoryLocation, RootDirectoryData)]
+      rootsInfo =
+        [ ("root 1", root1Location, expectedRoot1),
+          ("root 2", root2Location, expectedRoot2)
+        ]
+  forM_ rootsInfo $ \(name, loc, expected) -> do
+    it ("can read example " ++ name) $ do
+      rootsPVar <- newPVar [(loc, RootDirectoryData Map.empty Map.empty)]
+      let examplePath = DirectoryPath loc []
+      runTestIO $ recursiveUpdateDirectoryNoSave rootsPVar examplePath
+      updated <- readPVar rootsPVar
+      updated `shouldBe` [(loc, expected)]
+
+  it "can read all roots together" $ do
+    rootsPVar <-
+      newPVar
+        [ (root1Location, RootDirectoryData Map.empty Map.empty),
+          (root2Location, RootDirectoryData Map.empty Map.empty)
+        ]
+    runTestIO $ recursivelyUpdateAllDirectoriesNoSave rootsPVar
     updated <- readPVar rootsPVar
     let expected =
-          [ ( root1Location,
-              RootDirectoryData
-                { rootDirectorySubDirs =
-                    [ ( DirectoryName [twsQQ|A video|],
-                        DirectoryData
-                          { directoryImage = Just (ImageFileName [twsQQ|poster.jpg|], ImageFileData ""),
-                            directorySubDirs = [],
-                            directoryVideoFiles =
-                              [ ( VideoFileName [twsQQ|video-file.mp4|],
-                                  VideoFileData
-                                    { videoFileAdded = read "2026-03-29 08:19:09.495531321 UTC",
-                                      videoFileWatched = Nothing
-                                    }
-                                )
-                              ]
-                          }
-                      ),
-                      ( DirectoryName [twsQQ|With sub-folders|],
-                        DirectoryData
-                          { directoryImage = Just (ImageFileName [twsQQ|the-series-poster.png|], ImageFileData ""),
-                            directorySubDirs =
-                              [ ( DirectoryName [twsQQ|Sub 1|],
-                                  DirectoryData
-                                    { directoryImage = Just (ImageFileName [twsQQ|poster.webp|], ImageFileData ""),
-                                      directorySubDirs = [],
-                                      directoryVideoFiles =
-                                        [ ( VideoFileName [twsQQ|File 1.1 - Test.mkv|],
-                                            VideoFileData
-                                              { videoFileAdded = read "2026-03-29 08:20:30.170967939 UTC",
-                                                videoFileWatched = Nothing
-                                              }
-                                          ),
-                                          ( VideoFileName [twsQQ|File 1.2 - Second.avi|],
-                                            VideoFileData
-                                              { videoFileAdded = read "2026-03-29 08:20:52.777086274 UTC",
-                                                videoFileWatched = Nothing
-                                              }
-                                          )
-                                        ]
-                                    }
-                                ),
-                                ( DirectoryName [twsQQ|Sub 2|],
-                                  DirectoryData
-                                    { directoryImage = Nothing,
-                                      directorySubDirs = [],
-                                      directoryVideoFiles =
-                                        [ ( VideoFileName [twsQQ|Video 2.mov|],
-                                            VideoFileData
-                                              { videoFileAdded = read "2026-03-29 08:22:20.267529609 UTC",
-                                                videoFileWatched = Nothing
-                                              }
-                                          )
-                                        ]
-                                    }
-                                )
-                              ],
-                            directoryVideoFiles = []
-                          }
-                      )
-                    ],
-                  rootDirectoryVideoFiles = []
-                }
-            )
+          [ (root1Location, expectedRoot1),
+            (root2Location, expectedRoot2)
           ]
     updated `shouldBe` expected

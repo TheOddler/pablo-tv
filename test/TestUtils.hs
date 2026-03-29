@@ -4,18 +4,19 @@ module TestUtils where
 
 import Control.Monad.Catch (MonadThrow)
 import Control.Monad.IO.Class (MonadIO (..))
+import ImageScraper (ImageScraper (..), ImageSearchFailure (..))
 import Logging (Logger (..))
 import Test.Syd.Discover ()
 import UnliftIO (MonadUnliftIO)
 
-newtype NoLogIO a = NoLogIO {unNoLogIO :: IO a}
+newtype TestIO a = NoLogIO {runTestIO :: IO a}
   deriving (Functor, Applicative, Monad, MonadIO, MonadUnliftIO, MonadThrow)
 
-instance Logger NoLogIO where
+instance Logger TestIO where
   putLogBS _ _ = pure ()
 
-runNoLogIO :: NoLogIO a -> IO a
-runNoLogIO = unNoLogIO
+instance ImageScraper TestIO where
+  tryFindImage _ = pure $ Left ImageSearchFailedScraping
 
 labeledExpectationFailure :: (Show err) => String -> err -> a
 labeledExpectationFailure label err = error $ label ++ ": " ++ show err

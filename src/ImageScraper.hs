@@ -1,11 +1,12 @@
 module ImageScraper where
 
-import Control.Exception
+import Control.Exception (displayException)
 import Control.Monad.IO.Class (MonadIO (..))
 import Data.ByteString qualified as BS
 import Data.Either.Extra (mapLeft)
 import Data.List.Extra (replace)
 import Data.Text qualified as T
+import Foundation (Handler)
 import Network.HTTP.Client (Response (..))
 import Network.HTTP.Req
 import Network.HTTP.Req qualified as HTTP
@@ -21,8 +22,14 @@ data ImageSearchFailure
   | ImageSearchDownloadFailed String
   deriving (Show)
 
-tryFindImage :: (MonadIO m) => T.Text -> m (Either ImageSearchFailure (ContentType, BS.ByteString))
-tryFindImage searchText = do
+class (Monad m) => ImageScraper m where
+  tryFindImage :: T.Text -> m (Either ImageSearchFailure (ContentType, BS.ByteString))
+
+instance ImageScraper Handler where
+  tryFindImage = tryFindImageIO
+
+tryFindImageIO :: (MonadIO m) => T.Text -> m (Either ImageSearchFailure (ContentType, BS.ByteString))
+tryFindImageIO searchText = do
   mImgUrl <- liftIO $ scrapeURL (T.unpack url) firstImageUrl
   case mImgUrl of
     Nothing -> pure $ Left ImageSearchFailedScraping
