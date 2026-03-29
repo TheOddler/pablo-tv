@@ -18,6 +18,7 @@
           watchexec
           nil
           haskellPackages.weeder
+          haskellPackages.cabal-gild
         ];
         runtimeInputs = with pkgs; [
           libevdev

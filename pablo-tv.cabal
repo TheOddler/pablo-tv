@@ -1,146 +1,150 @@
-cabal-version:      3.0
-name:               pablo-tv
-version:            0.1.0.0
+cabal-version: 3.0
+name: pablo-tv
+version: 0.1.0.0
 synopsis: An attempt at making some kind of smart tv app
 -- description:
-license:            NONE
-author:             Pablo Bollansee
-build-type:         Simple
+license: NONE
+author: Pablo Bollansee
+build-type: Simple
 -- extra-doc-files:    README.md
 extra-source-files:
-    templates/**/*.hamlet
-    templates/**/*.julius
-    templates/**/*.cassius
-    templates/**/*.lucius
+  templates/**/*.cassius
+  templates/**/*.hamlet
+  templates/**/*.julius
+  templates/**/*.lucius
 
-Flag development
-  Description:   Turn on development build
-  Default:       False
+flag development
+  description: Turn on development build
+  default: False
 
 common defaults
-    default-language: GHC2021
-    build-depends: base >=4.18.2.1 && <5
-    ghc-options:
-        -Wall
-        -Wcompat
-        -Wincomplete-record-updates
-        -Wredundant-constraints
-        -Wunused-packages
-        -threaded
-        -rtsopts
-        -with-rtsopts=-N
-        -freverse-errors
-        -fwrite-ide-info
-    default-extensions:
-        LambdaCase
-        OverloadedRecordDot
-        OverloadedStrings
-        StrictData
+  default-language: GHC2021
+  build-depends: base >=4.18.2.1 && <5
+  ghc-options:
+    -Wall
+    -Wcompat
+    -Wincomplete-record-updates
+    -Wredundant-constraints
+    -Wunused-packages
+    -threaded
+    -rtsopts
+    -with-rtsopts=-N
+    -freverse-errors
+    -fwrite-ide-info
+
+  default-extensions:
+    LambdaCase
+    OverloadedRecordDot
+    OverloadedStrings
+    StrictData
 
 library
-    import:           defaults
-    hs-source-dirs:   src
-    exposed-modules:
-        Actions
-        Directory
-        Directory.Directories
-        Directory.Files
-        Directory.Paths
-        Foundation
-        ImageScraper
-        IsDevelopment
-        LibMain
-        Logging
-        Mpris
-        Orphanage
-        PVar
-        SafeConvert
-        Samba
-        TVState
-        Util
-        Util.DirPath
-        Util.Regex
-        Util.TextWithoutSeparator
-    if flag(development)
-        cpp-options: -DDEVELOPMENT
-    build-depends:
-        aeson
-      , base64-bytestring
-      , blaze-markup
-      , bytestring
-      , containers
-      , data-default
-      , dbus
-      , directory
-      , evdev
-      , exceptions
-      , extra
-      , filepath
-      , ghc
-      , hashable
-      , http-client
-      , http-types
-      , modern-uri
-      , natural-sort
-      , network-info
-      , network-uri
-      , process
-      , random
-      -- Later versions of random have a shuffle function, but for now we need this package
-      , random-shuffle
-      , regex-tdfa
-      , req
-      , scalpel
-      , scientific
-      , shakespeare
-      , stm
-      , template-haskell
-      , text
-      , time
-      , transformers
-      , unix
-      , unliftio
-      , unordered-containers
-      , utf8-string
-      , warp
-      , websockets
-      , yesod
-      , yesod-static
-      , yesod-websockets
+  import: defaults
+  hs-source-dirs: src
+  exposed-modules:
+    Actions
+    Directory
+    Directory.Directories
+    Directory.Files
+    Directory.Paths
+    Foundation
+    ImageScraper
+    IsDevelopment
+    LibMain
+    Logging
+    Mpris
+    Orphanage
+    PVar
+    SafeConvert
+    Samba
+    TVState
+    Util
+    Util.DirPath
+    Util.Regex
+    Util.TextWithoutSeparator
+
+  if flag(development)
+    cpp-options: -DDEVELOPMENT
+  build-depends:
+    -- Later versions of random have a shuffle function, but for now we need this package
+    aeson,
+    base64-bytestring,
+    blaze-markup,
+    bytestring,
+    containers,
+    data-default,
+    dbus,
+    directory,
+    evdev,
+    exceptions,
+    extra,
+    filepath,
+    ghc,
+    hashable,
+    http-client,
+    http-types,
+    modern-uri,
+    natural-sort,
+    network-info,
+    network-uri,
+    process,
+    random,
+    random-shuffle,
+    regex-tdfa,
+    req,
+    scalpel,
+    scientific,
+    shakespeare,
+    stm,
+    template-haskell,
+    text,
+    time,
+    transformers,
+    unix,
+    unliftio,
+    unordered-containers,
+    utf8-string,
+    warp,
+    websockets,
+    yesod,
+    yesod-static,
+    yesod-websockets,
 
 executable pablo-tv
-    import:           defaults
-    hs-source-dirs:   app
-    main-is:          Main.hs
-    -- other-modules:
-    build-depends:
-        pablo-tv
+  import: defaults
+  hs-source-dirs: app
+  main-is: Main.hs
+  -- other-modules:
+  build-depends:
+    pablo-tv
 
 test-suite pablo-tv-test
-    import:           defaults
-    hs-source-dirs:   test
-    main-is:          Spec.hs
-    type:             exitcode-stdio-1.0
-    other-modules:
-        ActionsSpec
-        DirectorySpec
-        Orphanage
-        PVarSpec
-        TestUtils
-        WebSpec
-    build-depends:
-        aeson
-      , bytestring
-      , containers
-      , exceptions
-      , generic-random
-      , pablo-tv
-      , QuickCheck
-      , quickcheck-instances
-      , sydtest
-      , sydtest-aeson
-      , sydtest-discover
-      , sydtest-yesod
-      , text
-      , unliftio
-      , unordered-containers
+  import: defaults
+  hs-source-dirs: test
+  main-is: Spec.hs
+  type: exitcode-stdio-1.0
+  other-modules:
+    ActionsSpec
+    DirectorySpec
+    Orphanage
+    PVarSpec
+    TestUtils
+    WebSpec
+
+  build-depends:
+    QuickCheck,
+    aeson,
+    bytestring,
+    containers,
+    exceptions,
+    generic-random,
+    pablo-tv,
+    quickcheck-instances,
+    sydtest,
+    sydtest-aeson,
+    sydtest-discover,
+    sydtest-yesod,
+    text,
+    time,
+    unliftio,
+    unordered-containers,
