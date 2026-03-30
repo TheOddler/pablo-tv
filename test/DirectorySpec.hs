@@ -5,6 +5,7 @@ module DirectorySpec where
 
 import Control.Monad (forM_)
 import Data.Aeson (eitherDecodeFileStrict)
+import Data.ByteString.Char8 qualified as BS8
 import Data.Either (isRight)
 import Data.Map.Strict qualified as Map
 import Data.Text qualified as T
@@ -14,13 +15,18 @@ import Directory.Files
 import Directory.Paths (DirectoryPath (..))
 import Orphanage ()
 import PVar (newPVar, readPVar)
+import Path (toFilePath)
 import Samba (SmbServer (..), SmbShare (..))
+import System.Directory (createDirectory)
+import System.FilePath ((</>))
+import System.Posix.ByteString (RawFilePath, closeFd, createFile)
 import Test.Syd
 import Test.Syd.Aeson
-import TestUtils (runTestIO, testModificationTime)
+import Test.Syd.Path (tempDirSpec)
+import TestUtils (runTestIO, testCurrentTime, testModificationTime)
 import UnliftIO.Directory (getCurrentDirectory)
 import Util.DirPath (absPath, absPathQQ, relPathQQ)
-import Util.TextWithoutSeparator (twsQQ)
+import Util.TextWithoutSeparator (removeSeparatorsFromText, twsQQ)
 
 spec :: Spec
 spec = do
@@ -105,6 +111,7 @@ spec = do
         ]
 
   describe "roots" rootSpec
+  describe "broken files" brokenFileSpec
 
 rootSpec :: Spec
 rootSpec = do
@@ -223,3 +230,52 @@ rootSpec = do
             (root2Location, expectedRoot2)
           ]
     liftIO $ updated `shouldBe` expected
+
+brokenFileSpec :: Spec
+brokenFileSpec = do
+  tempDirSpec "invalid names" $
+    it "correctly handles files with invalid names" $ \tempDirPath' -> do
+      -- We cannot commit a file with an invalid character like this in git, so have to create the file (and a folder for it to live in) here
+      let tempDirPath = toFilePath tempDirPath'
+      let folderPath = tempDirPath </> "my test folder/"
+      createDirectory folderPath
+      let invalidFilePath :: RawFilePath
+          -- \x80\xff is some invalid character
+          invalidFilePath = BS8.pack folderPath <> "invalid_\x80\xff_file.mp4"
+      fd <- createFile invalidFilePath 0o644
+      closeFd fd
+
+      -- Now the actual test
+      runTestIO $ do
+        rootLocation <- liftIO $ RootAbsPath <$> absPath (T.pack tempDirPath)
+        rootsPVar <-
+          newPVar
+            [ (rootLocation, RootDirectoryData Map.empty Map.empty)
+            ]
+        recursivelyUpdateAllDirectoriesNoSave rootsPVar
+        updated <- readPVar rootsPVar
+        let expectedRoot =
+              RootDirectoryData
+                { rootDirectorySubDirs =
+                    [ ( DirectoryName [twsQQ|my test folder|],
+                        DirectoryData
+                          { directoryImage = Nothing,
+                            directorySubDirs = [],
+                            directoryVideoFiles =
+                              [ ( VideoFileName $ removeSeparatorsFromText "invalid_\65533\65533_file.mp4",
+                                  VideoFileData
+                                    { -- On broken file names we fall back to the current time, as we cannot read the mod time
+                                      videoFileAdded = testCurrentTime,
+                                      videoFileWatched = Nothing
+                                    }
+                                )
+                              ]
+                          }
+                      )
+                    ],
+                  rootDirectoryVideoFiles = []
+                }
+        let expected =
+              [ (rootLocation, expectedRoot)
+              ]
+        liftIO $ updated `shouldBe` expected
