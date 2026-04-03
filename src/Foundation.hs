@@ -73,6 +73,8 @@ mkEmbeddedStatic
 
 instance Yesod App where
   addStaticContent = embedStaticContent appGetStatic StaticR Right
+  makeSessionBackend :: App -> IO (Maybe SessionBackend)
+  makeSessionBackend _ = pure Nothing
   defaultLayout :: Widget -> Handler Html
   defaultLayout widget = do
     isTv <- isTvRequest
