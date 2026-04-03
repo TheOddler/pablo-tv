@@ -92,7 +92,7 @@ import System.Process (callProcess)
 import System.Random (initStdGen, mkStdGen)
 import TVState (startingTVState, tvStateWebSocket)
 import Transformers (LoggerT (..), SafeIOT (..), runLoggerT)
-import UnliftIO (tryAny)
+import UnliftIO (BufferMode (..), hSetBuffering, stderr, stdout, tryAny)
 import Util
   ( logDuration,
     naturalSortBy,
@@ -425,7 +425,15 @@ main = do
         if "--log-debug" `elem` args
           then Debug
           else Info
+  let logBuffering =
+        -- By default Haskell does block buffering, but I want line buffering by default
+        if "--log-block-buffering" `elem` args
+          then BlockBuffering Nothing
+          else LineBuffering
   runLoggerT minLogLevel . runSafeIOT $ do
+    runIOSafely_ $ hSetBuffering stdout logBuffering
+    runIOSafely_ $ hSetBuffering stderr logBuffering
+
     putLog Info $ "Terminal arguments: " ++ show args
     putLog Info $ "Min log level: " ++ show minLogLevel
 
