@@ -2,10 +2,10 @@ module Samba where
 
 import Data.List (isInfixOf)
 import GHC.IO.Exception (ExitCode (..))
-import SafeIO (SafeIO, unsafePinkyPromiseThisIsSafe)
+import SafeIO (SafeIO, runIOSafely, unsafePinkyPromiseThisIsSafe)
 import System.Posix (getEffectiveUserID)
 import System.Process (readProcessWithExitCode)
-import Yesod (FromJSON, MonadIO (liftIO), PathPiece, ToJSON)
+import Yesod (FromJSON, PathPiece, ToJSON)
 
 newtype SmbServer = SmbServer {unSmbServer :: String}
   deriving
@@ -33,22 +33,24 @@ data MountResult
   = MountedSuccessfully
   | AlreadyMounted
   | FailedMounting String
+  | FailedMountingIOError IOError
   deriving (Show)
 
 -- | This uses Gnome's gio to mount stuff. So probably won't work on anything else.
 -- Maybe some day I'll figure out a way of doing this without needing Gnome. Looks like I can use `cifs-utils` for that.
-mount :: (MonadIO m) => SmbServer -> SmbShare -> m MountResult
+mount :: (SafeIO m) => SmbServer -> SmbShare -> m MountResult
 mount (SmbServer svr) (SmbShare shr) = do
   result <-
-    liftIO $
+    runIOSafely $
       readProcessWithExitCode
         "gio"
         ["mount", "smb://" ++ svr ++ "/" ++ shr]
         ""
   pure $ case result of
-    (ExitSuccess, _, _) -> MountedSuccessfully
-    (_, _, err) | "Location is already mounted" `isInfixOf` err -> AlreadyMounted
-    (_exitCode, _output, err) -> FailedMounting err
+    Left ioErr -> FailedMountingIOError ioErr
+    Right (ExitSuccess, _, _) -> MountedSuccessfully
+    Right (_, _, err) | "Location is already mounted" `isInfixOf` err -> AlreadyMounted
+    Right (_exitCode, _output, err) -> FailedMounting err
 
 -- | Requires IO as it needs to find the user id
 -- This assumes the location where Gnome's gio mounts stuff

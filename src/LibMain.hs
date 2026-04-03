@@ -371,7 +371,7 @@ getDebugR = do
 
   defaultLayout "Debug" $(widgetFile "debug")
 
-mountAllSambaShares :: (MonadIO m, Logger m) => RootDirectories -> m ()
+mountAllSambaShares :: (SafeIO m, Logger m) => RootDirectories -> m ()
 mountAllSambaShares roots = do
   let sambaShares =
         mapMaybe
