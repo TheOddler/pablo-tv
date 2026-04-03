@@ -1,6 +1,7 @@
 module SafeIO where
 
 import Control.Exception (IOException)
+import Control.Monad (void)
 import Control.Monad.Trans.Class (MonadTrans (..))
 import Control.Monad.Trans.Reader (ReaderT (..))
 import Data.Time (UTCTime)
@@ -41,3 +42,6 @@ catchAny io onException = do
   case resultOrErr of
     Right result -> pure result
     Left e -> onException e
+
+runIOSafely_ :: (SafeIO m) => IO a -> m ()
+runIOSafely_ = void . runIOSafely

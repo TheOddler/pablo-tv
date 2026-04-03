@@ -84,7 +84,7 @@ import Network.Info (NetworkInterface (..), getNetworkInterfaces)
 import Network.Wai.Handler.Warp (run)
 import PVar (PVar, PVarState (..), modifyPVar_, newPVar, readPVar, readPVarState)
 import SafeConvert (humanReadableBytes)
-import SafeIO (SafeIO)
+import SafeIO (SafeIO, runIOSafely_)
 import Samba (MountResult, SmbServer (..), SmbShare (..), mount)
 import System.Environment (getArgs)
 import System.FilePath (pathSeparator)
@@ -489,7 +489,7 @@ main = do
     -- Only open the browser automatically in production because it's annoying in
     -- development as it opens a new tab every time the server restarts.
     -- Do this as late as possible, because if we're too fast the server won't actually respond yet.
-    when (not isDevelopment) . liftIO $
+    when (not isDevelopment) . runIOSafely_ $
       callProcess "xdg-open" [url]
 
     putLog Info "Starting server..."
