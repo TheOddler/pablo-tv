@@ -22,6 +22,8 @@
         ];
         runtimeInputs = with pkgs; [
           libevdev
+          xdg-utils
+          gtk3
         ];
       in
       rec {
