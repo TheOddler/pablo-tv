@@ -32,6 +32,7 @@ import Directory
   ( AggDirInfo (..),
     findDirWithImageFor,
     getDirectoryAtPath,
+    getMemoryFileDir,
     getSubDirAggInfo,
     loadRootsFromDisk,
     saveRootsToDisk,
@@ -428,17 +429,14 @@ main = do
     putLog Info $ "Terminal arguments: " ++ show args
     putLog Info $ "Min log level: " ++ show minLogLevel
 
-    inputDevice <- mkInputDevice
-    tvState <- liftIO $ newTVarIO startingTVState
-
     let port = 8080
     let (homePath, _params) = renderRoute HomeR
     let url = "http://localhost:" ++ show port ++ "/" ++ unpack (Text.intercalate "/" homePath)
     putLog Info $ "Running on port " ++ show port ++ " - " ++ url
     putLog Info $ "Development mode: " ++ show isDevelopment
 
-    player <- getFirstMediaPlayer
-    lastActivePlayerTVar <- liftIO $ newTVarIO player
+    memoryFileDir <- getMemoryFileDir
+    putLog Info $ "Memory file(s) directory: " ++ memoryFileDir
 
     mRootDirs <- loadRootsFromDisk
     let emptyRootData = RootDirectoryData Map.empty Map.empty
@@ -457,6 +455,16 @@ main = do
 
     -- Get the log func
     logFunc <- SafeIOT $ LoggerT ask
+
+    -- Create input device
+    inputDevice <- mkInputDevice
+
+    -- Create empty tv state
+    tvState <- liftIO $ newTVarIO startingTVState
+
+    -- Get Mpris stuff
+    player <- getFirstMediaPlayer
+    lastActivePlayerTVar <- liftIO $ newTVarIO player
 
     -- The thread for the app
     let app =
