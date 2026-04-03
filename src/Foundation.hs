@@ -17,7 +17,7 @@ import Evdev.Uinput (Device)
 import GHC.Conc (TVar)
 import GHC.Utils.Misc (sortWith)
 import IsDevelopment (isDevelopment)
-import Logging (LogFunc, Logger (..))
+import Logging (LogFunc, LogSlidingWindow, Logger (..))
 import Mpris (MediaPlayer)
 import Network.Info (getNetworkInterfaces)
 import PVar (PVar)
@@ -33,6 +33,7 @@ import Yesod.EmbeddedStatic
 data App = App
   { appPort :: Int,
     appLogFunc :: LogFunc IO,
+    appLogSlidingWindow :: LogSlidingWindow,
     appInputDevice :: Device,
     appGetStatic :: EmbeddedStatic,
     appLastActivePlayer :: TVar (Maybe MediaPlayer),
@@ -123,9 +124,9 @@ defaultLayout title widget = Yesod.defaultLayout $ do
   widget
 
 instance Logger Handler where
-  putLogBS lvl msg = do
+  putLogMsg msg = do
     logFunc <- getsYesod appLogFunc
-    liftIO $ logFunc lvl msg
+    liftIO $ logFunc msg
 
 instance SafeIO Handler where
   runIOSafely = runSafeIOT . runIOSafely

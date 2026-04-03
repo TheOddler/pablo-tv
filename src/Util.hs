@@ -210,8 +210,8 @@ failE label e = do
   throwM e
 
 logOnErrorIO :: (SafeIO m, Logger m) => Logging.LogLevel -> String -> IO () -> m ()
-logOnErrorIO logLevel prefix io = do
+logOnErrorIO logLevel desc io = do
   resultOrErr <- runIOSafely io
   case resultOrErr of
     Right result -> pure result
-    Left e -> putLog logLevel $ prefix ++ ": " ++ displayException e
+    Left e -> putLog logLevel $ "Failed " ++ desc ++ ": " ++ displayException e

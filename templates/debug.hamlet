@@ -40,3 +40,19 @@ $case runtimeStats
       <summary>Raw
       <pre>
         #{show stats}
+
+<h1>Logs
+
+<button onClick="toggleShowDebug()">Toggle Debug
+
+<table id="logs" class="hide-debug">
+  <thead>
+    <tr>
+      <th>Time
+      <th>Message
+  <tbody>
+    $forall logMsg <- logMsgs
+      <tr class=#{logClass logMsg}>
+        <td class="time">#{prettyLogTime logMsg}
+        <td>#{logMsg.logMsg}
+

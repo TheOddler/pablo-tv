@@ -1,0 +1,25 @@
+#logs {
+  .time {
+    white-space: nowrap;
+  }
+
+  .debug .time {
+    color: lightblue;
+  }
+
+  &.hide-debug .debug {
+    display: none;
+  }
+
+  .info .time {
+    color: cyan;
+  }
+
+  .warning .time {
+    color: yellow;
+  }
+
+  .error .time {
+    color: red;
+  }
+}

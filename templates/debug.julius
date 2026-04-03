@@ -1,0 +1,5 @@
+function toggleShowDebug() {
+  console.log("toggleShowDebug");
+  const logsElement = document.getElementById("logs");
+  logsElement.classList.toggle("hide-debug");
+}

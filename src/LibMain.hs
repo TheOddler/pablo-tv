@@ -27,6 +27,7 @@ import Data.Ord (Down (..))
 import Data.Text (Text, unpack)
 import Data.Text qualified as T
 import Data.Text qualified as Text
+import Data.Time (defaultTimeLocale, formatTime)
 import Data.Tuple.Extra (fst3)
 import Directory
   ( AggDirInfo (..),
@@ -78,13 +79,13 @@ import GHC.Data.Maybe (firstJustsM)
 import GHC.Stats (GCDetails (..), RTSStats (..), getRTSStats)
 import GHC.Utils.Misc (sortWith)
 import IsDevelopment (isDevelopment)
-import Logging (LogLevel (..), Logger, putLog)
+import Logging (LogLevel (..), LogMsg (..), Logger, mkLogSlidingWindow, putLog, readLogSlidingWindow)
 import Mpris (MediaPlayer, MprisAction (..), getFirstMediaPlayer, mediaListener)
 import Network.Info (NetworkInterface (..), getNetworkInterfaces)
 import Network.Wai.Handler.Warp (run)
 import PVar (PVar, PVarState (..), modifyPVar_, newPVar, readPVar, readPVarState)
 import SafeConvert (humanReadableBytes)
-import SafeIO (SafeIO, runIOSafely_)
+import SafeIO (SafeIO)
 import Samba (MountResult, SmbServer (..), SmbShare (..), mount)
 import System.Environment (getArgs)
 import System.FilePath (pathSeparator)
@@ -95,6 +96,7 @@ import Transformers (LoggerT (..), SafeIOT (..), runLoggerT)
 import UnliftIO (BufferMode (..), hSetBuffering, stderr, stdout, tryAny)
 import Util
   ( logDuration,
+    logOnErrorIO,
     naturalSortBy,
     networkInterfaceWorthiness,
     raceAll,
@@ -369,6 +371,16 @@ getDebugR = do
 
   runtimeStats <- liftIO $ tryAny getRTSStats
 
+  logMsgs <- readLogSlidingWindow app.appLogSlidingWindow
+  let logClass :: LogMsg -> String
+      logClass msg = case msg.logMsgLevel of
+        Debug -> "debug"
+        Info -> "info"
+        Warning -> "warning"
+        Error -> "error"
+  let prettyLogTime :: LogMsg -> String
+      prettyLogTime msg = formatTime defaultTimeLocale "%H:%M:%S" msg.logMsgTime
+
   defaultLayout "Debug" $(widgetFile "debug")
 
 mountAllSambaShares :: (SafeIO m, Logger m) => RootDirectories -> m ()
@@ -430,9 +442,12 @@ main = do
         if "--log-block-buffering" `elem` args
           then BlockBuffering Nothing
           else LineBuffering
-  runLoggerT minLogLevel . runSafeIOT $ do
-    runIOSafely_ $ hSetBuffering stdout logBuffering
-    runIOSafely_ $ hSetBuffering stderr logBuffering
+  logWindow <- mkLogSlidingWindow 1000
+  runLoggerT logWindow minLogLevel . runSafeIOT $ do
+    logOnErrorIO Error ("setting log buffering stdout to " ++ show logBuffering) $
+      hSetBuffering stdout logBuffering
+    logOnErrorIO Error ("setting log buffering stdout to " ++ show logBuffering) $
+      hSetBuffering stderr logBuffering
 
     putLog Info $ "Terminal arguments: " ++ show args
     putLog Info $ "Min log level: " ++ show minLogLevel
@@ -462,7 +477,7 @@ main = do
     mountAllSambaShares rootDirs
 
     -- Get the log func
-    logFunc <- SafeIOT $ LoggerT ask
+    (logFunc, _) <- SafeIOT $ LoggerT ask
 
     -- Create input device
     inputDevice <- mkInputDevice
@@ -479,6 +494,7 @@ main = do
           App
             { appPort = port,
               appLogFunc = logFunc,
+              appLogSlidingWindow = logWindow,
               appInputDevice = inputDevice,
               appTVState = tvState,
               appGetStatic = embeddedStatic,
@@ -497,7 +513,7 @@ main = do
     -- Only open the browser automatically in production because it's annoying in
     -- development as it opens a new tab every time the server restarts.
     -- Do this as late as possible, because if we're too fast the server won't actually respond yet.
-    when (not isDevelopment) . runIOSafely_ $
+    when (not isDevelopment) . logOnErrorIO Warning "opening pablo-tv home" $
       callProcess "xdg-open" [url]
 
     putLog Info "Starting server..."

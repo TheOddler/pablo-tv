@@ -1,16 +1,29 @@
+{-# LANGUAGE DefaultSignatures #-}
+
 module Logging
   ( Logger (..),
     LogFunc,
+    LogMsg (..),
     LogLevel (..),
+    LogSlidingWindow,
     putLog,
     putLogWithMinLvlIO,
+    mkLogSlidingWindow,
+    readLogSlidingWindow,
   )
 where
 
+import Control.Concurrent.STM (TVar, atomically, newTVarIO, readTVar, readTVarIO, writeTVar)
 import Control.Monad (when)
-import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.ByteString qualified as BS
 import Data.ByteString.UTF8 qualified as BS
+import Data.Queue.Bounded qualified as BQ
+import Data.Text qualified as T
+import Data.Text.Encoding qualified as T
+import Data.Time (UTCTime)
+import SafeIO (SafeIO (..))
+import System.IO (Handle, stderr, stdout)
+import UnliftIO (MonadIO (..))
 import Yesod (lift)
 import Yesod.WebSockets (WebSocketsT)
 
@@ -21,13 +34,29 @@ data LogLevel
   | Error
   deriving (Eq, Ord, Show)
 
-type LogFunc m = LogLevel -> BS.ByteString -> m ()
+data LogMsg = LogMsg
+  { logMsgLevel :: LogLevel,
+    logMsgTime :: UTCTime,
+    logMsg :: T.Text
+  }
 
-class Logger m where
-  putLogBS :: LogFunc m
+type LogFunc m = LogMsg -> m ()
+
+class (Monad m) => Logger m where
+  putLogMsg :: LogMsg -> m ()
+  getLogTime :: m UTCTime
+  default getLogTime :: (SafeIO m) => m UTCTime
+  getLogTime = getCurrentTime
 
 putLog :: (Logger m) => LogLevel -> String -> m ()
-putLog level = putLogBS level . BS.fromString
+putLog level msg = do
+  time <- getLogTime
+  putLogMsg
+    LogMsg
+      { logMsgLevel = level,
+        logMsgTime = time,
+        logMsg = T.pack msg
+      }
 
 logLevelColour :: LogLevel -> BS.ByteString
 logLevelColour = \case
@@ -39,21 +68,44 @@ logLevelColour = \case
 defaultColour :: BS.ByteString
 defaultColour = "\ESC[0m"
 
--- | Use putStr from the bytestring module as that seems to be concurrency safe?
+logLevelHandle :: LogLevel -> Handle
+logLevelHandle = \case
+  Debug -> stdout
+  Info -> stdout
+  Warning -> stdout
+  Error -> stderr
+
+-- | Use hPut from the bytestring module as that seems to be concurrency safe?
 -- Don't use putStrLn as that isn't. Instead append the newline, even though that requires more memory.
-putLogWithMinLvlIO :: (MonadIO m) => LogLevel -> LogFunc m
-putLogWithMinLvlIO minLogLevel level msg =
-  when (level >= minLogLevel) $
-    liftIO . BS.putStr $
+putLogWithMinLvlIO :: (MonadIO m) => LogSlidingWindow -> LogLevel -> LogFunc m
+putLogWithMinLvlIO logWindow minLogLevel msg = do
+  -- Always add to the queues, regardless of minimum log level
+  addLogToSlidingWindow logWindow msg
+  -- Also log to strout/err
+  when (msg.logMsgLevel >= minLogLevel) $
+    liftIO . BS.hPut (logLevelHandle msg.logMsgLevel) $
       mconcat
         [ defaultColour,
           BS.fromString "➫ ", -- This ensure correct encoding of the arrow
-          logLevelColour level,
-          msg,
+          logLevelColour msg.logMsgLevel,
+          T.encodeUtf8 msg.logMsg,
           defaultColour,
           "\n"
         ]
 
-instance (Monad m, Logger m) => Logger (WebSocketsT m) where
-  putLogBS lvl msg = do
-    lift $ putLogBS lvl msg
+instance (Logger m, SafeIO m) => Logger (WebSocketsT m) where
+  putLogMsg msg = lift $ putLogMsg msg
+
+newtype LogSlidingWindow = LogSlidingWindow (TVar (BQ.BQueue LogMsg))
+
+mkLogSlidingWindow :: Int -> IO LogSlidingWindow
+mkLogSlidingWindow size = LogSlidingWindow <$> newTVarIO (BQ.empty size)
+
+addLogToSlidingWindow :: (MonadIO m) => LogSlidingWindow -> LogMsg -> m ()
+addLogToSlidingWindow (LogSlidingWindow queueTVar) logMsg = do
+  liftIO $ atomically $ do
+    queue <- readTVar queueTVar
+    writeTVar queueTVar $ BQ.cons logMsg queue
+
+readLogSlidingWindow :: (MonadIO m) => LogSlidingWindow -> m (BQ.BQueue LogMsg)
+readLogSlidingWindow (LogSlidingWindow queueTVar) = liftIO $ readTVarIO queueTVar

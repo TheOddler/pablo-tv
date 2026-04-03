@@ -91,7 +91,7 @@ saveRootsToDisk :: (SafeIO m, Logger m) => PVar RootDirectories -> m ()
 saveRootsToDisk rootsPvar = logDuration "Saved roots to disk" $
   modifyPVar_ rootsPvar "Saving roots to disk" $ \roots -> do
     memoryDir <- getMemoryFileDir
-    logOnErrorIO Error "Failed saving roots to disk" $ do
+    logOnErrorIO Error "saving roots to disk" $ do
       createDirectoryIfMissing True memoryDir
       encodeFile (memoryDir </> memoryFileName) roots
     pure roots

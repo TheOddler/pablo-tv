@@ -72,6 +72,7 @@ library
     aeson,
     base64-bytestring,
     blaze-markup,
+    bounded-queue,
     bytestring,
     containers,
     data-default,
