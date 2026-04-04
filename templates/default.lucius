@@ -69,7 +69,8 @@ header {
 
   >a,
   >a:visited,
-  >div {
+  >div,
+  >button {
     display: flex;
     justify-content: center;
     gap: 0.75rem;

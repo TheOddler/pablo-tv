@@ -27,7 +27,7 @@
     <button 
       class="like-link"
       onclick="sendActionOnClick(event)"
-      data-action="#{ActionRefreshAllDirectoryData}"
+      data-action="#{refreshAction}"
     >
       <i class="fa-solid fa-arrows-rotate">
       Refresh library

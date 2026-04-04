@@ -18,19 +18,20 @@ async function sendAction(action) {
   });
 }
 
-async function sendActionOnClick(event, refreshPageAfter = true, disableButtonDuring = true) {
+async function sendActionOnClick(event, refreshPageAfter = true, disableThisDuring = true) {
   // A function meant to be used on buttons or similar:
   // It'll send the action, disable the element, and then refresh the page when the action returns.
   // It requires the event object so it can disable the element, and prevent default.
   // It reads the action from a data-action attribute to resolve html/js encoding problems (essentially to allow some special characters like ' or & in path names).
   event.preventDefault()
-  if (disableButtonDuring) {
-    event.target.disabled = true;
+  const element = event.currentTarget;
+  if (disableThisDuring) {
+    element.disabled = true;
   }
-  const action = event.currentTarget.dataset.action;
+  const action = element.dataset.action;
   await sendAction(action)
-  if (disableButtonDuring) {
-    event.target.disabled = false;
+  if (disableThisDuring) {
+    element.disabled = false;
   }
   if (refreshPageAfter) {
     document.location.reload();
