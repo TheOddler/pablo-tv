@@ -65,8 +65,8 @@ $if (not $ null dirs)
 $maybe (label, action) <- refreshDirectoryLabelAndAction
   <h3>
     <button 
-      class="like-link"
-      onclick="sendActionOnClick(event)"
+      class="like-link refresh-button"
+      onclick="sendRefreshActionOnClick(event)"
       data-action="#{action}"
     >
       <i class="fa-solid fa-arrows-rotate">

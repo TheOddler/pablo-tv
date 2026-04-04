@@ -11,8 +11,8 @@
   $if not isTv || isDevelopment
     $maybe refreshAction <- mRefreshAction
       <button
-        class="like-link"
-        onclick="sendActionOnClick(event)"
+        class="like-link refresh-button"
+        onclick="sendRefreshActionOnClick(event)"
         data-action="#{refreshAction}"
       >
         <i class="fa-solid fa-arrows-rotate">

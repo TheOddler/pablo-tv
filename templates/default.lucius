@@ -157,8 +157,15 @@ pre {
   }
 }
 
-:disabled i.fa-arrows-rotate {
-  animation: rotating 1s linear infinite;
+body.refreshing .refresh-button {
+  /* Disable the button */
+  pointer-events: none;
+  color: grey;
+
+  /* Rotate the icon */
+  i.fa-arrows-rotate {
+    animation: rotating 1s linear infinite;
+  }
 }
 
 .buttons-grid {

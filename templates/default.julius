@@ -38,6 +38,12 @@ async function sendActionOnClick(event, refreshPageAfter = true, disableThisDuri
   }
 }
 
+async function sendRefreshActionOnClick(event) {
+  document.body.classList.toggle("refreshing", true);
+  await sendActionOnClick(event);
+  document.body.classList.toggle("refreshing", false);
+}
+
 (() => {
   /**
    * Code for making the tv listen for "open on tv" messages.
