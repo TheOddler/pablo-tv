@@ -11,6 +11,7 @@ module Foundation where
 import Control.Monad (when)
 import Data.ByteString.Char8 qualified as BS
 import Data.Maybe (listToMaybe)
+import Data.Text (Text)
 import Directory.Directories (RootDirectories)
 import Directory.Paths (RawWebPath (..))
 import Evdev.Uinput (Device)
@@ -109,9 +110,9 @@ isTvRequest = do
   let isHost h = maybe False (h `BS.isInfixOf`) mHostHeader
   pure $ any isHost ["localhost", "127.0.0.1", "0:0:0:0:0:0:0:1"]
 
-defaultLayout :: Html -> Widget -> Handler Html
+defaultLayout :: Text -> Widget -> Handler Html
 defaultLayout title widget = Yesod.defaultLayout $ do
-  setTitle $ title <> " - Pablo TV"
+  setTitle $ toHtml $ title <> " - Pablo TV"
 
   isTv <- isTvRequest
   networkInterfaces <- liftIO getNetworkInterfaces

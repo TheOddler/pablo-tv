@@ -325,7 +325,7 @@ getDirectoryR = withMDirectoryFromRaw $ \mDirPath -> do
         Nothing -> ("Videos", "")
         Just Nothing -> ("Videos", "")
         Just (Just ne) -> splitTitleFromDir $ NE.last ne
-  defaultLayout (toHtml title) $(widgetFile "directory")
+  defaultLayout title $(widgetFile "directory")
 
 getImageR :: RawWebPath -> Handler TypedContent
 getImageR = withDirectoryFromRaw $ \dirPath -> do
