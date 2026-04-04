@@ -96,23 +96,14 @@ instance Yesod App where
             };
           |]
 
-      networkInterfaces <- liftIO getNetworkInterfaces
-      let mNetworkInterface =
-            listToMaybe $
-              sortWith networkInterfaceWorthiness networkInterfaces
-      port <- getsYesod appPort
-
       addScript $ StaticR static_reconnecting_websocket_js
       addStylesheet $ StaticR static_fontawesome_css_all_min_css
-      -- currentRoute <- fromMaybe HomeR <$> getCurrentRoute
-      -- currentUrlBS <- toUrlRel currentRoute
-      -- let currentUrl :: Text
-      --     currentUrl = decodeUtf8Lenient $ BS.toStrict currentUrlBS
-      $(widgetFile "default")
+
+      widget
     withUrlRenderer $
       $(hamletFile "templates/page-wrapper.hamlet")
 
-isTvRequest :: Handler Bool
+isTvRequest :: (MonadHandler m) => m Bool
 isTvRequest = do
   mHostHeader <- lookupHeader "Host"
   let isHost h = maybe False (h `BS.isInfixOf`) mHostHeader
@@ -121,7 +112,18 @@ isTvRequest = do
 defaultLayout :: Html -> Widget -> Handler Html
 defaultLayout title widget = Yesod.defaultLayout $ do
   setTitle $ title <> " - Pablo TV"
-  widget
+
+  isTv <- isTvRequest
+  networkInterfaces <- liftIO getNetworkInterfaces
+  let mNetworkInterface =
+        listToMaybe $
+          sortWith networkInterfaceWorthiness networkInterfaces
+  port <- getsYesod appPort
+  -- currentRoute <- fromMaybe HomeR <$> getCurrentRoute
+  -- currentUrlBS <- toUrlRel currentRoute
+  -- let currentUrl :: Text
+  --     currentUrl = decodeUtf8Lenient $ BS.toStrict currentUrlBS
+  $(widgetFile "default")
 
 instance Logger Handler where
   putLogMsg msg = do
