@@ -9,15 +9,17 @@
         #{showIpV4OrV6WithPort port networkInterface}
       <div class="grow">
   $if not isTv || isDevelopment
-    $maybe refreshAction <- mRefreshAction
-      <button
-        class="like-link refresh-button"
-        onclick="sendRefreshActionOnClick(event)"
-        data-action="#{refreshAction}"
-      >
-        <i class="fa-solid fa-arrows-rotate">
-        Refresh
-      <div class="grow">
+    $case refreshButton
+      $of NoRefreshButton
+      $of RefreshButton label action
+        <button
+          class="like-link refresh-button"
+          onclick="sendRefreshActionOnClick(event)"
+          data-action="#{action}"
+        >
+          <i class="fa-solid fa-arrows-rotate">
+          #{label}
+        <div class="grow">
     <a href=@{InputR}>
       <i class="fa-solid fa-wand-magic-sparkles">
     <a href=@{RemoteR}>

@@ -62,14 +62,16 @@ $if (not $ null dirs)
         <i class="#{dirIcon dir}">
         <span>#{aggDirPlayedVideoFileCount dir}/#{aggDirVideoFileCount dir}
 
-$maybe (label, action) <- refreshDirectoryLabelAndAction
-  <h3>
-    <button 
-      class="like-link refresh-button"
-      onclick="sendRefreshActionOnClick(event)"
-      data-action="#{action}"
-    >
-      <i class="fa-solid fa-arrows-rotate">
-      #{label}
+$case refreshButton
+  $of NoRefreshButton
+  $of RefreshButton label action
+    <h3>
+      <button 
+        class="like-link refresh-button"
+        onclick="sendRefreshActionOnClick(event)"
+        data-action="#{action}"
+      >
+        <i class="fa-solid fa-arrows-rotate">
+        #{label}
 
 <div class="bottom-spacer">&nbsp;

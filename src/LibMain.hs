@@ -115,8 +115,12 @@ import Yesod.WebSockets (race_, webSockets)
 
 mkYesodDispatch "App" resourcesApp
 
-defaultLayout :: Text -> Maybe Action -> Widget -> Handler Html
-defaultLayout title mRefreshAction widget = Yesod.defaultLayout $ do
+data RefreshButton
+  = NoRefreshButton
+  | RefreshButton Text Action
+
+defaultLayout :: Text -> RefreshButton -> Widget -> Handler Html
+defaultLayout title refreshButton widget = Yesod.defaultLayout $ do
   setTitle $ toHtml $ title <> " - Pablo TV"
 
   isTv <- isTvRequest
@@ -204,9 +208,9 @@ getHomeR = do
           LocalVideos "Recently Finished" $
             sortWith recentlyWatched finished
         ]
-  let refreshAction = ActionRefreshAllDirectoryData
+  let refreshButton = RefreshButton "Refresh library" ActionRefreshAllDirectoryData
 
-  defaultLayout "Home" (Just refreshAction) $(widgetFile "home")
+  defaultLayout "Home" refreshButton $(widgetFile "home")
 
 postHomeR :: Handler ()
 postHomeR =
@@ -329,23 +333,20 @@ getDirectoryR = withMDirectoryFromRaw $ \mDirPath -> do
   let playAllAction = ActionPlayPath <$> mDirPathRaw
   let markAllWatchedAction = ActionMarkAsWatched <$> mDirPathRaw
   let markAllUnwatchedAction = ActionMarkAsUnwatched <$> mDirPathRaw
-  let refreshDirectoryLabelAndAction' =
+  let refreshButton =
         case mDirPathRaw of
           Nothing ->
-            ( "Refresh Library" :: String,
+            RefreshButton
+              "Refresh library"
               ActionRefreshAllDirectoryData
-            )
           Just dirPathRaw ->
-            ( "Refresh this directory" :: String,
+            RefreshButton "Refresh directory" $
               ActionRefreshDirectoryData dirPathRaw
-            )
-  let refreshDirectoryLabelAndAction = Just refreshDirectoryLabelAndAction'
-  let refreshAction = snd refreshDirectoryLabelAndAction'
   let (title, subTitle) = case NE.nonEmpty . directoryPathNames <$> mDirPath of
         Nothing -> ("Videos", "")
         Just Nothing -> ("Videos", "")
         Just (Just ne) -> splitTitleFromDir $ NE.last ne
-  defaultLayout title (Just refreshAction) $(widgetFile "directory")
+  defaultLayout title refreshButton $(widgetFile "directory")
 
 getImageR :: RawWebPath -> Handler TypedContent
 getImageR = withDirectoryFromRaw $ \dirPath -> do
@@ -362,18 +363,18 @@ getImageR = withDirectoryFromRaw $ \dirPath -> do
 
 getRemoteR :: Handler Html
 getRemoteR = do
-  defaultLayout "Remote" Nothing $(widgetFile "remote")
+  defaultLayout "Remote" NoRefreshButton $(widgetFile "remote")
 
 getInputR :: Handler Html
 getInputR = do
-  defaultLayout "Input" Nothing $(widgetFile "input")
+  defaultLayout "Input" NoRefreshButton $(widgetFile "input")
 
 getAllIPsR :: Handler Html
 getAllIPsR = do
   networkInterfaces' <- liftIO getNetworkInterfaces
   let networkInterfaces = sortWith networkInterfaceWorthiness networkInterfaces'
   port <- getsYesod appPort
-  defaultLayout "IPs" Nothing $(widgetFile "ips")
+  defaultLayout "IPs" NoRefreshButton $(widgetFile "ips")
   where
     hideZero :: (Show a, Eq a, Bounded a) => a -> String
     hideZero a =
@@ -401,7 +402,7 @@ getDebugR = do
   let prettyLogTime :: LogMsg -> String
       prettyLogTime msg = formatTime defaultTimeLocale "%H:%M:%S" msg.logMsgTime
 
-  defaultLayout "Debug" Nothing $(widgetFile "debug")
+  defaultLayout "Debug" NoRefreshButton $(widgetFile "debug")
 
 mountAllSambaShares :: (SafeIO m, Logger m) => RootDirectories -> m ()
 mountAllSambaShares roots = do
