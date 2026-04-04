@@ -1,7 +1,12 @@
 // Automatically refresh the page whenever it regains focus
 window.onblur = () => {
+  // Capture the location we blurred on, so when we refresh we can make sure we didn't just change page
+  // This is needed otherwise I got this bug where if you manually change the url, it reloads still with the old url and essentially undoes that navigation.
+  const location = window.location;
   window.onfocus = () => {
-    window.location.reload();
+    if (window.location == location) {
+      window.location.reload();
+    }
   };
 };
 
