@@ -22,7 +22,7 @@ import Data.Aeson qualified as Aeson
 import Data.List.Extra (intercalate, notNull, stripPrefix)
 import Data.List.NonEmpty qualified as NE
 import Data.Map.Strict qualified as Map
-import Data.Maybe (fromMaybe, isJust, mapMaybe)
+import Data.Maybe (fromMaybe, isJust, listToMaybe, mapMaybe)
 import Data.Ord (Down (..))
 import Data.Text (Text, unpack)
 import Data.Text qualified as T
@@ -67,8 +67,9 @@ import Foundation
   ( App (..),
     Handler,
     Route (..),
-    defaultLayout,
+    Widget,
     embeddedStatic,
+    isTvRequest,
     resourcesApp,
     static_images_apple_tv_plus_png,
     static_images_netflix_png,
@@ -100,6 +101,7 @@ import Util
     naturalSortBy,
     networkInterfaceWorthiness,
     raceAll,
+    showIpV4OrV6WithPort,
     showT,
     shuffle,
     unsnocNE,
@@ -108,9 +110,26 @@ import Util
 import Util.DirPath (absPathQQ, relPathQQ)
 import Util.TextWithoutSeparator (splitAtSeparatorNE, unwrap)
 import Yesod hiding (defaultLayout, replace)
+import Yesod qualified
 import Yesod.WebSockets (race_, webSockets)
 
 mkYesodDispatch "App" resourcesApp
+
+defaultLayout :: Text -> Widget -> Handler Html
+defaultLayout title widget = Yesod.defaultLayout $ do
+  setTitle $ toHtml $ title <> " - Pablo TV"
+
+  isTv <- isTvRequest
+  networkInterfaces <- liftIO getNetworkInterfaces
+  let mNetworkInterface =
+        listToMaybe $
+          sortWith networkInterfaceWorthiness networkInterfaces
+  port <- getsYesod appPort
+  -- currentRoute <- fromMaybe HomeR <$> getCurrentRoute
+  -- currentUrlBS <- toUrlRel currentRoute
+  -- let currentUrl :: Text
+  --     currentUrl = decodeUtf8Lenient $ BS.toStrict currentUrlBS
+  $(widgetFile "default")
 
 data NamedLink = NamedLink
   { linkName :: Text,

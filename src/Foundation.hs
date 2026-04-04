@@ -10,23 +10,18 @@ module Foundation where
 
 import Control.Monad (when)
 import Data.ByteString.Char8 qualified as BS
-import Data.Maybe (listToMaybe)
-import Data.Text (Text)
 import Directory.Directories (RootDirectories)
 import Directory.Paths (RawWebPath (..))
 import Evdev.Uinput (Device)
 import GHC.Conc (TVar)
-import GHC.Utils.Misc (sortWith)
 import IsDevelopment (isDevelopment)
 import Logging (LogFunc, LogSlidingWindow, Logger (..))
 import Mpris (MediaPlayer)
-import Network.Info (getNetworkInterfaces)
 import PVar (PVar)
 import SafeIO (SafeIO (..))
 import TVState (TVState)
 import Text.Hamlet (hamletFile)
 import Transformers (SafeIOT (..))
-import Util (networkInterfaceWorthiness, showIpV4OrV6WithPort, widgetFile)
 import Yesod hiding (LogLevel, defaultLayout, replace)
 import Yesod qualified
 import Yesod.EmbeddedStatic
@@ -109,22 +104,6 @@ isTvRequest = do
   mHostHeader <- lookupHeader "Host"
   let isHost h = maybe False (h `BS.isInfixOf`) mHostHeader
   pure $ any isHost ["localhost", "127.0.0.1", "0:0:0:0:0:0:0:1"]
-
-defaultLayout :: Text -> Widget -> Handler Html
-defaultLayout title widget = Yesod.defaultLayout $ do
-  setTitle $ toHtml $ title <> " - Pablo TV"
-
-  isTv <- isTvRequest
-  networkInterfaces <- liftIO getNetworkInterfaces
-  let mNetworkInterface =
-        listToMaybe $
-          sortWith networkInterfaceWorthiness networkInterfaces
-  port <- getsYesod appPort
-  -- currentRoute <- fromMaybe HomeR <$> getCurrentRoute
-  -- currentUrlBS <- toUrlRel currentRoute
-  -- let currentUrl :: Text
-  --     currentUrl = decodeUtf8Lenient $ BS.toStrict currentUrlBS
-  $(widgetFile "default")
 
 instance Logger Handler where
   putLogMsg msg = do
