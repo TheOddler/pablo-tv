@@ -83,12 +83,6 @@ h3 {
   text-align: center;
 }
 
-.refresh {
-  text-decoration: none;
-  padding: 1rem 0 2rem 0;
-
-  a.disabled {
-    pointer-events: none;
-    color: grey;
-  }
+.bottom-spacer {
+  padding-bottom: 0.5rem;
 }
