@@ -16,6 +16,7 @@
         data-action="#{refreshAction}"
       >
         <i class="fa-solid fa-arrows-rotate">
+        Refresh
       <div class="grow">
     <a href=@{InputR}>
       <i class="fa-solid fa-wand-magic-sparkles">
