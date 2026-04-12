@@ -7,8 +7,9 @@ import Control.Monad (forever)
 import Data.Aeson (FromJSON (..), Object, ToJSON (toJSON), Value, eitherDecode, encode, genericParseJSON, genericToJSON, object, withObject, (.:), (.=))
 import Data.Aeson.Key qualified as Aeson
 import Data.Aeson.Types (Parser)
+import Data.Char (isSpace)
 import Data.Int (Int32)
-import Data.List (nub)
+import Data.List (dropWhileEnd, nub)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (isNothing)
 import Data.Scientific (Scientific, scientific)
@@ -35,7 +36,7 @@ import Network.WebSockets qualified as WS
 import PVar (modifyPVar_, readPVar)
 import SafeConvert (int32ToInteger)
 import SafeIO (SafeIO, getCurrentTime)
-import System.Process (callProcess)
+import System.Process (callProcess, readProcess)
 import TVState (TVState (..))
 import Text.Blaze qualified as Blaze
 import Text.Julius (ToJavascript (..))
@@ -255,9 +256,16 @@ performAction action = do
               ++ show rawWebPath
               ++ ": Unable to convert raw to absolute path."
         Just absPath -> liftIO $ do
+          defaultVideoPlayer' <-
+            readProcess
+              "xdg-mime"
+              ["query", "default", "video/x-msvideo"]
+              ""
+          let defaultVideoPlayer = dropWhileEnd isSpace defaultVideoPlayer'
           callProcess
-            "xdg-open"
-            [ absPath
+            "gtk-launch"
+            [ defaultVideoPlayer,
+              absPath
             ]
     ActionMarkAsWatched rawWebPath -> do
       modifyPVar_ app.appRootDirs ("Marking " <> showT rawWebPath <> " as watched") $ \roots -> do
