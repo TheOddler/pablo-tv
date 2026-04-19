@@ -30,7 +30,7 @@
         devShells.default = pkgs.haskellPackages.shellFor {
           packages = p: [
             # Use the base version because it doesn't have optimisations enabled
-            packages.pablo-tv-base
+            packages.backendBase
           ];
           buildInputs = buildInputs ++ runtimeInputs;
           withHoogle = true;
@@ -62,28 +62,26 @@
         };
 
         packages = {
-          pablo-tv-base = pkgs.haskellPackages.developPackage {
-            root = ./.;
-            modifier = drv:
-              drv.overrideAttrs
-                (oldAttrs: {
-                  nativeBuildInputs = oldAttrs.nativeBuildInputs ++ [ pkgs.makeWrapper ] ++ runtimeInputs;
-                  postInstall =
-                    (oldAttrs.postInstall or "")
-                    + ''
-                      wrapProgram $out/bin/pablo-tv \
-                        --suffix PATH : ${pkgs.lib.makeBinPath runtimeInputs}
-                    '';
-                });
-          };
-          pablo-tv = pkgs.haskell.lib.justStaticExecutables (
+          backendBase = pkgs.haskellPackages.callCabal2nix "backend" ./backend { };
+          backendOptimised = pkgs.haskell.lib.justStaticExecutables (
             pkgs.haskell.lib.dontCheck (
-              packages.pablo-tv-base.overrideAttrs (oldAttrs: {
+              packages.backendBase.overrideAttrs (oldAttrs: {
                 configureFlags = oldAttrs.configureFlags ++ [ "--ghc-option=-O2" ];
               })
             )
           );
-          default = packages.pablo-tv;
+          backendWrapped = pkgs.symlinkJoin {
+            name = "pablo-tv";
+            paths = [ packages.backendOptimised ];
+
+            nativeBuildInputs = [ pkgs.makeWrapper ];
+
+            postBuild = ''
+              wrapProgram $out/bin/pablo-tv \
+                --suffix PATH : ${pkgs.lib.makeBinPath runtimeInputs}
+            '';
+          };
+          default = packages.backendWrapped;
         };
       }
     );
