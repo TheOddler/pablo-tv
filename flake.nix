@@ -10,20 +10,20 @@
   outputs = { self, nixpkgs, pre-commit-hooks, flake-utils }:
     flake-utils.lib.eachDefaultSystem (system:
       let
-        pkgs = nixpkgs.legacyPackages.${system};
-        buildInputs = with pkgs; [
-          cabal-install
-          haskell-language-server
-          hlint
-          watchexec
-          nil
-          haskellPackages.weeder
-          haskellPackages.cabal-gild
+        pkgs = import nixpkgs { inherit system; };
+        devLibs = [
+          pkgs.cabal-install
+          pkgs.haskell-language-server
+          pkgs.hlint
+          pkgs.watchexec
+          pkgs.nil
+          pkgs.haskellPackages.weeder
+          pkgs.haskellPackages.cabal-gild
         ];
-        runtimeInputs = with pkgs; [
-          libevdev
-          xdg-utils
-          gtk3
+        runtimeLibs = [
+          pkgs.libevdev
+          pkgs.xdg-utils
+          pkgs.gtk3
         ];
       in
       rec {
@@ -32,7 +32,7 @@
             # Use the base version because it doesn't have optimisations enabled
             packages.backendBase
           ];
-          buildInputs = buildInputs ++ runtimeInputs;
+          buildInputs = devLibs ++ runtimeLibs;
           withHoogle = true;
           inherit (checks.pre-commit-check) shellHook;
         };
@@ -78,7 +78,7 @@
 
             postBuild = ''
               wrapProgram $out/bin/pablo-tv \
-                --suffix PATH : ${pkgs.lib.makeBinPath runtimeInputs}
+                --suffix PATH : ${pkgs.lib.makeBinPath runtimeLibs}
             '';
           };
           default = packages.backendWrapped;
