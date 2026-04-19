@@ -14,11 +14,11 @@ import Transformers (runSafeIOT)
 import UnliftIO (MonadUnliftIO)
 import UnliftIO.Directory (getCurrentDirectory)
 
-newtype TestIO a = NoLogIO {runTestIO :: IO a}
+newtype TestIO a = TestIO {runTestIO :: IO a}
   deriving (Functor, Applicative, Monad, MonadIO, MonadUnliftIO, MonadThrow)
 
 instance Logger TestIO where
-  putLogBS _ _ = pure ()
+  putLogMsg _ = pure ()
 
 instance ImageScraper TestIO where
   tryFindImage _ = pure $ Left ImageSearchFailedScraping

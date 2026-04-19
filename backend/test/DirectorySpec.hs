@@ -9,6 +9,7 @@ import Data.ByteString.Char8 qualified as BS8
 import Data.Either (isRight)
 import Data.Map.Strict qualified as Map
 import Data.Text qualified as T
+import Data.Time (UTCTime (..), fromGregorian, secondsToDiffTime)
 import Directory (recursiveUpdateDirectoryNoSave, recursivelyUpdateAllDirectoriesNoSave)
 import Directory.Directories
 import Directory.Files
@@ -27,6 +28,12 @@ import TestUtils (runTestIO, testCurrentTime, testModificationTime)
 import UnliftIO.Directory (getCurrentDirectory)
 import Util.DirPath (absPath, absPathQQ, relPathQQ)
 import Util.TextWithoutSeparator (removeSeparatorsFromText, twsQQ)
+
+someTestTime :: UTCTime
+someTestTime =
+  UTCTime
+    (fromGregorian 2000 1 1)
+    (secondsToDiffTime (1 * 3600 + 1 * 60 + 1))
 
 spec :: Spec
 spec = do
@@ -58,7 +65,7 @@ spec = do
                               Map.fromList
                                 [ ( VideoFileName [twsQQ|video.avi|],
                                     VideoFileData
-                                      { videoFileAdded = read "2000-01-01 01:01:01",
+                                      { videoFileAdded = someTestTime,
                                         videoFileWatched = Nothing
                                       }
                                   )
@@ -70,7 +77,7 @@ spec = do
                   Map.fromList
                     [ ( VideoFileName [twsQQ|test.mov|],
                         VideoFileData
-                          { videoFileAdded = read "2000-01-01 01:01:01",
+                          { videoFileAdded = someTestTime,
                             videoFileWatched = Nothing
                           }
                       )
@@ -85,7 +92,7 @@ spec = do
                   Map.fromList
                     [ ( VideoFileName [twsQQ|video.mp4|],
                         VideoFileData
-                          { videoFileAdded = read "2000-01-01 01:01:01",
+                          { videoFileAdded = someTestTime,
                             videoFileWatched = Nothing
                           }
                       )
