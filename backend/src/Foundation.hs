@@ -22,9 +22,10 @@ import SafeIO (SafeIO (..))
 import TVState (TVState)
 import Text.Hamlet (hamletFile)
 import Transformers (SafeIOT (..))
+import Util (embedFileRel)
 import Yesod hiding (LogLevel, defaultLayout, replace)
 import Yesod qualified
-import Yesod.EmbeddedStatic
+import Yesod.EmbeddedStatic (EmbeddedStatic, embedStaticContent, mkEmbeddedStatic)
 
 data App = App
   { appPort :: Int,
@@ -55,17 +56,17 @@ mkYesodData
 mkEmbeddedStatic
   False
   "embeddedStatic"
-  [ embedFile "static/reconnecting-websocket.js",
-    embedFile "static/fontawesome/css/all.min.css",
-    embedFile "static/fontawesome/webfonts/fa-brands-400.ttf",
-    embedFile "static/fontawesome/webfonts/fa-brands-400.woff2",
-    embedFile "static/fontawesome/webfonts/fa-regular-400.ttf",
-    embedFile "static/fontawesome/webfonts/fa-regular-400.woff2",
-    embedFile "static/fontawesome/webfonts/fa-solid-900.ttf",
-    embedFile "static/fontawesome/webfonts/fa-solid-900.woff2",
-    embedFile "static/images/apple-tv-plus.png",
-    embedFile "static/images/netflix.png",
-    embedFile "static/images/youtube.png"
+  [ embedFileRel "static/reconnecting-websocket.js",
+    embedFileRel "static/fontawesome/css/all.min.css",
+    embedFileRel "static/fontawesome/webfonts/fa-brands-400.ttf",
+    embedFileRel "static/fontawesome/webfonts/fa-brands-400.woff2",
+    embedFileRel "static/fontawesome/webfonts/fa-regular-400.ttf",
+    embedFileRel "static/fontawesome/webfonts/fa-regular-400.woff2",
+    embedFileRel "static/fontawesome/webfonts/fa-solid-900.ttf",
+    embedFileRel "static/fontawesome/webfonts/fa-solid-900.woff2",
+    embedFileRel "static/images/apple-tv-plus.png",
+    embedFileRel "static/images/netflix.png",
+    embedFileRel "static/images/youtube.png"
   ]
 
 instance Yesod App where

@@ -19,7 +19,7 @@ import GHC.Conc (TVar, atomically, readTVar, readTVarIO, retry)
 import GHC.Exception (errorCallException, errorCallWithCallStackException)
 import GHC.Stack (HasCallStack, callStack, prettyCallStack, withFrozenCallStack)
 import IsDevelopment (isDevelopment)
-import Language.Haskell.TH.Syntax (Exp, Q)
+import Language.Haskell.TH.Syntax (Exp, Q, makeRelativeToProject)
 import Logging (LogLevel (..), Logger, putLog)
 import Network.Info (IPv4 (..), NetworkInterface (..))
 import SafeIO (SafeIO (..), getCurrentTime)
@@ -27,6 +27,8 @@ import System.Random (RandomGen)
 import System.Random.Shuffle (shuffle')
 import Yesod
 import Yesod.Default.Util (widgetFileNoReload, widgetFileReload)
+import Yesod.EmbeddedStatic (embedFileAt)
+import Yesod.EmbeddedStatic.Types (Generator)
 import Yesod.WebSockets (race_)
 
 ourAesonOptionsPrefix :: String -> Aeson.Options
@@ -215,3 +217,10 @@ logOnErrorIO logLevel desc io = do
   case resultOrErr of
     Right result -> pure result
     Left e -> putLog logLevel $ "Failed " ++ desc ++ ": " ++ displayException e
+
+-- | This embeds a file but you can give it a path relative to the package root, rather than relative to where `cabal build` is run.
+-- The final name you can use in the code is still the same as if you had called `Yesod.EmbeddedStatic.Generators.embedFile` with this path.
+embedFileRel :: FilePath -> Generator
+embedFileRel fp = do
+  path <- makeRelativeToProject fp
+  embedFileAt fp path
