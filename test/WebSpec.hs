@@ -4,6 +4,7 @@ import Actions (mkInputDevice)
 import Foundation
 import GHC.Conc (newTVarIO)
 import LibMain ()
+import Logging (mkLogSlidingWindow)
 import PVar (newPVar)
 import TVState (startingTVState)
 import Test.Syd
@@ -12,6 +13,7 @@ import TestUtils (TestIO (..))
 
 mkTestApp :: IO App
 mkTestApp = do
+  logSlidingWindow <- mkLogSlidingWindow 10
   inputDevice <- mkInputDevice
   tvState <- newTVarIO startingTVState
   lastActivePlayerTVar <- newTVarIO Nothing
@@ -19,7 +21,8 @@ mkTestApp = do
   pure
     App
       { appPort = 8080,
-        appLogFunc = \_ _ -> pure (),
+        appLogFunc = \_ -> pure (),
+        appLogSlidingWindow = logSlidingWindow,
         appInputDevice = inputDevice,
         appTVState = tvState,
         appGetStatic = embeddedStatic,
