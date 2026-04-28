@@ -1,0 +1,66 @@
+cabal-version: 3.0
+name: pablo-tv-miso
+version: 0.1.0.0
+-- synopsis:
+-- description:
+license: NONE
+author: Pablo Bollansee
+build-type: Simple
+
+-- extra-doc-files:
+-- extra-source-files:
+common defaults
+  default-language: GHC2021
+  build-depends: base ^>=4.20.2.0 && <5
+  ghc-options:
+    -Wall
+    -Wcompat
+    -Wincomplete-record-updates
+    -Wredundant-constraints
+    -Wunused-packages
+    -threaded
+    -rtsopts
+    -with-rtsopts=-N
+    -freverse-errors
+    -fwrite-ide-info
+
+  default-extensions:
+    LambdaCase
+    OverloadedRecordDot
+    OverloadedStrings
+    StrictData
+
+library
+  import: defaults
+  hs-source-dirs: src
+  exposed-modules: LibMain
+  build-depends:
+    miso
+
+executable pablo-tv-miso
+  import: defaults
+  hs-source-dirs: app
+  main-is: Main.hs
+
+  if arch(wasm32)
+    ghc-options:
+      -no-hs-main
+      -optl-mexec-model=reactor
+      "-optl-Wl,--export=hs_start"
+
+    cpp-options:
+      -DWASM
+
+  if arch(javascript)
+    ld-options:
+      -sEXPORTED_RUNTIME_METHODS=HEAP8
+  build-depends:
+    pablo-tv-miso
+
+test-suite pablo-tv-miso-test
+  import: defaults
+  hs-source-dirs: test
+  main-is: Main.hs
+  type: exitcode-stdio-1.0
+  build-depends:
+    pablo-tv-miso
