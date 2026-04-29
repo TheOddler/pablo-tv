@@ -49,10 +49,11 @@ import Directory.Directories
     splitTitleFromDir,
   )
 import Directory.Files
-  ( VideoFileData (..),
+  ( NiceVideoFileNames (..),
+    VideoFileData (..),
     VideoFileName (..),
     getImageContentType,
-    niceFileNameT,
+    niceFileNames,
   )
 import Directory.Paths
   ( DirectoryPath (..),
@@ -283,7 +284,7 @@ withMDirectoryFromRaw handler rawWebPath = do
 getDirectoryR :: RawWebPath -> Handler Html
 getDirectoryR = withMDirectoryFromRaw $ \mDirPath -> do
   roots <- readPVar =<< getsYesod appRootDirs
-  (dirs, files) <- case mDirPath of
+  (dirs, files') <- case mDirPath of
     Nothing ->
       pure
         ( naturalSortBy (unwrap . aggDirName) $
@@ -342,6 +343,13 @@ getDirectoryR = withMDirectoryFromRaw $ \mDirPath -> do
           Just dirPathRaw ->
             RefreshButton "Refresh directory" $
               ActionRefreshDirectoryData dirPathRaw
+  let niceNames = niceFileNames $ fst3 <$> files'
+  let fileNamePrefix = niceNames.commonPrefix
+  let fileNameSuffix = niceNames.commonSuffix
+  let files :: [(Text, VideoFilePath, VideoFileData)]
+      files = flip map (zip niceNames.uniqueMiddles files') $
+        \(middle, (_originalFileName, filePath, fileData)) ->
+          (middle, filePath, fileData)
   let (title, subTitle) = case NE.nonEmpty . directoryPathNames <$> mDirPath of
         Nothing -> ("Videos", "")
         Just Nothing -> ("Videos", "")

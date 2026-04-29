@@ -34,15 +34,31 @@ img.header {
 
     .name {
       overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
       padding: 0.5rem 1rem;
-      justify-content: left;
+      display: flex;
+      flex-wrap: nowrap;
+      justify-content: flex-start;
+
+      .prefix {
+        flex: 0 1 auto;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .unique {
+        flex: 0 0 auto;
+      }
+
+      .suffix {
+        /* Infinite flex-shrink so this fully shrinks before prefix shrinks */
+        flex: 0 calc(infinity) auto;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
     }
 
     >* {
       display: flex;
-      gap: 0.5rem;
       padding: 0.5rem;
       align-items: center;
       justify-content: center;

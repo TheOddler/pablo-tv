@@ -51,6 +51,12 @@ watchexec -e hs,hamlet,cabal --restart cabal run -f development
 watchexec -e hs,cabal --restart cabal test
 ```
 
+Or test and run:
+
+```bash
+watchexec -e hs,hamlet,cabal --restart "cabal test -f development && cabal run -f development"
+```
+
 If you want to work on golden tests:
 
 ```bash

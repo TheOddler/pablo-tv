@@ -19,9 +19,10 @@ import Data.ByteString.Base64 qualified as B64
 import Data.ByteString.Char8 qualified as BS8
 import Data.ByteString.UTF8 qualified as BS
 import Data.HashSet qualified as Set
-import Data.List.Extra (lower, stripPrefix)
+import Data.List.Extra (dropPrefix, dropSuffix, lower, stripPrefix, uncons)
 import Data.List.NonEmpty qualified as NE
 import Data.Maybe (isJust, listToMaybe, mapMaybe)
+import Data.Set (Set)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
@@ -97,11 +98,70 @@ bestImageFile = safeMinimumOn $ \fileName ->
     "cover" -> 1
     _ -> 100
 
--- Other helpers
+-- Nicely collapsing file names
 
-niceFileNameT :: VideoFileName -> Text
-niceFileNameT file =
-  T.replace "." " " $ T.pack $ takeBaseName $ T.unpack $ unwrap file
+data NiceVideoFileNames = NiceVideoFileNames
+  { commonPrefix :: Text,
+    uniqueMiddles :: [Text],
+    commonSuffix :: Text
+  }
+  deriving (Eq, Show)
+
+niceFileNames :: [VideoFileName] -> NiceVideoFileNames
+niceFileNames =
+  \case
+    [] -> NiceVideoFileNames "" [] ""
+    [name] -> NiceVideoFileNames "" [T.unwords $ splitName name] ""
+    names ->
+      let splitNames = splitName <$> names
+
+          commonPrefix' = findCommonPrefix splitNames
+          commonPrefix = T.unwords commonPrefix'
+
+          namesWithoutPrefixes = dropPrefix commonPrefix' <$> splitNames
+
+          commonSuffix' = findCommonSuffix namesWithoutPrefixes
+          commonSuffix = T.unwords commonSuffix'
+
+          uniqueMiddles' = dropSuffix commonSuffix' <$> namesWithoutPrefixes
+          uniqueMiddles = T.unwords <$> uniqueMiddles'
+       in NiceVideoFileNames commonPrefix uniqueMiddles commonSuffix
+  where
+    delims :: Set Char
+    delims = [' ', '.']
+
+    dropVideoFileExts :: VideoFileName -> Text
+    dropVideoFileExts name =
+      let go [] = unwrap name
+          go (ext : rest) =
+            case T.stripSuffix ext (unwrap name) of
+              Nothing -> go rest
+              Just n -> n
+       in go $ unwrap <$> Set.toList videoFileExts
+
+    splitName :: VideoFileName -> [Text]
+    splitName videoFile = T.split (`elem` delims) (dropVideoFileExts videoFile)
+
+    allJusts :: [Maybe a] -> Maybe [a]
+    allJusts [] = Just []
+    allJusts (Nothing : _) = Nothing
+    allJusts (Just x : xs) =
+      case allJusts xs of
+        Nothing -> Nothing
+        Just aj -> Just $ x : aj
+
+    findCommonPrefix :: (Eq a) => [[a]] -> [a]
+    findCommonPrefix xs = case allJusts (uncons <$> xs) of
+      Nothing -> []
+      Just ((head', tail') : rest)
+        | all ((== head') . fst) rest ->
+            head' : findCommonPrefix (tail' : map snd rest)
+      _ -> []
+
+    findCommonSuffix :: (Eq a) => [[a]] -> [a]
+    findCommonSuffix = reverse . findCommonPrefix . map reverse
+
+-- Other helpers
 
 seasonFromFiles :: [VideoFileName] -> Maybe Int
 seasonFromFiles fileNames =

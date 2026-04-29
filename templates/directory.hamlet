@@ -31,14 +31,18 @@ $if (length files + length dirs) > 1
 
 $if (not $ null files)
   <div class="section">
-    $forall (fileName, filePath, fileData) <- files
+    $forall (fileNameMiddle, filePath, fileData) <- files
       <div class="row #{fileWatchedClass fileData}">
         <a href="#" class="name" 
           onclick="sendActionOnClick(event)"
           data-action="#{ActionPlayPath $ rawWebPathFromVideoFile filePath}"
         >
           <i class="fa-solid fa-play">
-          <span>#{niceFileNameT fileName}
+          $# We have no gap in the flexbox here, rather we use nbsp to add whitespace that can shrink with the element
+          &nbsp;
+          <span class="prefix">#{fileNamePrefix}&nbsp;
+          <span class="unique">#{fileNameMiddle}
+          <span class="suffix">&nbsp;#{fileNameSuffix}
         <i class="#{fileIcon fileData}">
         <a href="#" title="Mark as watched"
           onclick="sendActionOnClick(event)"
@@ -57,6 +61,7 @@ $if (not $ null dirs)
       <div class="row #{dirWatchedClass dir}">
         <a href=@{DirectoryR $ rawWebPathFromDirectory dir.aggDirPath } class="name">
           <i class="fa-regular fa-folder-open">
+          &nbsp;
           <span>#{dir.aggDirName}
         <div>
         <i class="#{dirIcon dir}">
