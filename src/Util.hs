@@ -34,11 +34,16 @@ ourAesonOptionsPrefix prefix =
   Aeson.defaultOptions
     { Aeson.unwrapUnaryRecords = True,
       Aeson.omitNothingFields = True,
-      Aeson.constructorTagModifier = dropPrefix prefix,
-      Aeson.fieldLabelModifier = \s -> case dropPrefix prefix s of
-        "" -> ""
-        f : rest -> Char.toLower f : rest
+      Aeson.constructorTagModifier = dropPrefix constructorPrefix,
+      Aeson.fieldLabelModifier =
+        mapFirstLetter Char.toLower . dropPrefix fieldPrefix
     }
+  where
+    mapFirstLetter mapper str = case str of
+      "" -> ""
+      (firstLetter : rest) -> mapper firstLetter : rest
+    constructorPrefix = mapFirstLetter Char.toUpper prefix
+    fieldPrefix = mapFirstLetter Char.toLower prefix
 
 -- | Load a widget file, automatically reloading it in development.
 widgetFile :: String -> Q Exp
