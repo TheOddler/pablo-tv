@@ -36,6 +36,7 @@ import Directory
     getMemoryFileDir,
     getSubDirAggInfo,
     loadRootsFromDisk,
+    memoryFileName,
     saveRootsToDisk,
   )
 import Directory.Directories
@@ -87,10 +88,11 @@ import Network.Info (NetworkInterface (..), getNetworkInterfaces)
 import Network.Wai.Handler.Warp (run)
 import PVar (PVar, PVarState (..), modifyPVar_, newPVar, readPVar, readPVarState)
 import SafeConvert (humanReadableBytes)
-import SafeIO (SafeIO)
+import SafeIO (SafeIO, catchAny, unsafePinkyPromiseThisIsSafe)
 import Samba (MountResult, SmbServer (..), SmbShare (..), mount)
+import System.Directory (XdgDirectory (..), createDirectoryIfMissing, getXdgDirectory, renameFile)
 import System.Environment (getArgs)
-import System.FilePath (pathSeparator)
+import System.FilePath (pathSeparator, (</>))
 import System.Process (callProcess)
 import System.Random (initStdGen, mkStdGen)
 import TVState (startingTVState, tvStateWebSocket)
@@ -489,6 +491,14 @@ main = do
 
     memoryFileDir <- getMemoryFileDir
     putLog Info $ "Memory file(s) directory: " ++ memoryFileDir
+    logOnErrorIO Error ("Creating memory file(s) directory " ++ memoryFileDir) $
+      createDirectoryIfMissing True memoryFileDir
+
+    -- Move the memory file to the new location if needed.
+    -- TODO: Remove this again once I no longer need to support the old location
+    old <- unsafePinkyPromiseThisIsSafe $ (</> memoryFileName) <$> getXdgDirectory XdgData ""
+    new <- (</> memoryFileName) <$> getMemoryFileDir
+    renameFile old new `catchAny` \_ -> pure ()
 
     mRootDirs <- loadRootsFromDisk
     let emptyRootData = RootDirectoryData Map.empty Map.empty

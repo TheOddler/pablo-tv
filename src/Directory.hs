@@ -83,7 +83,7 @@ memoryFileName :: FilePath
 memoryFileName = "pablo-tv.json"
 
 getMemoryFileDir :: (SafeIO m) => m FilePath
-getMemoryFileDir = unsafePinkyPromiseThisIsSafe $ getXdgDirectory XdgData ""
+getMemoryFileDir = unsafePinkyPromiseThisIsSafe $ getXdgDirectory XdgData "pablo-tv"
 
 -- | Writes the known disks to a json file on disk, so we can read it on startup next time.
 -- Blocks other threads from changing the PVar while writing to disk, so we can't get any race conditions in the value changing between calls.
