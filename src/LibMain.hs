@@ -379,7 +379,7 @@ getImageR = withDirectoryFromRaw $ \dirPath -> do
       addHeader "Cache-Control" "max-age=604800, public" -- Cache 1 week
       case img of
         ImageOnDisk _ i -> sendImage i
-        ImageFromWeb _ i -> sendImage i
+        ImageFromWeb i -> sendImage i
 
 getRemoteR :: Handler Html
 getRemoteR = do

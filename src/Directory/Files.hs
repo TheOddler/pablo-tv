@@ -24,7 +24,6 @@ import Data.Maybe (isJust, listToMaybe, mapMaybe, maybeToList)
 import Data.Set (Set)
 import Data.Text (Text)
 import Data.Text qualified as T
-import Data.Text.Encoding qualified as TE
 import Data.Time (UTCTime)
 import GHC.Exts (sortWith)
 import GHC.Generics (Generic)
@@ -58,31 +57,28 @@ instance FromJSON VideoFileData where
 
 data Image
   = ImageOnDisk ImageFileName CachedImageFileName
-  | ImageFromWeb ContentType CachedImageFileName
+  | ImageFromWeb CachedImageFileName
   deriving (Show, Eq)
 
 instance ToJSON Image where
   toJSON = \case
     ImageOnDisk name cached ->
       Aeson.object ["name" Aeson..= name, "cached" Aeson..= cached]
-    ImageFromWeb ct cached ->
-      Aeson.object ["contentType" Aeson..= TE.decodeUtf8Lenient ct, "cached" Aeson..= cached]
+    ImageFromWeb cached ->
+      Aeson.object ["cached" Aeson..= cached]
   toEncoding = \case
     ImageOnDisk name cached ->
       Aeson.pairs ("name" Aeson..= name <> "cached" Aeson..= cached)
-    ImageFromWeb ct cached ->
-      Aeson.pairs ("contentType" Aeson..= TE.decodeUtf8Lenient ct <> "cached" Aeson..= cached)
+    ImageFromWeb cached ->
+      Aeson.pairs ("cached" Aeson..= cached)
 
 instance FromJSON Image where
   parseJSON = Aeson.withObject "Image" $ \o -> do
     cachedName <- o Aeson..: "cached"
     mName <- o Aeson..:? "name"
-    mContentType <- o Aeson..:? "contentType"
-
-    case (mName, mContentType) of
-      (Just name, _) -> pure $ ImageOnDisk name cachedName
-      (Nothing, Just ct) -> pure $ ImageFromWeb (TE.encodeUtf8 ct) cachedName
-      (Nothing, Nothing) -> fail "Expected object with either 'name' (for ImageOnDisk) or 'contentType' (for ImageFromWeb) field"
+    case mName of
+      Just name -> pure $ ImageOnDisk name cachedName
+      Nothing -> pure $ ImageFromWeb cachedName
 
 newtype ImageFileName = ImageFileName TextWithoutSeparator
   deriving newtype (Eq, Show, Unwrap Text, ToJSON, FromJSON)

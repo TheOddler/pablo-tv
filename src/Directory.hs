@@ -179,7 +179,7 @@ shallowUpdateDirectory roots dirPath = do
                       }
                     [ case img of
                         ImageOnDisk _ cachedName -> (cachedName, imgData)
-                        ImageFromWeb _ cachedName -> (cachedName, imgData)
+                        ImageFromWeb cachedName -> (cachedName, imgData)
                     | (img, imgData) <- maybeToList updatedImageFile
                     ]
             where
@@ -259,7 +259,7 @@ shallowUpdateDirectory roots dirPath = do
                   (Nothing, Just diskImg) ->
                     -- We currently don't know about an image, but there's one on disk, use that.
                     getImageFromDisk diskImg
-                  (Just (ImageFromWeb _ _), Just diskImg) ->
+                  (Just (ImageFromWeb _), Just diskImg) ->
                     -- We previously downloaded an image, but now there's one on disk, the latter should have priority
                     getImageFromDisk diskImg
                   (Just (ImageOnDisk img _), Just diskImg)
@@ -310,7 +310,7 @@ shallowUpdateDirectory roots dirPath = do
                           mkCachedImageFileName
                             (unDirectoryName <$> dirPath.directoryPathNames)
                             (Right contentType)
-                        pure $ Just (ImageFromWeb contentType cachedImgName, imgData)
+                        pure $ Just (ImageFromWeb cachedImgName, imgData)
 
 -- | Returns a (potentially empty) list of errors of failed attempts with the search string that was tried,
 -- and hopefully a successful result.
