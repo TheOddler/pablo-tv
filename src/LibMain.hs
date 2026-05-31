@@ -33,6 +33,7 @@ import Directory
   ( AggDirInfo (..),
     findDirWithImageFor,
     getDirectoryAtPath,
+    getImagesDir,
     getMemoryFileDir,
     getSubDirAggInfo,
     loadRootsFromDisk,
@@ -50,10 +51,12 @@ import Directory.Directories
     splitTitleFromDir,
   )
 import Directory.Files
-  ( NiceVideoFileNames (..),
+  ( CachedImageFileName,
+    Image (..),
+    NiceVideoFileNames (..),
     VideoFileData (..),
     VideoFileName (..),
-    getImageContentType,
+    cachedImageContentType,
     niceFileNames,
   )
 import Directory.Paths
@@ -365,11 +368,18 @@ getImageR = withDirectoryFromRaw $ \dirPath -> do
   -- so here we just have to check the directory itself, not its parents.
   -- This makes sure that the browser gets a consistent path and can do better caching.
   let mImg = getDirectoryAtPath roots dirPath >>= directoryImage
+  let sendImage :: CachedImageFileName -> Handler TypedContent
+      sendImage imageName = do
+        imagesDirPath <- getImagesDir
+        let imagePath = imagesDirPath </> T.unpack (unwrap imageName)
+        sendFile (cachedImageContentType imageName) imagePath
   case mImg of
     Nothing -> notFound
-    Just (imgName, imgBytes) -> do
+    Just img -> do
       addHeader "Cache-Control" "max-age=604800, public" -- Cache 1 week
-      sendResponse (getImageContentType imgName, toContent imgBytes)
+      case img of
+        ImageOnDisk _ i -> sendImage i
+        ImageFromWeb _ i -> sendImage i
 
 getRemoteR :: Handler Html
 getRemoteR = do

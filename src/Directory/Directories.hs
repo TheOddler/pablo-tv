@@ -5,7 +5,7 @@ module Directory.Directories where
 import Control.Applicative ((<|>))
 import Data.Aeson
   ( FromJSON (..),
-    FromJSONKey,
+    FromJSONKey (..),
     FromJSONKeyFunction (..),
     ToJSON (..),
     ToJSONKey (..),
@@ -13,7 +13,8 @@ import Data.Aeson
     genericToEncoding,
     genericToJSON,
   )
-import Data.Aeson.Types (FromJSONKey (..), toJSONKeyText)
+import Data.Aeson qualified as Aeson
+import Data.Aeson.Types qualified as Aeson
 import Data.Map.Strict qualified as Map
 import Data.Maybe (isJust)
 import Data.Text (Text)
@@ -69,7 +70,7 @@ instance ToJSON RootDirectoryLocation where
   toEncoding = toEncoding . rootDirectoryLocationToText
 
 instance ToJSONKey RootDirectoryLocation where
-  toJSONKey = toJSONKeyText rootDirectoryLocationToText
+  toJSONKey = Aeson.toJSONKeyText rootDirectoryLocationToText
 
 parseRootDirectoryLocationFromText :: (MonadFail m) => Text -> m RootDirectoryLocation
 parseRootDirectoryLocationFromText t = do
@@ -131,7 +132,7 @@ newtype DirectoryName = DirectoryName {unDirectoryName :: TextWithoutSeparator}
 -- (Sub)Directories Data
 
 data DirectoryData = DirectoryData
-  { directoryImage :: Maybe (ImageFileName, ImageFileData),
+  { directoryImage :: Maybe Image,
     directorySubDirs :: Map.Map DirectoryName DirectoryData,
     directoryVideoFiles :: Map.Map VideoFileName VideoFileData
   }
@@ -142,9 +143,22 @@ instance ToJSON DirectoryData where
   toEncoding = genericToEncoding $ ourAesonOptionsPrefix "directory"
 
 instance FromJSON DirectoryData where
-  parseJSON = genericParseJSON $ ourAesonOptionsPrefix "directory"
-
--- Guessing
+  parseJSON = Aeson.withObject "DirectoryData" $ \o -> do
+    (imgRaw :: Maybe Aeson.Value) <- o Aeson..:? "image"
+    img <- case imgRaw of
+      Nothing -> pure Nothing
+      Just v ->
+        case Aeson.parseMaybe parseJSON v of
+          Nothing -> pure Nothing -- on parse failure, treat as Nothing, this is an old image that we just discard.
+          Just parsed -> pure $ Just parsed
+    subDirs <- o Aeson..: "subDirs"
+    videos <- o Aeson..: "videoFiles"
+    pure
+      DirectoryData
+        { directoryImage = img,
+          directorySubDirs = subDirs,
+          directoryVideoFiles = videos
+        }
 
 data DirectoryKindGuess
   = DirectoryKindMovie Text -- Best guess for the movie title

@@ -70,7 +70,6 @@ library
   build-depends:
     -- Later versions of random have a shuffle function, but for now we need this package
     aeson,
-    base64-bytestring,
     blaze-markup,
     bounded-queue,
     bytestring,

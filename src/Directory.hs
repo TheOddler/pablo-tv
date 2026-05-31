@@ -8,7 +8,7 @@ import Data.ByteString qualified as BS
 import Data.List ((\\))
 import Data.List.NonEmpty qualified as NE
 import Data.Map.Strict qualified as Map
-import Data.Maybe (isJust)
+import Data.Maybe (isJust, maybeToList)
 import Data.Text qualified as T
 import Data.Time (UTCTime)
 import Data.Time.Clock.POSIX (posixSecondsToUTCTime)
@@ -27,6 +27,7 @@ import System.Directory (XdgDirectory (..), createDirectoryIfMissing, getXdgDire
 import System.FilePath ((</>))
 import Util (firstRightM, logDuration, logOnErrorIO, showT, unsnocNE)
 import Util.TextWithoutSeparator
+import Yesod (ContentType)
 
 getDirectoryAtPath :: RootDirectories -> DirectoryPath -> Maybe DirectoryData
 getDirectoryAtPath roots (DirectoryPath wantedRoot []) = do
@@ -111,12 +112,30 @@ loadRootsFromDisk = logDuration "Loaded roots from disk" $ do
         `catchAny` \e -> putLog Error $ "Failed marking as broken: " ++ displayException e
       pure Nothing
 
+getImagesDir :: (SafeIO m) => m FilePath
+getImagesDir = do
+  memoryDir <- getMemoryFileDir
+  let imagesFolder = "images"
+  pure $ memoryDir </> imagesFolder
+
+writeImageToDisk :: (SafeIO m, Logger m) => CachedImageFileName -> BS.ByteString -> m ()
+writeImageToDisk imageName imageBytes = do
+  imagesDirPath <- getImagesDir
+  let imagePath = imagesDirPath </> T.unpack (unwrap imageName)
+  res <- runIOSafely $ do
+    createDirectoryIfMissing True imagesDirPath
+    BS.writeFile imagePath imageBytes
+  case res of
+    Right () -> pure ()
+    Left e -> putLog Error $ "Failed saving image to " ++ imagePath ++ ": " ++ displayException e
+
 data ShallowDirUpdateResult
   = ShallowDirUpdateDirUnknown -- Nothing found at the given path, so nothing checked nor updated
   | ShallowDirUpdateDirNotFoundOnDisk
   | ShallowDirUpdateWasNotADir -- We found it, but turned out not to be a directory, we guessed wrong somewhere
   | ShallowDirUpdateUnchanged
-  | ShallowDirUpdateChanged DirectoryData
+  | -- Also returns a list of images that need to be written to disk, if any
+    ShallowDirUpdateChanged DirectoryData [(CachedImageFileName, BS.ByteString)]
   | ShallowDirUpdateOtherIOError IOError
 
 -- | Does a shallow update, so updates only the directory itself, no sub-directories.
@@ -148,15 +167,21 @@ shallowUpdateDirectory roots dirPath = do
             case (updatedSubDirs, updatedVideoFiles, updatedImageFile) of
               (Nothing, Nothing, Nothing) -> pure ShallowDirUpdateUnchanged
               _ -> do
-                pure . ShallowDirUpdateChanged $
-                  DirectoryData
-                    { directoryImage =
-                        firstJust updatedImageFile currentDirData.directoryImage,
-                      directoryVideoFiles =
-                        updatedVideoFiles `orElse` currentDirData.directoryVideoFiles,
-                      directorySubDirs =
-                        updatedSubDirs `orElse` currentDirData.directorySubDirs
-                    }
+                pure $
+                  ShallowDirUpdateChanged
+                    DirectoryData
+                      { directoryImage =
+                          firstJust (fst <$> updatedImageFile) currentDirData.directoryImage,
+                        directoryVideoFiles =
+                          updatedVideoFiles `orElse` currentDirData.directoryVideoFiles,
+                        directorySubDirs =
+                          updatedSubDirs `orElse` currentDirData.directorySubDirs
+                      }
+                    [ case img of
+                        ImageOnDisk _ cachedName -> (cachedName, imgData)
+                        ImageFromWeb _ cachedName -> (cachedName, imgData)
+                    | (img, imgData) <- maybeToList updatedImageFile
+                    ]
             where
               updateSubDirs :: [DirectoryName] -> Maybe (Map.Map DirectoryName DirectoryData)
               updateSubDirs subDirGuesses = do
@@ -206,40 +231,46 @@ shallowUpdateDirectory roots dirPath = do
 
               -- Updates the image if it's different from what we know about.
               -- If there's none on disk, and no known one either, it'll try to find one online.
-              updateImageFile :: [ImageFileName] -> m (Maybe (ImageFileName, ImageFileData))
+              updateImageFile :: [ImageFileName] -> m (Maybe (Image, BS.ByteString))
               updateImageFile imageGuesses = do
                 -- We only care about the best image, other images ignore, even if there are new ones that aren't the best
                 let diskImageName = bestImageFile imageGuesses
-                    currentImageName = fst <$> currentDirData.directoryImage
                     anyParentDirHasImage = isJust $ findDirWithImageFor roots dirPath
                     isRootDir = null dirPath.directoryPathNames
                     isSeasonDirOrSubDir = any isSeasonDir dirPath.directoryPathNames
 
-                    getImageFromDisk :: ImageFileName -> m (Maybe (ImageFileName, ImageFileData))
+                    getImageFromDisk :: ImageFileName -> m (Maybe (Image, BS.ByteString))
                     getImageFromDisk imgName = do
                       let imgPath = absDirPath </> T.unpack (unwrap imgName)
                       imgOrErr <- runIOSafely $ BS.readFile imgPath
                       case imgOrErr of
                         Right imgFile -> do
                           putLog Info $ "Read image from disk: " ++ imgPath
-                          pure $ Just (imgName, ImageFileData imgFile)
+                          cachedImgName <-
+                            mkCachedImageFileName
+                              (unDirectoryName <$> dirPath.directoryPathNames)
+                              (Left imgName)
+                          pure $ Just (ImageOnDisk imgName cachedImgName, imgFile)
                         Left err -> do
                           putLog Error $ "Failed reading image from disk: " ++ displayException err
                           pure Nothing
 
-                case (currentImageName, diskImageName) of
+                case (currentDirData.directoryImage, diskImageName) of
                   (Nothing, Just diskImg) ->
                     -- We currently don't know about an image, but there's one on disk, use that.
                     getImageFromDisk diskImg
-                  (Just img, Just diskImg)
+                  (Just (ImageFromWeb _ _), Just diskImg) ->
+                    -- We previously downloaded an image, but now there's one on disk, the latter should have priority
+                    getImageFromDisk diskImg
+                  (Just (ImageOnDisk img _), Just diskImg)
                     | img /= diskImg ->
                         -- The image we know about is different from the one on disk, update it!
                         getImageFromDisk diskImg
-                  (Just _img, Just _diskImg) ->
+                  (Just (ImageOnDisk _ _), Just _diskImg) ->
                     -- The image we know about is the same as on disk, so no need to update, save some IO
                     pure Nothing
                   (Just _img, Nothing) ->
-                    -- We have an image already, but none on disk. Just keep it, we probably downloaded it previously.
+                    -- We have an image already, but none on disk. Just keep it, we probably downloaded it previously, or it was a image on disk now removed.
                     pure Nothing
                   (Nothing, Nothing)
                     | isRootDir -- Root dirs never have images
@@ -248,8 +279,8 @@ shallowUpdateDirectory roots dirPath = do
                         pure Nothing
                   (Nothing, Nothing) -> do
                     -- Nothing known, nothing on disk, try and download one
-                    (attemptErrors, result) <- getImageFromWebFor dirPath
-                    case (attemptErrors, result) of
+                    (attemptErrors, mResult) <- getImageFromWebFor dirPath
+                    case (attemptErrors, mResult) of
                       ([], Just _) ->
                         putLog Info $ "Successfully downloaded image for: " ++ absDirPath
                       (errs, Just _) ->
@@ -272,11 +303,18 @@ shallowUpdateDirectory roots dirPath = do
                               "attempts. Search terms and errors were:",
                               show errs
                             ]
-                    pure result
+                    case mResult of
+                      Nothing -> pure Nothing
+                      Just (contentType, imgData) -> do
+                        cachedImgName <-
+                          mkCachedImageFileName
+                            (unDirectoryName <$> dirPath.directoryPathNames)
+                            (Right contentType)
+                        pure $ Just (ImageFromWeb contentType cachedImgName, imgData)
 
 -- | Returns a (potentially empty) list of errors of failed attempts with the search string that was tried,
 -- and hopefully a successful result.
-getImageFromWebFor :: forall m. (ImageScraper m) => DirectoryPath -> m ([(T.Text, ImageSearchFailure)], Maybe (ImageFileName, ImageFileData))
+getImageFromWebFor :: forall m. (ImageScraper m) => DirectoryPath -> m ([(T.Text, ImageSearchFailure)], Maybe (ContentType, BS.ByteString))
 getImageFromWebFor dirPath = case NE.nonEmpty $ unRawWebPath $ rawWebPathFromDirectory dirPath of
   Nothing -> pure ([], Nothing)
   Just partsNE -> do
@@ -284,13 +322,13 @@ getImageFromWebFor dirPath = case NE.nonEmpty $ unRawWebPath $ rawWebPathFromDir
         dirName = DirectoryName $ NE.last partsNE
 
         (dirTitle, _dirSubTitle) = splitTitleFromDir dirName
-        tryFindImage' :: T.Text -> m (Either (T.Text, ImageSearchFailure) (ImageFileName, ImageFileData))
+        tryFindImage' :: T.Text -> m (Either (T.Text, ImageSearchFailure) (ContentType, BS.ByteString))
         tryFindImage' searchTerm = do
           res <- tryFindImage searchTerm
           pure $ case res of
             Left err -> Left (searchTerm, err)
             Right (contentType, img) ->
-              Right (imageFileNameForContentType contentType, ImageFileData img)
+              Right (contentType, img)
     firstRightM
       [ tryFindImage' $ unwrap dirName,
         tryFindImage' dirTitle
@@ -352,7 +390,9 @@ recursiveUpdateDirectoryNoSave rootsPVar startingDirPath = do
             pure roots
           ShallowDirUpdateUnchanged ->
             pure roots
-          ShallowDirUpdateChanged updatedDirData ->
+          ShallowDirUpdateChanged updatedDirData imagesToSave -> do
+            forM_ imagesToSave $ \(imageName, imageBytes) -> do
+              writeImageToDisk imageName imageBytes
             pure $ updateDirectoryAtPath roots dirPath $ const updatedDirData
 
       -- Add sub directories to the list of stuff to update in our loop

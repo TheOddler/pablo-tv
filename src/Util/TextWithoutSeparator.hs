@@ -10,11 +10,13 @@ module Util.TextWithoutSeparator
     splitAtSeparatorNE,
     unsplitSeparatedText,
     unsplitSeparatedTextNE,
+    unsplitWithDash,
     splitNE,
     safeCleanListDirectory,
     twsQQ,
     isSuffixOf,
     anyIsSuffixOf,
+    splitExtension,
   )
 where
 
@@ -34,6 +36,7 @@ import Orphanage ()
 import SafeConvert (splitTextNE)
 import SafeIO (SafeIO (..))
 import System.Directory (listDirectory)
+import System.FilePath qualified as FP
 import Text.Blaze (ToMarkup)
 import Text.Read (Read (..))
 import Yesod (PathPiece (..))
@@ -107,6 +110,9 @@ unsplitSeparatedText = T.intercalate (T.singleton separator) . map unTextWithout
 unsplitSeparatedTextNE :: NE.NonEmpty TextWithoutSeparator -> T.Text
 unsplitSeparatedTextNE = unsplitSeparatedText . NE.toList
 
+unsplitWithDash :: [TextWithoutSeparator] -> TextWithoutSeparator
+unsplitWithDash = UnsafeTextWithoutSeparator . T.intercalate "-" . map unTextWithoutSeparator
+
 splitNE :: (Char -> Bool) -> TextWithoutSeparator -> NE.NonEmpty TextWithoutSeparator
 splitNE sep t = UnsafeTextWithoutSeparator <$> splitTextNE sep (unTextWithoutSeparator t)
 
@@ -128,3 +134,8 @@ suffix `isSuffixOf` txt =
 anyIsSuffixOf :: (Foldable f) => f TextWithoutSeparator -> TextWithoutSeparator -> Bool
 suffixes `anyIsSuffixOf` txt =
   any (`isSuffixOf` txt) suffixes
+
+splitExtension :: TextWithoutSeparator -> (TextWithoutSeparator, TextWithoutSeparator)
+splitExtension t =
+  let (name, ext) = FP.splitExtension $ T.unpack t.unTextWithoutSeparator
+   in (UnsafeTextWithoutSeparator $ T.pack name, UnsafeTextWithoutSeparator $ T.pack ext)

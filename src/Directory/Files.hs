@@ -14,8 +14,7 @@ import Data.Aeson
     genericToEncoding,
     genericToJSON,
   )
-import Data.ByteString qualified as BS
-import Data.ByteString.Base64 qualified as B64
+import Data.Aeson qualified as Aeson
 import Data.ByteString.Char8 qualified as BS8
 import Data.ByteString.UTF8 qualified as BS
 import Data.HashSet qualified as Set
@@ -30,12 +29,12 @@ import Data.Time (UTCTime)
 import GHC.Exts (sortWith)
 import GHC.Generics (Generic)
 import Orphanage ()
-import SafeConvert (bsToBase64Text)
+import SafeIO (SafeIO, getCurrentTime)
 import System.FilePath (takeBaseName, takeExtension)
 import Util (ourAesonOptionsPrefix, safeMinimumOn)
 import Util.Regex
 import Util.TextWithoutSeparator
-import Yesod (ContentType, ToContent, typeJpeg)
+import Yesod (ContentType, typeJpeg)
 
 -- Videos
 
@@ -57,19 +56,36 @@ instance FromJSON VideoFileData where
 
 -- Images
 
+data Image
+  = ImageOnDisk ImageFileName CachedImageFileName
+  | ImageFromWeb ContentType CachedImageFileName
+  deriving (Show, Eq)
+
+instance ToJSON Image where
+  toJSON = \case
+    ImageOnDisk name cached ->
+      Aeson.object ["name" Aeson..= name, "cached" Aeson..= cached]
+    ImageFromWeb ct cached ->
+      Aeson.object ["contentType" Aeson..= TE.decodeUtf8Lenient ct, "cached" Aeson..= cached]
+  toEncoding = \case
+    ImageOnDisk name cached ->
+      Aeson.pairs ("name" Aeson..= name <> "cached" Aeson..= cached)
+    ImageFromWeb ct cached ->
+      Aeson.pairs ("contentType" Aeson..= TE.decodeUtf8Lenient ct <> "cached" Aeson..= cached)
+
+instance FromJSON Image where
+  parseJSON = Aeson.withObject "Image" $ \o -> do
+    cachedName <- o Aeson..: "cached"
+    mName <- o Aeson..:? "name"
+    mContentType <- o Aeson..:? "contentType"
+
+    case (mName, mContentType) of
+      (Just name, _) -> pure $ ImageOnDisk name cachedName
+      (Nothing, Just ct) -> pure $ ImageFromWeb (TE.encodeUtf8 ct) cachedName
+      (Nothing, Nothing) -> fail "Expected object with either 'name' (for ImageOnDisk) or 'contentType' (for ImageFromWeb) field"
+
 newtype ImageFileName = ImageFileName TextWithoutSeparator
   deriving newtype (Eq, Show, Unwrap Text, ToJSON, FromJSON)
-
-getImageContentType :: ImageFileName -> ContentType
-getImageContentType (ImageFileName imgName) =
-  case takeExtension $ T.unpack $ unwrap imgName of
-    "" -> typeJpeg
-    ext ->
-      let cleanedExt = lower $
-            case ext of
-              '.' : e -> e
-              e -> e
-       in "image/" <> BS8.pack cleanedExt
 
 -- | We assume this is a properly formatted content type, something like "image/jpg".
 -- If it is not, we silently return some default or possibly a weird filename
@@ -79,24 +95,42 @@ imageFileNameForContentType ct = ImageFileName $
     Just ext -> [twsQQ|poster.|] <> removeSeparatorsFromText (T.pack ext)
     Nothing -> [twsQQ|poster.jpg|]
 
-newtype ImageFileData = ImageFileData {unImageFileData :: BS.ByteString}
-  deriving newtype (ToContent, Eq, Show)
-
-instance ToJSON ImageFileData where
-  toJSON imgData = toJSON $ bsToBase64Text imgData.unImageFileData
-  toEncoding imgData = toEncoding $ bsToBase64Text imgData.unImageFileData
-
-instance FromJSON ImageFileData where
-  parseJSON jsonValue = do
-    t <- parseJSON jsonValue
-    pure $ ImageFileData $ B64.decodeLenient $ TE.encodeUtf8 t
-
 bestImageFile :: [ImageFileName] -> Maybe ImageFileName
 bestImageFile = safeMinimumOn $ \fileName ->
   case lower $ takeBaseName $ T.unpack $ unwrap fileName of
     "poster" -> 0 :: Int
     "cover" -> 1
     _ -> 100
+
+newtype CachedImageFileName = CachedImageFileName TextWithoutSeparator
+  deriving newtype (Eq, Show, Unwrap Text, ToJSON, FromJSON)
+
+mkCachedImageFileName :: (SafeIO m) => [TextWithoutSeparator] -> Either ImageFileName ContentType -> m CachedImageFileName
+mkCachedImageFileName path originalNameOrContentType = do
+  now <- getCurrentTime
+  let name :: TextWithoutSeparator
+      ext :: TextWithoutSeparator
+      (name, ext) = case originalNameOrContentType of
+        Left (ImageFileName originalName) -> splitExtension originalName
+        Right contentType ->
+          ( [twsQQ||],
+            removeSeparatorsFromText $ TE.decodeUtf8Lenient contentType
+          )
+  pure $
+    CachedImageFileName $
+      unsplitWithDash $
+        path ++ [name, removeSeparatorsFromText $ T.pack $ show now, ext]
+
+cachedImageContentType :: CachedImageFileName -> ContentType
+cachedImageContentType (CachedImageFileName imgName) =
+  case takeExtension $ T.unpack $ unwrap imgName of
+    "" -> typeJpeg
+    ext ->
+      let cleanedExt = lower $
+            case ext of
+              '.' : e -> e
+              e -> e
+       in "image/" <> BS8.pack cleanedExt
 
 -- Nicely collapsing file names
 
