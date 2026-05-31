@@ -18,7 +18,7 @@ import UnliftIO.Exception (tryAny)
 import Yesod (ContentType)
 
 data ImageSearchFailure
-  = ImageSearchFailedScraping
+  = ImageSearchFailedScraping T.Text
   | ImageSearchDownloadFailed String
   deriving (Show)
 
@@ -30,9 +30,9 @@ instance ImageScraper Handler where
 
 tryFindImageIO :: (MonadIO m) => T.Text -> m (Either ImageSearchFailure (ContentType, BS.ByteString))
 tryFindImageIO searchText = do
-  mImgUrl <- liftIO $ scrapeURL (T.unpack url) firstImageUrl
+  mImgUrl <- liftIO $ scrapeURL (T.unpack url) firstImage
   case mImgUrl of
-    Nothing -> pure $ Left ImageSearchFailedScraping
+    Nothing -> pure $ Left $ ImageSearchFailedScraping url
     Just imgUrl -> do
       let resizedUrl = mkImgSizeUrl imgUrl
       imgOrErr <- downloadImage resizedUrl
@@ -44,11 +44,11 @@ tryFindImageIO searchText = do
     query = mapTextThroughBS (urlEncode True) searchText
     url = baseUrl <> query
 
-    firstImageUrl :: Scraper String URL
-    firstImageUrl = chroot ("div" @: [hasClass "poster"]) innerImage
+    -- firstImageWithWrapper :: Scraper String URL
+    -- firstImageWithWrapper = chroot ("div" @: [hasClass "poster"]) firstImage
 
-    innerImage :: Scraper String URL
-    innerImage = attr "src" $ "img" @: [hasClass "poster"]
+    firstImage :: Scraper String URL
+    firstImage = attr "src" $ "img" @: [hasClass "poster"]
 
     -- Looks like the thumbnail urls have a simple pattern, so we can get a bigger size.
     -- Format for the urls is: https://media.themoviedb.org/t/p/w94_and_h141_bestv2/123SomeHash456.jpg
