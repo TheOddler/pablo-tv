@@ -9,6 +9,8 @@ import Data.ByteString.Char8 qualified as BS8
 import Data.Either (isRight)
 import Data.Map.Strict qualified as Map
 import Data.Text qualified as T
+import Data.Time (UTCTime (..), secondsToDiffTime)
+import Data.Time.Calendar.OrdinalDate (fromOrdinalDate)
 import Directory (recursiveUpdateDirectoryNoSave, recursivelyUpdateAllDirectoriesNoSave)
 import Directory.Directories
 import Directory.Files
@@ -27,6 +29,9 @@ import TestUtils (runTestIO, testCurrentTime, testModificationTime)
 import UnliftIO.Directory (getCurrentDirectory)
 import Util.DirPath (absPath, absPathQQ, relPathQQ)
 import Util.TextWithoutSeparator (removeSeparatorsFromText, twsQQ)
+
+dateJan2000 :: UTCTime
+dateJan2000 = UTCTime (fromOrdinalDate 2000 1) (secondsToDiffTime $ 60 * 60 + 60 + 1)
 
 spec :: Spec
 spec = do
@@ -58,7 +63,7 @@ spec = do
                               Map.fromList
                                 [ ( VideoFileName [twsQQ|video.avi|],
                                     VideoFileData
-                                      { videoFileAdded = read "2000-01-01 01:01:01",
+                                      { videoFileAdded = dateJan2000,
                                         videoFileWatched = Nothing
                                       }
                                   )
@@ -70,7 +75,7 @@ spec = do
                   Map.fromList
                     [ ( VideoFileName [twsQQ|test.mov|],
                         VideoFileData
-                          { videoFileAdded = read "2000-01-01 01:01:01",
+                          { videoFileAdded = dateJan2000,
                             videoFileWatched = Nothing
                           }
                       )
@@ -85,7 +90,7 @@ spec = do
                   Map.fromList
                     [ ( VideoFileName [twsQQ|video.mp4|],
                         VideoFileData
-                          { videoFileAdded = read "2000-01-01 01:01:01",
+                          { videoFileAdded = dateJan2000,
                             videoFileWatched = Nothing
                           }
                       )
@@ -124,7 +129,11 @@ rootSpec = do
           { rootDirectorySubDirs =
               [ ( DirectoryName [twsQQ|A video|],
                   DirectoryData
-                    { directoryImage = Just (ImageFileName [twsQQ|poster.jpg|], ImageFileData ""),
+                    { directoryImage =
+                        Just $
+                          ImageOnDisk
+                            (ImageFileName [twsQQ|poster.jpg|])
+                            (CachedImageFileName [twsQQ|A video-poster-0test0.jpg|]),
                       directorySubDirs = [],
                       directoryVideoFiles =
                         [ ( VideoFileName [twsQQ|video-file.mp4|],
@@ -138,11 +147,19 @@ rootSpec = do
                 ),
                 ( DirectoryName [twsQQ|With sub-folders|],
                   DirectoryData
-                    { directoryImage = Just (ImageFileName [twsQQ|the-series-poster.png|], ImageFileData ""),
+                    { directoryImage =
+                        Just $
+                          ImageOnDisk
+                            (ImageFileName [twsQQ|the-series-poster.png|])
+                            (CachedImageFileName [twsQQ|With sub-folders-the-series-poster-0test0.png|]),
                       directorySubDirs =
                         [ ( DirectoryName [twsQQ|Sub 1|],
                             DirectoryData
-                              { directoryImage = Just (ImageFileName [twsQQ|poster.webp|], ImageFileData ""),
+                              { directoryImage =
+                                  Just $
+                                    ImageOnDisk
+                                      (ImageFileName [twsQQ|poster.webp|])
+                                      (CachedImageFileName [twsQQ|With sub-folders-Sub 1-poster-0test0.webp|]),
                                 directorySubDirs = [],
                                 directoryVideoFiles =
                                   [ ( VideoFileName [twsQQ|File 1.1 - Test.mkv|],

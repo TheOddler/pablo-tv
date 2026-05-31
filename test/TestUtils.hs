@@ -21,7 +21,7 @@ instance Logger TestIO where
   putLogMsg _ = pure ()
 
 instance ImageScraper TestIO where
-  tryFindImage _ = pure $ Left ImageSearchFailedScraping
+  tryFindImage _ = pure $ Left $ ImageSearchFailedScraping "Image scraping disabled in tests"
 
 testCurrentTime :: UTCTime
 testCurrentTime = UTCTime (fromOrdinalDate 2026 1) (secondsToDiffTime 0)
@@ -42,6 +42,9 @@ instance SafeIO TestIO where
     case modTime of
       Left err -> pure $ Left err
       Right _ -> pure $ Right testModificationTime
+  randomFileNameSuffix = do
+    _ <- runSafeIOT randomFileNameSuffix
+    pure "0test0"
   getHomeDirectory = do
     _ <- runSafeIOT getHomeDirectory
     -- Pretend the current (test) folder is our home

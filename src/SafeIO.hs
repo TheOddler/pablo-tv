@@ -15,6 +15,7 @@ class (Monad m) => SafeIO m where
   unsafePinkyPromiseThisIsSafe :: (HasCallStack) => IO a -> m a
   getCurrentTime :: m UTCTime -- Known safe, and to mock during testing
   getModificationTime :: FilePath -> m (Either IOException UTCTime) -- For mocking, as git seems to change file mod times
+  randomFileNameSuffix :: m String
 
   -- | Technically it's possible for the home directory to not exist, but realistically
   -- that's not something I want to worry about.
@@ -26,6 +27,7 @@ instance (SafeIO m) => SafeIO (ReaderT r m) where
   unsafePinkyPromiseThisIsSafe = lift . unsafePinkyPromiseThisIsSafe
   getCurrentTime = lift getCurrentTime
   getModificationTime = lift . getModificationTime
+  randomFileNameSuffix = lift randomFileNameSuffix
   getHomeDirectory = lift getHomeDirectory
 
 resolveError :: (SafeIO m) => m (Either e a) -> (e -> m a) -> m a

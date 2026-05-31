@@ -26,13 +26,11 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Time (UTCTime)
-import Data.Word (Word32)
 import GHC.Exts (sortWith)
 import GHC.Generics (Generic)
 import Orphanage ()
-import SafeIO (SafeIO (unsafePinkyPromiseThisIsSafe))
+import SafeIO (SafeIO, randomFileNameSuffix)
 import System.FilePath (takeBaseName, takeExtension)
-import System.Random (randomIO)
 import Util (ourAesonOptionsPrefix, safeMinimumOn)
 import Util.Regex
 import Util.TextWithoutSeparator
@@ -101,7 +99,7 @@ newtype CachedImageFileName = CachedImageFileName TextWithoutSeparator
 
 mkCachedImageFileName :: (SafeIO m) => [TextWithoutSeparator] -> Either ImageFileName ContentType -> m CachedImageFileName
 mkCachedImageFileName path originalNameOrContentType = do
-  (random :: Word32) <- unsafePinkyPromiseThisIsSafe randomIO
+  suffix <- randomFileNameSuffix
   let name :: Maybe TextWithoutSeparator
       ext :: TextWithoutSeparator
       (name, ext) = case originalNameOrContentType of
@@ -114,7 +112,7 @@ mkCachedImageFileName path originalNameOrContentType = do
               Just ext' -> [twsQQ|.|] <> removeSeparatorsFromText (T.pack ext')
               Nothing -> [twsQQ|.jpg|]
           )
-      fullName = intercalate [twsQQ|-|] $ path ++ maybeToList name ++ [removeSeparatorsFromText $ T.pack $ show random]
+      fullName = intercalate [twsQQ|-|] $ path ++ maybeToList name ++ [removeSeparatorsFromText $ T.pack suffix]
   pure . CachedImageFileName $ fullName <> ext
 
 cachedImageContentType :: CachedImageFileName -> ContentType

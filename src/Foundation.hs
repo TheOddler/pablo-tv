@@ -116,3 +116,4 @@ instance SafeIO Handler where
   getCurrentTime = runSafeIOT getCurrentTime
   getModificationTime = runSafeIOT . getModificationTime
   getHomeDirectory = runSafeIOT getHomeDirectory
+  randomFileNameSuffix = runSafeIOT randomFileNameSuffix
