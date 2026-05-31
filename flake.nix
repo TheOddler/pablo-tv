@@ -44,7 +44,7 @@
               nixpkgs-fmt.enable = true;
               hlint = {
                 enable = true;
-                settings.hintFile = ./.hlint.yaml;
+                settings.hintFile = ./backend/.hlint.yaml;
               };
               ormolu = {
                 enable = true;
@@ -63,7 +63,7 @@
 
         packages = {
           pablo-tv-base = pkgs.haskellPackages.developPackage {
-            root = ./.;
+            root = ./backend;
             modifier = drv:
               drv.overrideAttrs
                 (oldAttrs: {

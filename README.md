@@ -42,29 +42,29 @@ Add something like this to your system flake:
 # Dev server
 
 ```bash
-watchexec -e hs,hamlet,cabal --restart cabal run -f development
+watchexec -e hs,hamlet,cabal --restart cabal run backend -f development
 ```
 
 # Testing
 
 ```bash
-watchexec -e hs,cabal --restart cabal test
+watchexec -e hs,cabal --restart cabal test backend
 ```
 
 Or test and run:
 
 ```bash
-watchexec -e hs,hamlet,cabal --restart "cabal test -f development && cabal run -f development"
+watchexec -e hs,hamlet,cabal --restart "cabal test backend -f development && cabal run backend -f development"
 ```
 
 If you want to work on golden tests:
 
 ```bash
-watchexec -e hs,cabal --restart "cabal test --test-options=\"--golden-reset --golden-start\""
+watchexec -e hs,cabal --restart "cabal test backend --test-options=\"--golden-reset --golden-start\""
 ```
 
 Or want to run only a specific test:
 
 ```bash
-watchexec -e hs,cabal --restart "cabal test --test-options=\"--match \\\"TEST_NAME_HERE\\\"\""
+watchexec -e hs,cabal --restart "cabal test backend --test-options=\"--match \\\"TEST_NAME_HERE\\\"\""
 ```
