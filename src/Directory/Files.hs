@@ -20,17 +20,19 @@ import Data.ByteString.UTF8 qualified as BS
 import Data.HashSet qualified as Set
 import Data.List.Extra (dropPrefix, dropSuffix, lower, stripPrefix, uncons)
 import Data.List.NonEmpty qualified as NE
-import Data.Maybe (isJust, listToMaybe, mapMaybe)
+import Data.Maybe (isJust, listToMaybe, mapMaybe, maybeToList)
 import Data.Set (Set)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Time (UTCTime)
+import Data.Word (Word32)
 import GHC.Exts (sortWith)
 import GHC.Generics (Generic)
 import Orphanage ()
-import SafeIO (SafeIO, getCurrentTime)
+import SafeIO (SafeIO (unsafePinkyPromiseThisIsSafe))
 import System.FilePath (takeBaseName, takeExtension)
+import System.Random (randomIO)
 import Util (ourAesonOptionsPrefix, safeMinimumOn)
 import Util.Regex
 import Util.TextWithoutSeparator
@@ -87,14 +89,6 @@ instance FromJSON Image where
 newtype ImageFileName = ImageFileName TextWithoutSeparator
   deriving newtype (Eq, Show, Unwrap Text, ToJSON, FromJSON)
 
--- | We assume this is a properly formatted content type, something like "image/jpg".
--- If it is not, we silently return some default or possibly a weird filename
-imageFileNameForContentType :: ContentType -> ImageFileName
-imageFileNameForContentType ct = ImageFileName $
-  case stripPrefix "image/" $ BS.toString ct of
-    Just ext -> [twsQQ|poster.|] <> removeSeparatorsFromText (T.pack ext)
-    Nothing -> [twsQQ|poster.jpg|]
-
 bestImageFile :: [ImageFileName] -> Maybe ImageFileName
 bestImageFile = safeMinimumOn $ \fileName ->
   case lower $ takeBaseName $ T.unpack $ unwrap fileName of
@@ -107,19 +101,21 @@ newtype CachedImageFileName = CachedImageFileName TextWithoutSeparator
 
 mkCachedImageFileName :: (SafeIO m) => [TextWithoutSeparator] -> Either ImageFileName ContentType -> m CachedImageFileName
 mkCachedImageFileName path originalNameOrContentType = do
-  now <- getCurrentTime
-  let name :: TextWithoutSeparator
+  (random :: Word32) <- unsafePinkyPromiseThisIsSafe randomIO
+  let name :: Maybe TextWithoutSeparator
       ext :: TextWithoutSeparator
       (name, ext) = case originalNameOrContentType of
-        Left (ImageFileName originalName) -> splitExtension originalName
+        Left (ImageFileName originalName) ->
+          let (n, e) = splitExtension originalName
+           in (Just n, e)
         Right contentType ->
-          ( [twsQQ||],
-            removeSeparatorsFromText $ TE.decodeUtf8Lenient contentType
+          ( Nothing,
+            case stripPrefix "image/" $ BS.toString contentType of
+              Just ext' -> [twsQQ|.|] <> removeSeparatorsFromText (T.pack ext')
+              Nothing -> [twsQQ|.jpg|]
           )
-  pure $
-    CachedImageFileName $
-      unsplitWithDash $
-        path ++ [name, removeSeparatorsFromText $ T.pack $ show now, ext]
+      fullName = intercalate [twsQQ|-|] $ path ++ maybeToList name ++ [removeSeparatorsFromText $ T.pack $ show random]
+  pure . CachedImageFileName $ fullName <> ext
 
 cachedImageContentType :: CachedImageFileName -> ContentType
 cachedImageContentType (CachedImageFileName imgName) =

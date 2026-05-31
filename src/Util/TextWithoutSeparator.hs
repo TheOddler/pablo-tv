@@ -10,7 +10,7 @@ module Util.TextWithoutSeparator
     splitAtSeparatorNE,
     unsplitSeparatedText,
     unsplitSeparatedTextNE,
-    unsplitWithDash,
+    intercalate,
     splitNE,
     safeCleanListDirectory,
     twsQQ,
@@ -110,8 +110,8 @@ unsplitSeparatedText = T.intercalate (T.singleton separator) . map unTextWithout
 unsplitSeparatedTextNE :: NE.NonEmpty TextWithoutSeparator -> T.Text
 unsplitSeparatedTextNE = unsplitSeparatedText . NE.toList
 
-unsplitWithDash :: [TextWithoutSeparator] -> TextWithoutSeparator
-unsplitWithDash = UnsafeTextWithoutSeparator . T.intercalate "-" . map unTextWithoutSeparator
+intercalate :: TextWithoutSeparator -> [TextWithoutSeparator] -> TextWithoutSeparator
+intercalate sep = UnsafeTextWithoutSeparator . T.intercalate sep.unTextWithoutSeparator . map unTextWithoutSeparator
 
 splitNE :: (Char -> Bool) -> TextWithoutSeparator -> NE.NonEmpty TextWithoutSeparator
 splitNE sep t = UnsafeTextWithoutSeparator <$> splitTextNE sep (unTextWithoutSeparator t)
