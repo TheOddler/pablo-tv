@@ -41,8 +41,16 @@ Add something like this to your system flake:
 
 # Dev server
 
+backend:
+
 ```bash
 watchexec -e hs,hamlet,cabal --restart cabal run backend -f development
+```
+
+frontend:
+
+```bash
+(cd frontend && elm-live src/Main.elm --dir=static --proxy-prefix=/api --proxy-host=http://localhost:8080 -- --output=static/main.js)
 ```
 
 # Testing

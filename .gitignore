@@ -2,8 +2,8 @@
 .env
 .pre-commit-config.yaml
 .vscode
-client_session_key.aes
 dist-newstyle/
-pablo-tv-data.db3*
 result
 frontend/elm-stuff/
+# elm-live builds this and serves it from this folder
+frontend/static/main.js
