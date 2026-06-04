@@ -39,40 +39,7 @@ Add something like this to your system flake:
 }
 ```
 
-# Dev server
+# Dev
 
-backend:
-
-```bash
-watchexec -e hs,hamlet,cabal --restart cabal run backend -f development
-```
-
-frontend:
-
-```bash
-(cd frontend && elm-live src/Main.elm --dir=static --proxy-prefix=/api --proxy-host=http://localhost:8080 -- --output=static/main.js)
-```
-
-# Testing
-
-```bash
-watchexec -e hs,cabal --restart cabal test backend
-```
-
-Or test and run:
-
-```bash
-watchexec -e hs,hamlet,cabal --restart "cabal test backend -f development && cabal run backend -f development"
-```
-
-If you want to work on golden tests:
-
-```bash
-watchexec -e hs,cabal --restart "cabal test backend --test-options=\"--golden-reset --golden-start\""
-```
-
-Or want to run only a specific test:
-
-```bash
-watchexec -e hs,cabal --restart "cabal test backend --test-options=\"--match \\\"TEST_NAME_HERE\\\"\""
-```
+There's a few scripts in the `scripts` folder.
+See there.

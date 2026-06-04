@@ -18,6 +18,7 @@
         buildInputs = with pkgs; [
           # General
           watchexec
+          parallel
 
           # Nix 
           nil
