@@ -5,20 +5,34 @@
     nixpkgs.url = "github:nixos/nixpkgs/nixos-25.11";
     flake-utils.url = "github:numtide/flake-utils";
     pre-commit-hooks.url = "github:cachix/pre-commit-hooks.nix";
+    mkElmDerivation.url = "github:jeslie0/mkElmDerivation";
   };
 
-  outputs = { self, nixpkgs, pre-commit-hooks, flake-utils }:
+  outputs = { self, nixpkgs, pre-commit-hooks, flake-utils, mkElmDerivation }:
     flake-utils.lib.eachDefaultSystem (system:
       let
-        pkgs = nixpkgs.legacyPackages.${system};
+        pkgs = import nixpkgs {
+          overlays = [ mkElmDerivation.overlays.default ];
+          inherit system;
+        };
         buildInputs = with pkgs; [
+          # General
+          watchexec
+
+          # Nix 
+          nil
+
+          # Haskell
           cabal-install
           haskell-language-server
           hlint
-          watchexec
-          nil
           haskellPackages.weeder
           haskellPackages.cabal-gild
+
+          # Elm
+          elmPackages.elm
+          elmPackages.elm-format
+          elmPackages.elm-json
         ];
         runtimeInputs = with pkgs; [
           libevdev
@@ -83,6 +97,22 @@
               })
             )
           );
+
+          frontend = pkgs.mkElmDerivation {
+            name = "pablo-tv-frontend";
+            src = ./frontend;
+            nativeBuildInputs = [ pkgs.elmPackages.elm ];
+            buildPhase =
+              ''
+                elm make src/Main.elm --optimize
+              '';
+            installPhase =
+              ''
+                mkdir $out
+                cp index.html $out
+              '';
+          };
+
           default = packages.pablo-tv;
         };
       }
