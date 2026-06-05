@@ -58,6 +58,7 @@ library
     SafeConvert
     SafeIO
     Samba
+    Server
     TVState
     Transformers
     Util
@@ -96,6 +97,8 @@ library
     req,
     scalpel,
     scientific,
+    servant-elm,
+    servant-server,
     shakespeare,
     stm,
     template-haskell,
@@ -106,6 +109,7 @@ library
     unliftio,
     unordered-containers,
     utf8-string,
+    wai-app-static,
     warp,
     websockets,
     yesod,

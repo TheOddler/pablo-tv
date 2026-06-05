@@ -93,6 +93,7 @@ import PVar (PVar, PVarState (..), modifyPVar_, newPVar, readPVar, readPVarState
 import SafeConvert (humanReadableBytes)
 import SafeIO (SafeIO, catchAny, unsafePinkyPromiseThisIsSafe)
 import Samba (MountResult, SmbServer (..), SmbShare (..), mount)
+import Server qualified as Servant
 import System.Directory (XdgDirectory (..), createDirectoryIfMissing, getXdgDirectory, renameFile)
 import System.Environment (getArgs)
 import System.FilePath (pathSeparator, (</>))
@@ -551,6 +552,7 @@ main = do
               appRootDirs = rootDirsPVar
             }
     let appThread = toWaiAppPlain app >>= run port . defaultMiddlewaresNoLogging
+    let servantAppThread = Servant.main app
 
     -- The thread that'll be listening for files being played, and marking them as watched
     -- This function returns instantly, but in the background it's still running, so no need to race
@@ -566,6 +568,10 @@ main = do
       callProcess "xdg-open" [url]
 
     putLog Info "Starting server..."
-    liftIO $ raceAll [appThread]
+    liftIO $
+      raceAll
+        [ appThread,
+          servantAppThread
+        ]
 
     putLog Debug "Server quit."

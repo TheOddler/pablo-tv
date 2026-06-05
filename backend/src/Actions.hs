@@ -30,7 +30,8 @@ import Evdev.Uinput
 import Foundation (App (..), Handler)
 import GHC.Conc (atomically, readTVar, readTVarIO, writeTVar)
 import GHC.Generics (Generic)
-import Logging (LogLevel (..), putLog)
+import ImageScraper (ImageScraper)
+import Logging (LogLevel (..), Logger, putLog)
 import Mpris qualified
 import Network.WebSockets qualified as WS
 import PVar (modifyPVar_, readPVar)
@@ -194,6 +195,10 @@ actionsWebSocket =
 performAction :: Action -> Handler ()
 performAction action = do
   app <- getYesod
+  performAction' app action
+
+performAction' :: (Logger m, MonadIO m, SafeIO m, ImageScraper m) => App -> Action -> m ()
+performAction' app action = do
   putLog Debug $ "Performing action: " <> show action
   case action of
     ActionClickMouse btn' ->
