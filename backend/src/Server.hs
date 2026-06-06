@@ -23,7 +23,6 @@ import PVar (readPVar)
 import SafeIO (SafeIO (..))
 import Servant hiding (respond)
 import Servant.Server.Generic (AsServerT)
-import Servant.Types.SourceT qualified as S
 import System.Directory (doesFileExist)
 import System.FilePath (joinPath, takeExtension, (</>))
 import Transformers (SafeIOT (..))
@@ -33,20 +32,7 @@ type API = NamedRoutes APIRoutes
 data APIRoutes mode = APIRoutes
   { apiActions :: mode :- "api" :> "action" :> ReqBody '[JSON] Action :> PostNoContent,
     apiData :: mode :- "api" :> "data" :> Get '[JSON] RootDirectories,
-    apiImages ::
-      mode
-        :- "api"
-          :> "image"
-          :> Capture "imageName" String
-          :> StreamGet
-               NoFraming
-               OctetStream
-               ( Headers
-                   '[ Header "Content-Type" String,
-                      Header "Cache-Control" String
-                    ]
-                   (SourceIO BS.ByteString)
-               ),
+    apiImages :: mode :- "api" :> "image" :> Capture "imageName" String :> Raw,
     -- Must be last, as Servant matches endpoints in order and this captures everything
     apiStatic :: mode :- CaptureAll "pathParts" FilePath :> Raw
   }
@@ -94,7 +80,7 @@ routes =
   APIRoutes
     { apiActions = doAction,
       apiData = getData,
-      apiImages = getImage,
+      apiImages = Tagged . getImage,
       apiStatic = Tagged . getStatic
     }
   where
@@ -109,29 +95,21 @@ routes =
       rootDirs <- asks appRootDirs
       readPVar rootDirs
 
-    getImage ::
-      FilePath ->
-      ReaderT
-        ServerEnv
-        Handler
-        ( Headers
-            '[ Header "Content-Type" String,
-               Header "Cache-Control" String
-             ]
-            (SourceIO BS.ByteString)
-        )
-    getImage imageName = do
+    getImage :: FilePath -> Application
+    getImage imageName _req respond = do
       imagesDir <- runSafeIOT getImagesDir
-      let filepath = imagesDir </> imageName
+      let imagepath = imagesDir </> imageName
       let extension = case takeExtension imageName of
-            '.' : ext -> lower ext
+            '.' : ext -> BS8.pack $ lower ext
             _ -> "jpg"
-      let contentTypeHeader = "image/" ++ extension
-      let cacheControl = "max-age=31536000, public"
-      pure $
-        addHeader contentTypeHeader $
-          addHeader cacheControl $
-            S.readFile filepath
+      respond $
+        responseFile
+          status200
+          [ ("Content-Type", "image/" <> extension),
+            ("Cache-Control", "max-age=31536000, public")
+          ]
+          imagepath
+          Nothing
 
     getStatic :: [FilePath] -> Application
     getStatic pathParts _req respond = do

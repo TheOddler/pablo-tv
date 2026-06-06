@@ -97,7 +97,6 @@ library
     req,
     scalpel,
     scientific,
-    servant,
     servant-elm,
     servant-server,
     shakespeare,
