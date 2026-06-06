@@ -9,7 +9,6 @@ import Control.Monad.Trans.Reader (ReaderT (..), ask, asks)
 import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BS8
 import Data.List.Extra (lower)
-import Data.Maybe (catMaybes)
 import Directory (getImagesDir)
 import Directory.Directories (RootDirectories)
 import Foundation (App (..))
@@ -103,6 +102,7 @@ routes =
             '.' : ext -> BS8.pack $ lower ext
             _ -> "jpg"
       respond $
+        -- `responseFile` automatically adds `Last-Modified` and checks it too
         responseFile
           status200
           [ ("Content-Type", "image/" <> extension),
@@ -127,13 +127,12 @@ routes =
             '.' : ext -> Just $ "application/" <> BS8.pack (lower ext)
             _ -> Nothing
       respond $
+        -- `responseFile` automatically adds `Last-Modified` and checks it too
         responseFile
           status200
-          ( catMaybes
-              [ case contentType' of
-                  Just ct -> Just ("Content-Type", ct)
-                  Nothing -> Nothing
-              ]
+          ( case contentType' of
+              Just ct -> [("Content-Type", ct)]
+              Nothing -> []
           )
           finalPath
           Nothing
