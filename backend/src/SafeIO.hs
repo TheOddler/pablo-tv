@@ -22,7 +22,7 @@ class (Monad m) => SafeIO m where
   -- Also useful for mocking when testing, I can make a fake home directory for the tests.
   getHomeDirectory :: m FilePath
 
-instance {-# OVERLAPPABLE #-} (SafeIO m) => SafeIO (ReaderT r m) where
+instance (SafeIO m) => SafeIO (ReaderT r m) where
   runIOSafely = lift . runIOSafely
   unsafePinkyPromiseThisIsSafe = lift . unsafePinkyPromiseThisIsSafe
   getCurrentTime = lift getCurrentTime

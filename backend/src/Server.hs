@@ -1,4 +1,5 @@
 {-# LANGUAGE DataKinds #-}
+{-# OPTIONS_GHC -Wno-orphans #-}
 
 module Server where
 
@@ -40,7 +41,7 @@ instance Logger ServerM where
     logFunc <- asks appLogFunc
     liftIO $ logFunc msg
 
-instance {-# OVERLAPPING #-} SafeIO ServerM where
+instance SafeIO Servant.Handler where
   runIOSafely = runSafeIOT . runIOSafely
   unsafePinkyPromiseThisIsSafe = runSafeIOT . unsafePinkyPromiseThisIsSafe
   getCurrentTime = runSafeIOT getCurrentTime
