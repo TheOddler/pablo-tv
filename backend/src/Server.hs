@@ -6,18 +6,24 @@ module Server where
 import Actions (Action, performAction')
 import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Trans.Reader (ReaderT (..), ask, asks)
+import Data.ByteString qualified as BS
+import Data.ByteString.Char8 qualified as BS8
+import Data.List.Extra (lower)
 import Directory (getImagesDir)
 import Directory.Directories (RootDirectories)
 import Foundation (App (..))
 import GHC.Generics (Generic)
 import ImageScraper (ImageScraper (..), tryFindImageIO)
 import Logging (Logger (..))
-import Network.Wai.Application.Static
+import Network.HTTP.Types (status200)
+import Network.Wai (responseFile)
 import Network.Wai.Handler.Warp qualified as Wai
 import PVar (readPVar)
 import SafeIO (SafeIO (..))
 import Servant
 import Servant.Server.Generic (AsServerT)
+import Servant.Types.SourceT qualified as S
+import System.FilePath (takeExtension, (</>))
 import Transformers (SafeIOT (..))
 
 type API = NamedRoutes APIRoutes
@@ -25,7 +31,20 @@ type API = NamedRoutes APIRoutes
 data APIRoutes mode = APIRoutes
   { apiActions :: mode :- "api" :> "action" :> ReqBody '[JSON] Action :> PostNoContent,
     apiData :: mode :- "api" :> "data" :> Get '[JSON] RootDirectories,
-    apiImages :: mode :- "api" :> "image" :> Raw,
+    apiImages ::
+      mode
+        :- "api"
+          :> "image"
+          :> Capture "imageName" String
+          :> StreamGet
+               NoFraming
+               OctetStream
+               ( Headers
+                   '[ Header "Content-Type" String,
+                      Header "Cache-Control" String
+                    ]
+                   (SourceIO BS.ByteString)
+               ),
     -- Must be last, as Servant matches endpoints in order and this captures everything
     apiStatic :: mode :- Raw
   }
@@ -34,14 +53,14 @@ data APIRoutes mode = APIRoutes
 -- | Currently using the App from Yesod
 type ServerEnv = App
 
-type ServerM = ReaderT ServerEnv Servant.Handler
+type ServerM = ReaderT ServerEnv Handler
 
 instance Logger ServerM where
   putLogMsg msg = do
     logFunc <- asks appLogFunc
     liftIO $ logFunc msg
 
-instance SafeIO Servant.Handler where
+instance SafeIO Handler where
   runIOSafely = runSafeIOT . runIOSafely
   unsafePinkyPromiseThisIsSafe = runSafeIOT . unsafePinkyPromiseThisIsSafe
   getCurrentTime = runSafeIOT getCurrentTime
@@ -52,7 +71,7 @@ instance SafeIO Servant.Handler where
 instance ImageScraper ServerM where
   tryFindImage = tryFindImageIO
 
-toServantHandler :: ServerEnv -> ServerM a -> Servant.Handler a
+toServantHandler :: ServerEnv -> ServerM a -> Handler a
 toServantHandler = flip runReaderT
 
 mkServer :: ServerEnv -> IO (Server API)
@@ -78,9 +97,17 @@ routes =
       apiData = do
         rootDirs <- asks appRootDirs
         readPVar rootDirs,
-      apiImages = Tagged $ \req resp -> do
+      apiImages = \imageName -> do
         imagesDir <- runSafeIOT getImagesDir
-        let stSet = defaultWebAppSettings imagesDir
-        staticApp stSet req resp,
+        let filepath = imagesDir </> imageName
+        let extension = case takeExtension imageName of
+              '.' : ext -> lower ext
+              _ -> "jpg"
+        let contentTypeHeader = "image/" ++ extension
+        let cacheControl = "max-age=31536000, public"
+        pure $
+          addHeader contentTypeHeader $
+            addHeader cacheControl $
+              S.readFile filepath,
       apiStatic = serveDirectoryWebApp "static"
     }
