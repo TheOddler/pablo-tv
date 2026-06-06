@@ -111,7 +111,6 @@ library
     unordered-containers,
     utf8-string,
     wai,
-    wai-app-static,
     warp,
     websockets,
     yesod,
