@@ -43,7 +43,7 @@ import Directory
 import Directory.Directories
   ( DirectoryData (..),
     DirectoryName (..),
-    RootDirectories,
+    RootDirectories (..),
     RootDirectoryData (..),
     RootDirectoryLocation (..),
     rootDirectoryAsDirectory,
@@ -167,7 +167,7 @@ getHomeR = do
               (rootDirectoryPath rootLocation)
               (rootDirectoryAsDirectory rootData)
         )
-        (Map.toList roots)
+        (Map.toList roots.unRootDirectories)
 
   let mkRandom =
         -- When in dev we auto-reload the page every second or so,
@@ -300,7 +300,7 @@ getDirectoryR = withMDirectoryFromRaw $ \mDirPath -> do
                     (rootDirectoryPath rootLocation)
                     (rootDirectoryAsDirectory rootData)
               )
-              (Map.toList roots),
+              (Map.toList roots.unRootDirectories),
           naturalSortBy (unwrap . fst3) $
             concatMap
               ( \(rootLocation, rootData) -> do
@@ -311,7 +311,7 @@ getDirectoryR = withMDirectoryFromRaw $ \mDirPath -> do
                       videoData
                     )
               )
-              (Map.toList roots)
+              (Map.toList roots.unRootDirectories)
         )
     Just dirPath -> do
       let mDir = getDirectoryAtPath roots dirPath
@@ -434,7 +434,7 @@ mountAllSambaShares roots = do
               RootAbsPath _ -> Nothing
               RootSamba srv shr -> Just (srv, shr)
           )
-          (Map.keys roots)
+          (Map.keys roots.unRootDirectories)
   results <- mapM (uncurry mount) sambaShares
   let showResult :: ((SmbServer, SmbShare), MountResult) -> String
       showResult ((SmbServer srv, SmbShare shr), result) =
@@ -458,7 +458,7 @@ mediaListenerHandler rootDirsPVar absFilePath = do
               -- We'll pretend that this filename is always a video file, if not we just won't find the file and not update it, so that's fine too.
               let videoFileName = VideoFileName fileName
               pure $ Just $ VideoFilePath rootLoc dirNames videoFileName
-    mPath <- firstJustsM $ tryRoot <$> Map.keys roots
+    mPath <- firstJustsM $ tryRoot <$> Map.keys roots.unRootDirectories
     case mPath of
       Nothing -> do
         putLog Info $ "Path did not match any known files, so didn't mark any file as watched: " ++ absFilePath
@@ -514,12 +514,13 @@ main = do
     mRootDirs <- loadRootsFromDisk
     let emptyRootData = RootDirectoryData Map.empty Map.empty
     let rootDirsDefault =
-          Map.fromList
-            [ (RootRelToHome [relPathQQ|Videos|], emptyRootData),
-              (RootAbsPath [absPathQQ|/home/pablo/Downloads/Torrents|], emptyRootData),
-              -- TODO: I'll have to add an interface somewhere to add these
-              (RootSamba (SmbServer "192.168.0.99") (SmbShare "videos"), emptyRootData)
-            ]
+          RootDirectories $
+            Map.fromList
+              [ (RootRelToHome [relPathQQ|Videos|], emptyRootData),
+                (RootAbsPath [absPathQQ|/home/pablo/Downloads/Torrents|], emptyRootData),
+                -- TODO: I'll have to add an interface somewhere to add these
+                (RootSamba (SmbServer "192.168.0.99") (SmbShare "videos"), emptyRootData)
+              ]
     let rootDirs = fromMaybe rootDirsDefault mRootDirs
     rootDirsPVar <- newPVar rootDirs
 

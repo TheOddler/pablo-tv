@@ -34,8 +34,10 @@ import Yesod.WebSockets (race_)
 ourAesonOptionsPrefix :: String -> Aeson.Options
 ourAesonOptionsPrefix prefix =
   Aeson.defaultOptions
-    { Aeson.unwrapUnaryRecords = True,
+    { -- Aeson.sumEncoding = Aeson.ObjectWithSingleField,
+      Aeson.unwrapUnaryRecords = True,
       Aeson.omitNothingFields = True,
+      Aeson.allNullaryToStringTag = True,
       Aeson.constructorTagModifier = dropPrefix constructorPrefix,
       Aeson.fieldLabelModifier =
         mapFirstLetter Char.toLower . dropPrefix fieldPrefix

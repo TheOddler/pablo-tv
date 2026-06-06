@@ -36,7 +36,10 @@ import Yesod (PathPiece (..))
 
 -- Roots
 
-type RootDirectories = Map.Map RootDirectoryLocation RootDirectoryData
+newtype RootDirectories = RootDirectories
+  { unRootDirectories :: Map.Map RootDirectoryLocation RootDirectoryData
+  }
+  deriving (ToJSON, FromJSON)
 
 data RootDirectoryLocation
   = RootSamba Samba.SmbServer Samba.SmbShare
@@ -120,7 +123,7 @@ rootDirectoryAsDirectory :: RootDirectoryData -> DirectoryData
 rootDirectoryAsDirectory root =
   DirectoryData
     { directoryImage = Nothing,
-      directorySubDirs = root.rootDirectorySubDirs,
+      directorySubDirs = DirectorySubDirs root.rootDirectorySubDirs,
       directoryVideoFiles = root.rootDirectoryVideoFiles
     }
 
@@ -133,7 +136,7 @@ newtype DirectoryName = DirectoryName {unDirectoryName :: TextWithoutSeparator}
 
 data DirectoryData = DirectoryData
   { directoryImage :: Maybe Image,
-    directorySubDirs :: Map.Map DirectoryName DirectoryData,
+    directorySubDirs :: DirectorySubDirs,
     directoryVideoFiles :: Map.Map VideoFileName VideoFileData
   }
   deriving (Generic, Show, Eq)
@@ -160,6 +163,11 @@ instance FromJSON DirectoryData where
           directoryVideoFiles = videos
         }
 
+newtype DirectorySubDirs = DirectorySubDirs
+  { unDirectorySubDirs :: Map.Map DirectoryName DirectoryData
+  }
+  deriving newtype (Show, Eq, ToJSON, FromJSON)
+
 data DirectoryKindGuess
   = DirectoryKindMovie Text -- Best guess for the movie title
   | DirectoryKindSeries Text -- Best guess for the series' name
@@ -171,8 +179,8 @@ guessDirectoryKind dirName dirData =
   let (title, _rest) = splitTitleFromDir dirName
       dirSeasonIndicator = isJust $ seasonFromDir dirName
       subDirsSeasonIndicators =
-        any (isJust . seasonFromDir) $ Map.keys dirData.directorySubDirs
-      hasSubDirs = not $ null dirData.directorySubDirs
+        any (isJust . seasonFromDir) $ Map.keys dirData.directorySubDirs.unDirectorySubDirs
+      hasSubDirs = not $ null dirData.directorySubDirs.unDirectorySubDirs
       filesSeasonIndicator = isJust $ seasonFromFiles $ Map.keys dirData.directoryVideoFiles
       hasMovieFiles = not $ null dirData.directoryVideoFiles
    in firstJusts

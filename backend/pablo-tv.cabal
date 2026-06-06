@@ -97,7 +97,6 @@ library
     req,
     scalpel,
     scientific,
-    servant-elm,
     servant-server,
     shakespeare,
     stm,
@@ -123,6 +122,23 @@ executable pablo-tv
   -- other-modules:
   build-depends:
     pablo-tv
+
+executable elm-gen
+  import: defaults
+  main-is: Main.hs
+  hs-source-dirs:
+    elm-gen
+
+  build-depends:
+    bytestring,
+    containers,
+    elm-bridge,
+    http-types,
+    pablo-tv,
+    servant-elm,
+    servant-foreign,
+    servant-server,
+    text,
 
 test-suite pablo-tv-test
   import: defaults

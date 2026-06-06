@@ -47,7 +47,7 @@ rawWebPathFromRoot root =
 
 rawWebPathToRoot :: RootDirectories -> RawWebPath -> Maybe (RootDirectoryLocation, [TextWithoutSeparator])
 rawWebPathToRoot roots raw = do
-  let rootLocs = Map.keys roots
+  let rootLocs = Map.keys roots.unRootDirectories
       stripRoot :: [TextWithoutSeparator] -> RootDirectoryLocation -> Maybe (RootDirectoryLocation, [TextWithoutSeparator])
       stripRoot ts r = case unRawWebPath (rawWebPathFromRoot r) `stripPrefix` ts of
         Nothing -> Nothing

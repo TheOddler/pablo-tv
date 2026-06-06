@@ -31,18 +31,18 @@ import Yesod (ContentType)
 
 getDirectoryAtPath :: RootDirectories -> DirectoryPath -> Maybe DirectoryData
 getDirectoryAtPath roots (DirectoryPath wantedRoot []) = do
-  root <- Map.lookup wantedRoot roots
+  root <- Map.lookup wantedRoot roots.unRootDirectories
   pure $ rootDirectoryAsDirectory root
 getDirectoryAtPath roots (DirectoryPath wantedRoot wantedDirNames) = do
-  root <- Map.lookup wantedRoot roots
+  root <- Map.lookup wantedRoot roots.unRootDirectories
   innerGet wantedDirNames $ rootDirectoryAsDirectory root
   where
     innerGet :: [DirectoryName] -> DirectoryData -> Maybe DirectoryData
     innerGet [] _ = Nothing
     innerGet [name] dir =
-      Map.lookup name dir.directorySubDirs
+      Map.lookup name dir.directorySubDirs.unDirectorySubDirs
     innerGet (name : rest) dir = do
-      subDir <- Map.lookup name dir.directorySubDirs
+      subDir <- Map.lookup name dir.directorySubDirs.unDirectorySubDirs
       innerGet rest subDir
 
 -- | Looks for an image in the directory or any of it's parents, preferring closer to the directory
@@ -62,22 +62,28 @@ findDirWithImageFor allRoots (DirectoryPath dirRoot dirNames) = innerSearch (NE.
 -- | Will silently do nothing if the path isn't found.
 updateDirectoryAtPath :: RootDirectories -> DirectoryPath -> (DirectoryData -> DirectoryData) -> RootDirectories
 updateDirectoryAtPath roots (DirectoryPath wantedRoot wantedDirNames) updateFunc =
-  Map.adjust
-    ( let dirBackToRoot dir =
-            RootDirectoryData
-              { rootDirectorySubDirs = dir.directorySubDirs,
-                rootDirectoryVideoFiles = dir.directoryVideoFiles
-              }
-       in dirBackToRoot . innerUpdate wantedDirNames . rootDirectoryAsDirectory
-    )
-    wantedRoot
-    roots
+  RootDirectories $
+    Map.adjust
+      ( let dirBackToRoot dir =
+              RootDirectoryData
+                { rootDirectorySubDirs = dir.directorySubDirs.unDirectorySubDirs,
+                  rootDirectoryVideoFiles = dir.directoryVideoFiles
+                }
+         in dirBackToRoot . innerUpdate wantedDirNames . rootDirectoryAsDirectory
+      )
+      wantedRoot
+      roots.unRootDirectories
   where
     innerUpdate :: [DirectoryName] -> DirectoryData -> DirectoryData
     innerUpdate [] dirData = updateFunc dirData
     innerUpdate (name : ns) dirData =
       dirData
-        { directorySubDirs = Map.adjust (innerUpdate ns) name dirData.directorySubDirs
+        { directorySubDirs =
+            DirectorySubDirs $
+              Map.adjust
+                (innerUpdate ns)
+                name
+                dirData.directorySubDirs.unDirectorySubDirs
         }
 
 memoryFileName :: FilePath
@@ -183,20 +189,20 @@ shallowUpdateDirectory roots dirPath = do
                     | (img, imgData) <- maybeToList updatedImageFile
                     ]
             where
-              updateSubDirs :: [DirectoryName] -> Maybe (Map.Map DirectoryName DirectoryData)
+              updateSubDirs :: [DirectoryName] -> Maybe DirectorySubDirs
               updateSubDirs subDirGuesses = do
-                let knownSubDirs = Map.keys currentDirData.directorySubDirs
+                let knownSubDirs = Map.keys currentDirData.directorySubDirs.unDirectorySubDirs
                 let newDirs = subDirGuesses \\ knownSubDirs
                 let noLongerExist = knownSubDirs \\ subDirGuesses
                 case (newDirs, noLongerExist) of
                   ([], []) -> Nothing -- Nothing indicates no changes were found
                   _ -> do
                     -- Step 1: Remove dirs that that no longer exist
-                    let step1 = foldr Map.delete currentDirData.directorySubDirs noLongerExist
+                    let step1 = foldr Map.delete currentDirData.directorySubDirs.unDirectorySubDirs noLongerExist
                     -- Step 2: Add new dirs as empty (they'll need to be separately shallow updated)
-                    let emptyDir = DirectoryData Nothing Map.empty Map.empty
+                    let emptyDir = DirectoryData Nothing (DirectorySubDirs Map.empty) Map.empty
                     let step2 = foldr (`Map.insert` emptyDir) step1 newDirs
-                    Just step2
+                    Just $ DirectorySubDirs step2
 
               -- Checks if there are any new files or remove files.
               -- Files we already knew about are left alone to save some IO.
@@ -383,7 +389,9 @@ recursiveUpdateDirectoryNoSave rootsPVar startingDirPath = do
                 let parentDir = DirectoryPath dirPath.directoryPathRoot inits
                 pure $ updateDirectoryAtPath roots parentDir $ \dirData ->
                   dirData
-                    { directorySubDirs = Map.delete name dirData.directorySubDirs
+                    { directorySubDirs =
+                        DirectorySubDirs $
+                          Map.delete name dirData.directorySubDirs.unDirectorySubDirs
                     }
           ShallowDirUpdateOtherIOError e -> do
             putLog Error $ "Tried updating a directory " ++ absDirPath ++ "; but some unexpected error happened: " ++ displayException e
@@ -397,7 +405,7 @@ recursiveUpdateDirectoryNoSave rootsPVar startingDirPath = do
 
       -- Add sub directories to the list of stuff to update in our loop
       let newDirData = getDirectoryAtPath updatedRoots dirPath
-          nextDirNames = maybe [] (Map.keys . directorySubDirs) newDirData
+          nextDirNames = maybe [] (Map.keys . unDirectorySubDirs . directorySubDirs) newDirData
           nextDirPaths = addSubDir dirPath <$> nextDirNames
       loop $ rest ++ nextDirPaths
 
@@ -406,7 +414,7 @@ recursivelyUpdateAllDirectoriesNoSave rootsPVar = do
   -- Do all updates without saving
   logDuration "Updated all directories" $ do
     roots <- readPVar rootsPVar
-    forM_ (Map.keys roots) $ \rootLocation -> do
+    forM_ (Map.keys roots.unRootDirectories) $ \rootLocation -> do
       recursiveUpdateDirectoryNoSave rootsPVar $ rootDirectoryPath rootLocation
 
 recursivelyUpdateAllDirectories :: (SafeIO m, Logger m, ImageScraper m) => PVar RootDirectories -> m ()
@@ -432,13 +440,13 @@ foldFilesDataRecur updateAgg agg dir = loop agg [dir]
     loop a [] = a
     loop a (dirTodo : restDirs) = do
       let newA = foldr updateAgg a dirTodo.directoryVideoFiles
-          subDirs = Map.elems dirTodo.directorySubDirs
+          subDirs = Map.elems dirTodo.directorySubDirs.unDirectorySubDirs
       loop newA $ restDirs ++ subDirs
 
 getSubDirAggInfo :: DirectoryPath -> DirectoryData -> [AggDirInfo]
 getSubDirAggInfo dirPath dir = do
   let epoch = posixSecondsToUTCTime 0
-  flip map (Map.toList dir.directorySubDirs) $ \(subDirName, subDirData) ->
+  flip map (Map.toList dir.directorySubDirs.unDirectorySubDirs) $ \(subDirName, subDirData) ->
     foldFilesDataRecur
       ( \videoFileData agg ->
           AggDirInfo

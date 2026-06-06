@@ -32,7 +32,7 @@ data APIRoutes mode = APIRoutes
   { apiActions :: mode :- "api" :> "action" :> ReqBody '[JSON] Action :> PostNoContent,
     apiData :: mode :- "api" :> "data" :> Get '[JSON] RootDirectories,
     apiImages :: mode :- "api" :> "image" :> Capture "imageName" String :> Raw,
-    -- Must be last, as Servant matches endpoints in order and this captures everything
+    -- -- Must be last, as Servant matches endpoints in order and this captures everything
     apiStatic :: mode :- CaptureAll "pathParts" FilePath :> Raw
   }
   deriving (Generic)
@@ -83,13 +83,13 @@ routes =
       apiStatic = Tagged . getStatic
     }
   where
-    doAction :: Action -> ReaderT ServerEnv Handler NoContent
+    doAction :: Action -> ServerM NoContent
     doAction action = do
       env <- ask
       performAction' env action
       pure NoContent
 
-    getData :: ReaderT ServerEnv Handler RootDirectories
+    getData :: ServerM RootDirectories
     getData = do
       rootDirs <- asks appRootDirs
       readPVar rootDirs

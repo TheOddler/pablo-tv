@@ -4,9 +4,7 @@ module Actions where
 
 import Control.Exception (Exception (..))
 import Control.Monad (forever)
-import Data.Aeson (FromJSON (..), Object, ToJSON (toJSON), Value, eitherDecode, encode, genericParseJSON, genericToJSON, object, withObject, (.:), (.=))
-import Data.Aeson.Key qualified as Aeson
-import Data.Aeson.Types (Parser)
+import Data.Aeson (FromJSON (..), ToJSON (toJSON), eitherDecode, encode, genericParseJSON, genericToJSON)
 import Data.Char (isSpace)
 import Data.Int (Int32)
 import Data.List (dropWhileEnd, nub)
@@ -14,7 +12,6 @@ import Data.Map.Strict qualified as Map
 import Data.Maybe (isNothing)
 import Data.Scientific (Scientific, scientific)
 import Data.Text (Text)
-import Data.Text qualified as T
 import Data.Text.Lazy.Encoding qualified as T
 import Directory
   ( recursiveUpdateDirectory,
@@ -67,61 +64,13 @@ data Action
   | ActionRefreshAllDirectoryData
   | ActionRefreshDirectoryData RawWebPath
   | ActionMedia Mpris.MprisAction
-  deriving (Show, Eq)
+  deriving (Generic, Show, Eq)
 
 instance ToJSON Action where
-  toJSON = \case
-    ActionClickMouse button -> oneField "ClickMouse" "button" button
-    ActionPressKeyboard button -> oneField "PressKeyboard" "button" button
-    ActionMoveMouse x y -> twoFields "MoveMouse" "x" x "y" y
-    ActionPointMouse leftRight upDown -> twoFields "PointMouse" "leftRight" leftRight "upDown" upDown
-    ActionMouseScroll amount -> oneField "MouseScroll" "amount" amount
-    ActionWrite text -> oneField "Write" "text" text
-    ActionPlayPath path -> oneField "PlayPath" "path" path
-    ActionMarkAsWatched path -> oneField "MarkAsWatched" "path" path
-    ActionMarkAsUnwatched path -> oneField "MarkAsUnwatched" "path" path
-    ActionOpenUrlOnTV url -> oneField "OpenUrlOnTV" "url" url
-    ActionRefreshAllDirectoryData -> noFields "RefreshAllDirectoryData"
-    ActionRefreshDirectoryData path -> oneField "RefreshDirectoryData" "path" path
-    ActionMedia mpris -> oneField "Media" "action" mpris
-    where
-      noFields :: Text -> Value
-      noFields tag = object ["tag" .= tag]
-      oneField :: (ToJSON a) => Text -> Aeson.Key -> a -> Value
-      oneField tag field value = object ["tag" .= tag, field .= value]
-      twoFields :: (ToJSON a, ToJSON b) => Text -> Aeson.Key -> a -> Aeson.Key -> b -> Value
-      twoFields tag f1 v1 f2 v2 = object ["tag" .= tag, f1 .= v1, f2 .= v2]
+  toJSON = genericToJSON $ ourAesonOptionsPrefix "Action"
 
 instance FromJSON Action where
-  parseJSON = withObject "Action" $ \obj -> do
-    tag <- obj .: "tag"
-    case tag of
-      "ClickMouse" -> oneField obj ActionClickMouse "button"
-      "PressKeyboard" -> oneField obj ActionPressKeyboard "button"
-      "MoveMouse" -> twoFields obj ActionMoveMouse "x" "y"
-      "PointMouse" -> twoFields obj ActionPointMouse "leftRight" "upDown"
-      "MouseScroll" -> oneField obj ActionMouseScroll "amount"
-      "Write" -> oneField obj ActionWrite "text"
-      "PlayPath" -> oneField obj ActionPlayPath "path"
-      "MarkAsWatched" -> oneField obj ActionMarkAsWatched "path"
-      "MarkAsUnwatched" -> oneField obj ActionMarkAsUnwatched "path"
-      "OpenUrlOnTV" -> oneField obj ActionOpenUrlOnTV "url"
-      "RefreshAllDirectoryData" -> noFields ActionRefreshAllDirectoryData
-      "RefreshDirectoryData" -> oneField obj ActionRefreshDirectoryData "path"
-      "Media" -> oneField obj ActionMedia "action"
-      unknownTag -> fail $ "Unknown Action tag: " ++ T.unpack unknownTag
-    where
-      noFields :: Action -> Parser Action
-      noFields = pure
-      oneField :: (FromJSON a) => Object -> (a -> Action) -> Aeson.Key -> Parser Action
-      oneField obj constructor field = do
-        value <- obj .: field
-        pure $ constructor value
-      twoFields :: (FromJSON a, FromJSON b) => Object -> (a -> b -> Action) -> Aeson.Key -> Aeson.Key -> Parser Action
-      twoFields obj constructor f1 f2 = do
-        v1 <- obj .: f1
-        v2 <- obj .: f2
-        pure $ constructor v1 v2
+  parseJSON = genericParseJSON $ ourAesonOptionsPrefix "Action"
 
 instance ToJavascript Action where
   toJavascript = toJavascript . toJSON

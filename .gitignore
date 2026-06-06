@@ -7,3 +7,4 @@ result
 frontend/elm-stuff/
 # elm-live builds this and serves it from this folder
 frontend/static/main.js
+frontend/src/Generated
