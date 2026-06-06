@@ -83,11 +83,8 @@ updateDirectoryAtPath roots (DirectoryPath wantedRoot wantedDirNames) updateFunc
 memoryFileName :: FilePath
 memoryFileName = "pablo-tv.json"
 
-getMemoryFileDirIO :: IO FilePath
-getMemoryFileDirIO = getXdgDirectory XdgData "pablo-tv"
-
 getMemoryFileDir :: (SafeIO m) => m FilePath
-getMemoryFileDir = unsafePinkyPromiseThisIsSafe getMemoryFileDirIO
+getMemoryFileDir = unsafePinkyPromiseThisIsSafe $ getXdgDirectory XdgData "pablo-tv"
 
 -- | Writes the known disks to a json file on disk, so we can read it on startup next time.
 -- Blocks other threads from changing the PVar while writing to disk, so we can't get any race conditions in the value changing between calls.
@@ -114,12 +111,6 @@ loadRootsFromDisk = logDuration "Loaded roots from disk" $ do
       renameFile memoryFile (memoryFile ++ ".broken")
         `catchAny` \e -> putLog Error $ "Failed marking as broken: " ++ displayException e
       pure Nothing
-
-getImagesDirIO :: IO FilePath
-getImagesDirIO = do
-  memoryDir <- getMemoryFileDirIO
-  let imagesFolder = "images"
-  pure $ memoryDir </> imagesFolder
 
 getImagesDir :: (SafeIO m) => m FilePath
 getImagesDir = do

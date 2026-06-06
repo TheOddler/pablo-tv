@@ -5,7 +5,7 @@ module Server where
 import Actions (Action, performAction')
 import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Trans.Reader (ReaderT (..), ask, asks)
-import Directory (getImagesDirIO)
+import Directory (getImagesDir)
 import Directory.Directories (RootDirectories)
 import Foundation (App (..))
 import GHC.Generics (Generic)
@@ -78,7 +78,7 @@ routes =
         rootDirs <- asks appRootDirs
         readPVar rootDirs,
       apiImages = Tagged $ \req resp -> do
-        imagesDir <- getImagesDirIO
+        imagesDir <- runSafeIOT getImagesDir
         let stSet = defaultWebAppSettings imagesDir
         staticApp stSet req resp,
       apiStatic = serveDirectoryWebApp "static"
