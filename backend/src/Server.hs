@@ -92,48 +92,70 @@ apiProxy = Proxy
 routes :: APIRoutes (AsServerT ServerM)
 routes =
   APIRoutes
-    { apiActions = \action -> do
-        env <- ask
-        performAction' env action
-        pure NoContent,
-      apiData = do
-        rootDirs <- asks appRootDirs
-        readPVar rootDirs,
-      apiImages = \imageName -> do
-        imagesDir <- runSafeIOT getImagesDir
-        let filepath = imagesDir </> imageName
-        let extension = case takeExtension imageName of
-              '.' : ext -> lower ext
-              _ -> "jpg"
-        let contentTypeHeader = "image/" ++ extension
-        let cacheControl = "max-age=31536000, public"
-        pure $
-          addHeader contentTypeHeader $
-            addHeader cacheControl $
-              S.readFile filepath,
-      apiStatic = \pathParts -> Tagged $ \_req respond -> do
-        let askedPath = "static" </> joinPath pathParts
-        exists <- doesFileExist askedPath
-        let finalPath =
-              if exists
-                then askedPath
-                else "static" </> "index.html"
-        let contentType' :: Maybe BS.ByteString
-            contentType' = case takeExtension finalPath of
-              ".html" -> Just "text/html; charset=utf-8"
-              ".css" -> Just "text/css"
-              ".js" -> Just "application/javascript"
-              '.' : ext -> Just $ "application/" <> BS8.pack (lower ext)
-              _ -> Nothing
-        respond $
-          responseFile
-            status200
-            ( catMaybes
-                [ case contentType' of
-                    Just ct -> Just ("Content-Type", ct)
-                    Nothing -> Nothing
-                ]
-            )
-            finalPath
-            Nothing
+    { apiActions = doAction,
+      apiData = getData,
+      apiImages = getImage,
+      apiStatic = Tagged . getStatic
     }
+  where
+    doAction :: Action -> ReaderT ServerEnv Handler NoContent
+    doAction action = do
+      env <- ask
+      performAction' env action
+      pure NoContent
+
+    getData :: ReaderT ServerEnv Handler RootDirectories
+    getData = do
+      rootDirs <- asks appRootDirs
+      readPVar rootDirs
+
+    getImage ::
+      FilePath ->
+      ReaderT
+        ServerEnv
+        Handler
+        ( Headers
+            '[ Header "Content-Type" String,
+               Header "Cache-Control" String
+             ]
+            (SourceIO BS.ByteString)
+        )
+    getImage imageName = do
+      imagesDir <- runSafeIOT getImagesDir
+      let filepath = imagesDir </> imageName
+      let extension = case takeExtension imageName of
+            '.' : ext -> lower ext
+            _ -> "jpg"
+      let contentTypeHeader = "image/" ++ extension
+      let cacheControl = "max-age=31536000, public"
+      pure $
+        addHeader contentTypeHeader $
+          addHeader cacheControl $
+            S.readFile filepath
+
+    getStatic :: [FilePath] -> Application
+    getStatic pathParts _req respond = do
+      let askedPath = "static" </> joinPath pathParts
+      exists <- doesFileExist askedPath
+      let finalPath =
+            if exists
+              then askedPath
+              else "static" </> "index.html"
+      let contentType' :: Maybe BS.ByteString
+          contentType' = case takeExtension finalPath of
+            ".html" -> Just "text/html; charset=utf-8"
+            ".css" -> Just "text/css"
+            ".js" -> Just "application/javascript"
+            '.' : ext -> Just $ "application/" <> BS8.pack (lower ext)
+            _ -> Nothing
+      respond $
+        responseFile
+          status200
+          ( catMaybes
+              [ case contentType' of
+                  Just ct -> Just ("Content-Type", ct)
+                  Nothing -> Nothing
+              ]
+          )
+          finalPath
+          Nothing
