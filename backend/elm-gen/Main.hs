@@ -12,6 +12,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Directory.Directories qualified as Directories
 import Directory.Files qualified as Files
+import Directory.Paths qualified as Paths
 import Elm.Derive (SumEncoding (..))
 import Elm.Module (recAlterType)
 import Elm.TyRep (EAlias (..), EPrimAlias (..), ESum (..), ETCon (..), ETypeDef (..), ETypeName (..), IsElmDefinition (..), SumEncoding' (..), SumTypeConstructor (..), SumTypeFields (..))
@@ -51,6 +52,9 @@ instance IsElmDefinition Files.ImageFileName where
 
 instance IsElmDefinition Files.CachedImageFileName where
   compileElmDef _ = eTypeDefStringAlias "CachedImageFileName"
+
+instance IsElmDefinition Paths.RawWebPath where
+  compileElmDef _ = eTypeDefStringAlias "RawWebPath"
 
 instance IsElmDefinition Directories.DirectorySubDirs where
   compileElmDef _ =
@@ -123,7 +127,8 @@ myTypeDefs =
     DefineElm (Proxy :: Proxy Files.VideoFileData),
     DefineElm (Proxy :: Proxy Files.Image),
     DefineElm (Proxy :: Proxy Files.ImageFileName),
-    DefineElm (Proxy :: Proxy Files.CachedImageFileName)
+    DefineElm (Proxy :: Proxy Files.CachedImageFileName),
+    DefineElm (Proxy :: Proxy Paths.RawWebPath)
   ]
 
 myAlterations :: ETypeDef -> ETypeDef
@@ -134,7 +139,6 @@ myTypeAlterations :: EType -> EType
 myTypeAlterations = \case
   ETyCon (ETCon "Int32") -> toElmType (Proxy :: Proxy Int)
   ETyCon (ETCon "Scientific") -> toElmType (Proxy :: Proxy Float)
-  ETyCon (ETCon "RawWebPath") -> toElmType (Proxy :: Proxy [String])
   ETyCon (ETCon "NoContent") -> toElmType (Proxy :: Proxy ())
   ETyCon (ETCon "VideoFileName") -> toElmType (Proxy :: Proxy String)
   ETyCon (ETCon "DirectoryName") -> toElmType (Proxy :: Proxy String)
