@@ -1,34 +1,62 @@
 module Main exposing (Msg(..), main, update, view)
 
-import Browser
+import Browser exposing (Document)
+import Dict
+import Generated.Backend exposing (RootDirectories, getApiData)
 import Html exposing (Html, button, div, text)
 import Html.Events exposing (onClick)
+import Http
+import Json.Decode exposing (Value, value)
+import Url.Builder
 
 
-main : Program () Int Msg
-main =
-    Browser.sandbox { init = 0, update = update, view = view }
+type alias Model =
+    { data : RootDirectories
+    , errors : List Http.Error
+    }
 
 
 type Msg
-    = Increment
-    | Decrement
+    = DirsUpdate (Result Http.Error RootDirectories)
 
 
-update : Msg -> number -> number
+main : Program () Model Msg
+main =
+    Browser.document
+        { init = init
+        , view = view
+        , update = update
+        , subscriptions = \_ -> Sub.none
+        }
+
+
+init : () -> ( Model, Cmd Msg )
+init () =
+    ( { data = Dict.empty, errors = [] }
+    , getApiData DirsUpdate
+    )
+
+
+update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
-        Increment ->
-            model + 1
+        DirsUpdate (Ok updated) ->
+            ( { model | data = updated }
+            , Cmd.none
+            )
 
-        Decrement ->
-            model - 1
+        DirsUpdate (Err err) ->
+            ( { model | errors = err :: model.errors }
+            , Cmd.none
+            )
 
 
-view : Int -> Html Msg
+view : Model -> Document Msg
 view model =
-    div []
-        [ button [ onClick Decrement ] [ text "-" ]
-        , div [] [ text (String.fromInt model) ]
-        , button [ onClick Increment ] [ text "taps" ]
+    { title = "Pablo TV"
+    , body =
+        [ text <| Debug.toString model.data
+        , div [] <|
+            List.map (\err -> text <| Debug.toString err) model.errors
         ]
+    }

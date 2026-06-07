@@ -14,7 +14,7 @@
             "elm/json": "1.1.4",
             "elm/time": "1.0.0",
             "elm/url": "1.0.0",
-            "jluckyiv/elm-utc-date-strings": "1.0.0"
+            "rtfeldman/elm-iso8601-date-strings": "1.1.4"
         },
         "indirect": {
             "elm/bytes": "1.0.8",
