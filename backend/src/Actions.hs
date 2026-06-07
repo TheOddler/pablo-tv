@@ -6,9 +6,9 @@
 
 module Actions where
 
-import Control.Exception (Exception (..))
-import Control.Monad (forever)
-import Data.Aeson (ToJSON (..), eitherDecode, encode)
+import Control.Monad.IO.Class (MonadIO (..))
+import Control.Monad.Trans.Reader (ask)
+import Data.Aeson (ToJSON (..), encode)
 import Data.Char (isSpace)
 import Data.Int (Int32)
 import Data.List (dropWhileEnd, nub)
@@ -26,15 +26,14 @@ import Directory
 import Directory.Directories (DirectoryData (..), RootDirectories)
 import Directory.Files (VideoFileData (..))
 import Directory.Paths (DirectoryPath (..), RawWebPath, VideoFilePath (..), rawWebPathToAbsPath, rawWebPathToDirectory, rawWebPathToVideoFileOrDirectory)
+import Env (ServerEnv (..), ServerM)
 import Evdev.Codes
 import Evdev.Uinput
-import Foundation (App (..), Handler)
 import GHC.Conc (atomically, readTVar, readTVarIO, writeTVar)
 import ImageScraper (ImageScraper)
 import JSON (HasJSONPrefix (..), deriveJSONPrefixed)
 import Logging (LogLevel (..), Logger, putLog)
 import Mpris qualified
-import Network.WebSockets qualified as WS
 import PVar (modifyPVar_, readPVar)
 import SafeConvert (int32ToInteger)
 import SafeIO (SafeIO, getCurrentTime)
@@ -42,10 +41,7 @@ import System.Process (callProcess, readProcess)
 import TVState (TVState (..))
 import Text.Blaze qualified as Blaze
 import Text.Julius (ToJavascript (..))
-import UnliftIO.Exception (catch)
 import Util (showT)
-import Yesod (MonadIO, getYesod, lift, liftIO)
-import Yesod.WebSockets (WebSocketsT, receiveData)
 
 data Action
   = ActionClickMouse MouseButton
@@ -125,39 +121,39 @@ keyboardButtonToEvdevKey = \case
   KeyboardVolumeUp -> KeyVolumeup
   KeyboardVolumeDown -> KeyVolumedown
 
-actionsWebSocket :: WebSocketsT Handler ()
-actionsWebSocket =
-  loop `catch` errorHandler
-  where
-    loop =
-      forever $ do
-        d <- receiveData
-        case eitherDecode d of
-          Left err -> putLog Error $ "Error decoding action: " <> err
-          Right action -> lift $ performAction action
+-- actionsWebSocket :: WebSocketsT Handler ()
+-- actionsWebSocket =
+--   loop `catch` errorHandler
+--   where
+--     loop =
+--       forever $ do
+--         d <- receiveData
+--         case eitherDecode d of
+--           Left err -> putLog Error $ "Error decoding action: " <> err
+--           Right action -> lift $ performAction action
 
-    errorHandler = \case
-      WS.CloseRequest code reason -> do
-        putLog Debug $ "Received Websocket Close Request, code: " ++ show code ++ ", reason: " ++ show reason
-      WS.ConnectionClosed -> do
-        putLog Debug "Websocket closed"
-      err -> do
-        putLog Error $ "Got some websocket error: " ++ displayException err
+--     errorHandler = \case
+--       WS.CloseRequest code reason -> do
+--         putLog Debug $ "Received Websocket Close Request, code: " ++ show code ++ ", reason: " ++ show reason
+--       WS.ConnectionClosed -> do
+--         putLog Debug "Websocket closed"
+--       err -> do
+--         putLog Error $ "Got some websocket error: " ++ displayException err
 
-performAction :: Action -> Handler ()
+performAction :: Action -> ServerM ()
 performAction action = do
-  app <- getYesod
-  performAction' app action
+  env <- ask
+  performAction' env action
 
-performAction' :: (Logger m, MonadIO m, SafeIO m, ImageScraper m) => App -> Action -> m ()
-performAction' app action = do
+performAction' :: (Logger m, MonadIO m, SafeIO m, ImageScraper m) => ServerEnv -> Action -> m ()
+performAction' env action = do
   putLog Debug $ "Performing action: " <> show action
   case action of
     ActionClickMouse btn' ->
       let btn = mouseButtonToEvdevKey btn'
        in liftIO $
             writeBatch
-              app.appInputDevice
+              env.envInputDevice
               [ KeyEvent btn Pressed,
                 SyncEvent SynReport,
                 KeyEvent btn Released
@@ -167,7 +163,7 @@ performAction' app action = do
       let key = keyboardButtonToEvdevKey key'
        in liftIO $
             writeBatch
-              app.appInputDevice
+              env.envInputDevice
               [ KeyEvent key Pressed,
                 SyncEvent SynReport,
                 KeyEvent key Released
@@ -176,7 +172,7 @@ performAction' app action = do
     ActionMoveMouse x y ->
       liftIO $
         writeBatch
-          app.appInputDevice
+          env.envInputDevice
           [ RelativeEvent RelX $ EventValue x,
             RelativeEvent RelY $ EventValue y
           ]
@@ -190,21 +186,21 @@ performAction' app action = do
           pointerY = floor $ centerY + ud * screenHalfSize
       liftIO $
         writeBatch
-          app.appInputDevice
+          env.envInputDevice
           [ AbsoluteEvent AbsX $ EventValue pointerX,
             AbsoluteEvent AbsY $ EventValue pointerY
           ]
     ActionMouseScroll amount ->
       liftIO $
         writeBatch
-          app.appInputDevice
+          env.envInputDevice
           [ RelativeEvent RelWheel $ EventValue amount
           ]
     ActionWrite text -> do
       let events = concatMap (clickKeyCombo . charToKey) text
-      liftIO $ writeBatch app.appInputDevice events
+      liftIO $ writeBatch env.envInputDevice events
     ActionPlayPath rawWebPath -> do
-      roots <- readPVar app.appRootDirs
+      roots <- readPVar env.envRootDirs
       mAbsPath <- rawWebPathToAbsPath roots rawWebPath
       case mAbsPath of
         Nothing ->
@@ -225,7 +221,7 @@ performAction' app action = do
               absPath
             ]
     ActionMarkAsWatched rawWebPath -> do
-      modifyPVar_ app.appRootDirs ("Marking " <> showT rawWebPath <> " as watched") $ \roots -> do
+      modifyPVar_ env.envRootDirs ("Marking " <> showT rawWebPath <> " as watched") $ \roots -> do
         let mDirOrFile = rawWebPathToVideoFileOrDirectory roots rawWebPath
         case mDirOrFile of
           Nothing -> do
@@ -235,9 +231,9 @@ performAction' app action = do
                 ++ ": Unable to convert raw to directory path."
             pure roots
           Just dirOrFile -> markDirOrFileAsWatched DoNotOverwritePreviouslyWatched dirOrFile roots
-      saveRootsToDisk app.appRootDirs
+      saveRootsToDisk env.envRootDirs
     ActionMarkAsUnwatched rawWebPath -> do
-      modifyPVar_ app.appRootDirs ("Marking " <> showT rawWebPath <> " as unwatched") $ \roots -> do
+      modifyPVar_ env.envRootDirs ("Marking " <> showT rawWebPath <> " as unwatched") $ \roots -> do
         let mDirOrFile = rawWebPathToVideoFileOrDirectory roots rawWebPath
         case mDirOrFile of
           Nothing -> do
@@ -247,13 +243,13 @@ performAction' app action = do
                 ++ ": Unable to convert raw to directory path."
             pure roots
           Just dirOrFile -> pure $ markDirOrFileAsUnwatched dirOrFile roots
-      saveRootsToDisk app.appRootDirs
+      saveRootsToDisk env.envRootDirs
     ActionOpenUrlOnTV url ->
       liftIO $ atomically $ do
-        tvState <- readTVar app.appTVState
-        writeTVar app.appTVState $ tvState {tvPage = url}
+        tvState <- readTVar env.envTVState
+        writeTVar env.envTVState $ tvState {tvPage = url}
     ActionRefreshDirectoryData rawWebPath -> do
-      roots <- readPVar app.appRootDirs
+      roots <- readPVar env.envRootDirs
       let mDirPath = rawWebPathToDirectory roots rawWebPath
       case mDirPath of
         Nothing ->
@@ -261,11 +257,11 @@ performAction' app action = do
             "Could not refresh directory "
               ++ show rawWebPath
               ++ ": Unable to convert raw to directory path."
-        Just dirPath -> recursiveUpdateDirectory app.appRootDirs dirPath
+        Just dirPath -> recursiveUpdateDirectory env.envRootDirs dirPath
     ActionRefreshAllDirectoryData -> do
-      recursivelyUpdateAllDirectories app.appRootDirs
+      recursivelyUpdateAllDirectories env.envRootDirs
     ActionMedia a -> do
-      mPlayer <- liftIO $ readTVarIO app.appLastActivePlayer
+      mPlayer <- liftIO $ readTVarIO env.envLastActivePlayer
       case mPlayer of
         Nothing -> putLog Warning "Ignoring action: No media player found."
         Just mp -> Mpris.performAction mp a

@@ -47,7 +47,7 @@ library
     Directory.Directories
     Directory.Files
     Directory.Paths
-    Foundation
+    Env
     ImageScraper
     IsDevelopment
     JSON
@@ -72,6 +72,7 @@ library
   build-depends:
     -- Later versions of random have a shuffle function, but for now we need this package
     aeson,
+    async,
     blaze-markup,
     bounded-queue,
     bytestring,
@@ -112,9 +113,6 @@ library
     wai,
     warp,
     websockets,
-    yesod,
-    yesod-static,
-    yesod-websockets,
 
 executable pablo-tv
   import: defaults
@@ -174,7 +172,6 @@ test-suite pablo-tv-test
     sydtest,
     sydtest-aeson,
     sydtest-discover,
-    sydtest-yesod,
     text,
     time,
     unix,

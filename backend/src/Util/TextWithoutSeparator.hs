@@ -39,7 +39,6 @@ import System.Directory (listDirectory)
 import System.FilePath qualified as FP
 import Text.Blaze (ToMarkup)
 import Text.Read (Read (..))
-import Yesod (PathPiece (..))
 
 -- | A class to unwrap nested newtypes to their inner type
 class Unwrap inner a where
@@ -61,13 +60,6 @@ instance FromJSON TextWithoutSeparator where
 
 instance FromJSONKey TextWithoutSeparator where
   fromJSONKey = FromJSONKeyTextParser textWithoutSeparator
-
-instance PathPiece TextWithoutSeparator where
-  toPathPiece :: TextWithoutSeparator -> T.Text
-  toPathPiece = unTextWithoutSeparator
-
-  fromPathPiece :: T.Text -> Maybe TextWithoutSeparator
-  fromPathPiece = textWithoutSeparator
 
 instance Unwrap T.Text TextWithoutSeparator where
   unwrap = unTextWithoutSeparator

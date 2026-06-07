@@ -2,10 +2,10 @@ module Util where
 
 import Algorithms.NaturalSort qualified as Natural
 import Control.Concurrent (MVar, takeMVar)
-import Control.Exception (Exception, displayException)
+import Control.Concurrent.Async (race_)
+import Control.Exception (displayException)
 import Control.Monad (when)
-import Control.Monad.Catch (MonadThrow (..))
-import Data.Default (def)
+import Control.Monad.IO.Class (MonadIO (..))
 import Data.List (isPrefixOf, sortBy)
 import Data.List.Extra (unsnoc)
 import Data.List.NonEmpty qualified as NE
@@ -14,29 +14,11 @@ import Data.Ord (Down)
 import Data.Text qualified as T
 import Data.Time (NominalDiffTime, diffUTCTime)
 import GHC.Conc (TVar, atomically, readTVar, readTVarIO, retry)
-import GHC.Exception (errorCallException, errorCallWithCallStackException)
-import GHC.Stack (HasCallStack, callStack, prettyCallStack, withFrozenCallStack)
-import IsDevelopment (isDevelopment)
-import Language.Haskell.TH.Syntax (Exp, Q, makeRelativeToProject)
 import Logging (LogLevel (..), Logger, putLog)
 import Network.Info (IPv4 (..), NetworkInterface (..))
 import SafeIO (SafeIO (..), getCurrentTime)
 import System.Random (RandomGen)
 import System.Random.Shuffle (shuffle')
-import Yesod
-import Yesod.Default.Util (widgetFileNoReload, widgetFileReload)
-import Yesod.EmbeddedStatic (embedFileAt)
-import Yesod.EmbeddedStatic.Types (Generator)
-import Yesod.WebSockets (race_)
-
--- | Load a widget file, automatically reloading it in development.
-widgetFile :: String -> Q Exp
-widgetFile =
-  if isDevelopment
-    then widgetFileReload settings
-    else widgetFileNoReload settings
-  where
-    settings = def
 
 -- | Run an action whenever the value of the 'TVar' changes.
 onChanges :: (Eq a, MonadIO m) => TVar a -> (a -> a -> m ()) -> m b
@@ -155,59 +137,9 @@ logDuration label action = do
   putLog Info $ label ++ " (" ++ show duration ++ ")"
   pure result
 
-impossible :: (Logger m, MonadThrow m, HasCallStack) => String -> m a
-impossible msg = withFrozenCallStack $ do
-  let fullMsg = "Reached the impossible: " ++ msg
-  putLog Error $
-    concat
-      [ fullMsg,
-        "\n",
-        prettyCallStack callStack
-      ]
-  throwM $ errorCallWithCallStackException fullMsg callStack
-
-fail404 :: (Logger m, MonadHandler m, HasCallStack) => String -> m a
-fail404 msg = do
-  putLog Error $
-    concat
-      [ msg,
-        "\n",
-        prettyCallStack callStack
-      ]
-  notFound
-
-fail500 :: (Logger m, MonadThrow m, HasCallStack) => String -> m a
-fail500 msg = do
-  putLog Error $
-    concat
-      [ msg,
-        "\n",
-        prettyCallStack callStack
-      ]
-  throwM $ errorCallException msg
-
-failE :: (Logger m, MonadThrow m, HasCallStack, Exception e) => String -> e -> m a
-failE label e = do
-  putLog Error $
-    concat
-      [ label,
-        " failed with exception: ",
-        displayException e,
-        "\n",
-        prettyCallStack callStack
-      ]
-  throwM e
-
 logOnErrorIO :: (SafeIO m, Logger m) => Logging.LogLevel -> String -> IO () -> m ()
 logOnErrorIO logLevel desc io = do
   resultOrErr <- runIOSafely io
   case resultOrErr of
     Right result -> pure result
     Left e -> putLog logLevel $ "Failed " ++ desc ++ ": " ++ displayException e
-
--- | This embeds a file but you can give it a path relative to the package root, rather than relative to where `cabal build` is run.
--- The final name you can use in the code is still the same as if you had called `Yesod.EmbeddedStatic.Generators.embedFile` with this path.
-embedFileRel :: FilePath -> Generator
-embedFileRel fp = do
-  path <- makeRelativeToProject fp
-  embedFileAt fp path

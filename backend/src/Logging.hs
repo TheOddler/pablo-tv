@@ -15,6 +15,7 @@ where
 
 import Control.Concurrent.STM (TVar, atomically, newTVarIO, readTVar, readTVarIO, writeTVar)
 import Control.Monad (when)
+import Control.Monad.IO.Class (MonadIO (..))
 import Data.ByteString qualified as BS
 import Data.ByteString.UTF8 qualified as BS
 import Data.Queue.Bounded qualified as BQ
@@ -23,9 +24,6 @@ import Data.Text.Encoding qualified as T
 import Data.Time (UTCTime)
 import SafeIO (SafeIO (..))
 import System.IO (Handle, stderr, stdout)
-import UnliftIO (MonadIO (..))
-import Yesod (lift)
-import Yesod.WebSockets (WebSocketsT)
 
 data LogLevel
   = Debug
@@ -92,9 +90,6 @@ putLogWithMinLvlIO logWindow minLogLevel msg = do
           defaultColour,
           "\n"
         ]
-
-instance (Logger m, SafeIO m) => Logger (WebSocketsT m) where
-  putLogMsg msg = lift $ putLogMsg msg
 
 newtype LogSlidingWindow = LogSlidingWindow (TVar (BQ.BQueue LogMsg))
 

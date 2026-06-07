@@ -2,7 +2,6 @@
 
 module Directory.Paths where
 
-import Control.Monad (forM)
 import Data.Aeson (FromJSON (..), ToJSON (..), withText)
 import Data.List (intercalate, stripPrefix)
 import Data.List.NonEmpty qualified as NE
@@ -14,8 +13,7 @@ import GHC.Data.Maybe (firstJusts)
 import Orphanage ()
 import SafeIO (SafeIO)
 import System.FilePath (joinPath, takeExtension, (</>))
-import Util.TextWithoutSeparator (TextWithoutSeparator (..), Unwrap (..), splitAtSeparator, textWithoutSeparator, twsQQ, unsplitSeparatedText)
-import Yesod (PathMultiPiece (..))
+import Util.TextWithoutSeparator (TextWithoutSeparator (..), Unwrap (..), splitAtSeparator, twsQQ, unsplitSeparatedText)
 
 -- Raw Web Path
 
@@ -33,12 +31,6 @@ instance FromJSON RawWebPath where
         -- We can't really differentiate between [] and [""] so we prefer []
         then RawWebPath []
         else RawWebPath split
-
-instance PathMultiPiece RawWebPath where
-  fromPathMultiPiece :: [T.Text] -> Maybe RawWebPath
-  fromPathMultiPiece parts = RawWebPath <$> forM parts textWithoutSeparator
-  toPathMultiPiece :: RawWebPath -> [T.Text]
-  toPathMultiPiece = map unTextWithoutSeparator . unRawWebPath
 
 rawWebPathFromRoot :: RootDirectoryLocation -> RawWebPath
 rawWebPathFromRoot root =

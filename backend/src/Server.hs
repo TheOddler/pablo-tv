@@ -1,25 +1,20 @@
 {-# LANGUAGE DataKinds #-}
-{-# OPTIONS_GHC -Wno-orphans #-}
 
 module Server where
 
 import Actions (Action, performAction')
-import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Trans.Reader (ReaderT (..), ask, asks)
 import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BS8
 import Data.List.Extra (lower)
 import Directory (getImagesDir)
 import Directory.Directories (RootDirectories)
-import Foundation (App (..))
+import Env (ServerEnv (..), ServerM)
 import GHC.Generics (Generic)
-import ImageScraper (ImageScraper (..), tryFindImageIO)
-import Logging (Logger (..))
 import Network.HTTP.Types (status200)
 import Network.Wai (responseFile)
 import Network.Wai.Handler.Warp qualified as Wai
 import PVar (readPVar)
-import SafeIO (SafeIO (..))
 import Servant hiding (respond)
 import Servant.Server.Generic (AsServerT)
 import System.Directory (doesFileExist)
@@ -36,27 +31,6 @@ data APIRoutes mode = APIRoutes
     apiStatic :: mode :- CaptureAll "pathParts" FilePath :> Raw
   }
   deriving (Generic)
-
--- | Currently using the App from Yesod
-type ServerEnv = App
-
-type ServerM = ReaderT ServerEnv Handler
-
-instance Logger ServerM where
-  putLogMsg msg = do
-    logFunc <- asks appLogFunc
-    liftIO $ logFunc msg
-
-instance SafeIO Handler where
-  runIOSafely = runSafeIOT . runIOSafely
-  unsafePinkyPromiseThisIsSafe = runSafeIOT . unsafePinkyPromiseThisIsSafe
-  getCurrentTime = runSafeIOT getCurrentTime
-  getModificationTime = runSafeIOT . getModificationTime
-  getHomeDirectory = runSafeIOT getHomeDirectory
-  randomFileNameSuffix = runSafeIOT randomFileNameSuffix
-
-instance ImageScraper ServerM where
-  tryFindImage = tryFindImageIO
 
 toServantHandler :: ServerEnv -> ServerM a -> Handler a
 toServantHandler = flip runReaderT
@@ -91,7 +65,7 @@ routes =
 
     getData :: ServerM RootDirectories
     getData = do
-      rootDirs <- asks appRootDirs
+      rootDirs <- asks envRootDirs
       readPVar rootDirs
 
     getImage :: FilePath -> Application

@@ -5,29 +5,12 @@ import GHC.IO.Exception (ExitCode (..))
 import SafeIO (SafeIO, runIOSafely, unsafePinkyPromiseThisIsSafe)
 import System.Posix (getEffectiveUserID)
 import System.Process (readProcessWithExitCode)
-import Yesod (FromJSON, PathPiece, ToJSON)
 
 newtype SmbServer = SmbServer {unSmbServer :: String}
-  deriving
-    ( Eq,
-      Ord,
-      Show,
-      Read,
-      FromJSON,
-      ToJSON,
-      PathPiece
-    )
+  deriving (Eq, Ord, Show, Read)
 
 newtype SmbShare = SmbShare {unSmbShare :: String}
-  deriving
-    ( Eq,
-      Ord,
-      Show,
-      Read,
-      FromJSON,
-      ToJSON,
-      PathPiece
-    )
+  deriving (Eq, Ord, Show, Read)
 
 data MountResult
   = MountedSuccessfully

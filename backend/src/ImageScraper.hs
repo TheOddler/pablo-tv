@@ -6,16 +6,18 @@ import Data.ByteString qualified as BS
 import Data.Either.Extra (mapLeft)
 import Data.List.Extra (replace)
 import Data.Text qualified as T
-import Foundation (Handler)
+import Env (ServerM)
 import Network.HTTP.Client (Response (..))
 import Network.HTTP.Req
 import Network.HTTP.Req qualified as HTTP
 import Network.HTTP.Types (urlEncode)
 import SafeConvert (mapTextThroughBS)
+import SafeIO (SafeIO (..))
 import Text.HTML.Scalpel
 import Text.URI (mkURI)
-import UnliftIO.Exception (tryAny)
-import Yesod (ContentType)
+import Transformers (SafeIOT (..))
+
+type ContentType = BS.ByteString
 
 data ImageSearchFailure
   = ImageSearchFailedScraping T.Text
@@ -25,7 +27,7 @@ data ImageSearchFailure
 class (Monad m) => ImageScraper m where
   tryFindImage :: T.Text -> m (Either ImageSearchFailure (ContentType, BS.ByteString))
 
-instance ImageScraper Handler where
+instance ImageScraper ServerM where
   tryFindImage = tryFindImageIO
 
 tryFindImageIO :: (MonadIO m) => T.Text -> m (Either ImageSearchFailure (ContentType, BS.ByteString))
@@ -59,13 +61,13 @@ downloadImage :: (MonadIO m) => URL -> m (Either String (ContentType, BS.ByteStr
 downloadImage imageUrl = do
   case useURI =<< mkURI (T.pack imageUrl) of
     Nothing -> pure $ Left $ "Invalid URL: " ++ imageUrl
-    Just (Left httpUrl) -> downloadFrom httpUrl
-    Just (Right httpsUrl) -> downloadFrom httpsUrl
+    Just (Left httpUrl) -> runSafeIOT $ downloadFrom httpUrl
+    Just (Right httpsUrl) -> runSafeIOT $ downloadFrom httpsUrl
   where
-    downloadFrom :: (MonadIO m) => (Url scheme, Option scheme) -> m (Either String (ContentType, BS.ByteString))
+    downloadFrom :: (SafeIO m) => (Url scheme, Option scheme) -> m (Either String (ContentType, BS.ByteString))
     downloadFrom (url, options) = do
       imgResponse <-
-        liftIO . tryAny . HTTP.runReq defaultHttpConfig $
+        runIOSafely . HTTP.runReq defaultHttpConfig $
           req GET url NoReqBody bsResponse options
       pure $ do
         img <- mapLeft (\err -> "Failed downloading image: " <> displayException err) imgResponse

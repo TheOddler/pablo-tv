@@ -30,7 +30,6 @@ import Text.Read (Read (..))
 import Util.DirPath (Abs, DirPath (..), Rel, absPath, relPath, unDirPath)
 import Util.Regex (expect1Int, tryRegex)
 import Util.TextWithoutSeparator
-import Yesod (PathPiece (..))
 
 -- Roots
 
@@ -123,7 +122,7 @@ rootDirectoryAsDirectory root =
 -- (Sub)Directories
 
 newtype DirectoryName = DirectoryName {unDirectoryName :: TextWithoutSeparator}
-  deriving newtype (Show, Eq, Ord, Read, Unwrap Text, ToJSON, FromJSON, ToJSONKey, FromJSONKey, PathPiece, ToMarkup)
+  deriving newtype (Show, Eq, Ord, Read, Unwrap Text, ToJSON, FromJSON, ToJSONKey, FromJSONKey, ToMarkup)
 
 -- (Sub)Directories Data
 

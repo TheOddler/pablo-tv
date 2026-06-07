@@ -18,7 +18,7 @@ import Directory.Paths
 import GHC.Data.Maybe (firstJust, orElse)
 import GHC.IO.Exception (IOErrorType (..), IOException (..))
 import GHC.Utils.Exception (displayException)
-import ImageScraper (ImageScraper, ImageSearchFailure (..), tryFindImage)
+import ImageScraper (ContentType, ImageScraper, ImageSearchFailure (..), tryFindImage)
 import Logging (LogLevel (..), Logger, putLog)
 import Orphanage ()
 import PVar (PVar, modifyPVar, modifyPVar_, readPVar)
@@ -27,7 +27,6 @@ import System.Directory (XdgDirectory (..), createDirectoryIfMissing, getXdgDire
 import System.FilePath ((</>))
 import Util (firstRightM, logDuration, logOnErrorIO, showT, unsnocNE)
 import Util.TextWithoutSeparator
-import Yesod (ContentType)
 
 getDirectoryAtPath :: RootDirectories -> DirectoryPath -> Maybe DirectoryData
 getDirectoryAtPath roots (DirectoryPath wantedRoot []) = do

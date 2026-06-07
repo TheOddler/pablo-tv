@@ -4,7 +4,8 @@
 
 module Mpris where
 
-import Control.Monad.Catch (MonadThrow)
+import Control.Monad.Catch (MonadThrow (..))
+import Control.Monad.IO.Class (MonadIO (..))
 import Control.Monad.Trans.Except (Except, ExceptT (..), runExcept)
 import DBus
   ( BusName,
@@ -25,11 +26,11 @@ import Data.List (isPrefixOf, stripPrefix)
 import Data.Map qualified as Map
 import Data.Maybe (listToMaybe)
 import Data.String (IsString (..))
+import GHC.Exception (errorCallException)
 import JSON (HasJSONPrefix (..), deriveJSONPrefixed)
 import Logging (LogLevel (..), Logger, putLog)
 import Network.URI (unEscapeString)
-import UnliftIO (MonadIO (..), MonadUnliftIO (..))
-import Util (fail500)
+import UnliftIO (MonadUnliftIO (..))
 
 data MprisAction
   = MprisQuit
@@ -229,11 +230,15 @@ performAction mp action = do
 -- | Some helpers to parse dbus replies
 expectSingleValue :: (MonadThrow m, Logger m, IsVariant a) => [Variant] -> m a
 expectSingleValue = \case
-  [] -> fail500 "Expected single value, but got none"
+  [] -> failed "Expected single value, but got none"
   [val] -> case fromVariant val of
-    Nothing -> fail500 "Failed parsing single variant"
+    Nothing -> failed "Failed parsing single variant"
     Just a -> pure a
-  _ -> fail500 "Expected single value, but got multiple"
+  _ -> failed "Expected single value, but got multiple"
+  where
+    failed msg = do
+      putLog Error msg
+      throwM $ errorCallException msg
 
 fromVariant2 :: (IsVariant a) => Variant -> Maybe a
 fromVariant2 v = fromVariant v >>= fromVariant

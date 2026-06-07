@@ -33,7 +33,6 @@ import System.FilePath (takeBaseName, takeExtension)
 import Util (safeMinimumOn)
 import Util.Regex
 import Util.TextWithoutSeparator
-import Yesod (ContentType, typeJpeg)
 
 -- Videos
 
@@ -91,7 +90,7 @@ bestImageFile = safeMinimumOn $ \fileName ->
 newtype CachedImageFileName = CachedImageFileName TextWithoutSeparator
   deriving newtype (Eq, Show, Unwrap Text, ToJSON, FromJSON)
 
-mkCachedImageFileName :: (SafeIO m) => [TextWithoutSeparator] -> Either ImageFileName ContentType -> m CachedImageFileName
+mkCachedImageFileName :: (SafeIO m) => [TextWithoutSeparator] -> Either ImageFileName BS.ByteString -> m CachedImageFileName
 mkCachedImageFileName path originalNameOrContentType = do
   suffix <- randomFileNameSuffix
   let name :: Maybe TextWithoutSeparator
@@ -109,10 +108,10 @@ mkCachedImageFileName path originalNameOrContentType = do
       fullName = intercalate [twsQQ|-|] $ path ++ maybeToList name ++ [removeSeparatorsFromText $ T.pack suffix]
   pure . CachedImageFileName $ fullName <> ext
 
-cachedImageContentType :: CachedImageFileName -> ContentType
+cachedImageContentType :: CachedImageFileName -> BS.ByteString
 cachedImageContentType (CachedImageFileName imgName) =
   case takeExtension $ T.unpack $ unwrap imgName of
-    "" -> typeJpeg
+    "" -> "image/jpg"
     ext ->
       let cleanedExt = lower $
             case ext of

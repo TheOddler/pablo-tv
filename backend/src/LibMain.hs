@@ -1,429 +1,64 @@
 {-# LANGUAGE QuasiQuotes #-}
-{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE ViewPatterns #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 
 module LibMain where
 
 import Actions
-  ( Action (..),
-    KeyboardButton (..),
-    MouseButton (..),
-    OverwritePreviouslyWatched (..),
-    actionsWebSocket,
+  ( OverwritePreviouslyWatched (..),
     markDirOrFileAsWatched,
     mkInputDevice,
-    performAction,
   )
-import Control.Exception (Exception (..))
 import Control.Monad (when)
+import Control.Monad.IO.Class (MonadIO (..))
 import Control.Monad.Trans.Reader (ask)
-import Data.Aeson qualified as Aeson
-import Data.List.Extra (intercalate, notNull, stripPrefix)
-import Data.List.NonEmpty qualified as NE
+import Data.List.Extra (intercalate, stripPrefix)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (fromMaybe, isJust, listToMaybe, mapMaybe)
-import Data.Ord (Down (..))
-import Data.Text (Text, unpack)
+import Data.Maybe (fromMaybe, mapMaybe)
 import Data.Text qualified as T
-import Data.Text qualified as Text
-import Data.Time (defaultTimeLocale, formatTime)
-import Data.Tuple.Extra (fst3)
 import Directory
-  ( AggDirInfo (..),
-    findDirWithImageFor,
-    getDirectoryAtPath,
-    getImagesDir,
-    getMemoryFileDir,
-    getSubDirAggInfo,
+  ( getMemoryFileDir,
     loadRootsFromDisk,
     memoryFileName,
     saveRootsToDisk,
   )
 import Directory.Directories
-  ( DirectoryData (..),
-    DirectoryName (..),
+  ( DirectoryName (..),
     RootDirectories (..),
     RootDirectoryData (..),
     RootDirectoryLocation (..),
-    rootDirectoryAsDirectory,
     rootDirectoryLocationToAbsPath,
-    splitTitleFromDir,
   )
 import Directory.Files
-  ( CachedImageFileName,
-    Image (..),
-    NiceVideoFileNames (..),
-    VideoFileData (..),
-    VideoFileName (..),
-    cachedImageContentType,
-    niceFileNames,
+  ( VideoFileName (..),
   )
 import Directory.Paths
-  ( DirectoryPath (..),
-    RawWebPath (..),
-    VideoFilePath (..),
-    rawWebPathFromDirectory,
-    rawWebPathFromVideoFile,
-    rawWebPathToDirectory,
-    rootDirectoryPath,
+  ( VideoFilePath (..),
   )
-import Foundation
-  ( App (..),
-    Handler,
-    Route (..),
-    Widget,
-    embeddedStatic,
-    isTvRequest,
-    resourcesApp,
-    static_images_apple_tv_plus_png,
-    static_images_netflix_png,
-    static_images_youtube_png,
-  )
+import Env (ServerEnv (..))
 import GHC.Conc (TVar, atomically, newTVarIO, writeTVar)
 import GHC.Data.Maybe (firstJustsM)
-import GHC.Stats (GCDetails (..), RTSStats (..), getRTSStats)
-import GHC.Utils.Misc (sortWith)
 import IsDevelopment (isDevelopment)
-import Logging (LogLevel (..), LogMsg (..), Logger, mkLogSlidingWindow, putLog, readLogSlidingWindow)
-import Mpris (MediaPlayer, MprisAction (..), getFirstMediaPlayer, mediaListener)
-import Network.Info (NetworkInterface (..), getNetworkInterfaces)
-import Network.Wai.Handler.Warp (run)
-import PVar (PVar, PVarState (..), modifyPVar_, newPVar, readPVar, readPVarState)
-import SafeConvert (humanReadableBytes)
+import Logging (LogLevel (..), Logger, mkLogSlidingWindow, putLog)
+import Mpris (MediaPlayer, getFirstMediaPlayer, mediaListener)
+import PVar (PVar, modifyPVar_, newPVar)
 import SafeIO (SafeIO, catchAny, unsafePinkyPromiseThisIsSafe)
 import Samba (MountResult, SmbServer (..), SmbShare (..), mount)
 import Server qualified as Servant
 import System.Directory (XdgDirectory (..), createDirectoryIfMissing, getXdgDirectory, renameFile)
 import System.Environment (getArgs)
 import System.FilePath (pathSeparator, (</>))
+import System.IO (BufferMode (..), hSetBuffering, stderr, stdout)
 import System.Process (callProcess)
-import System.Random (initStdGen, mkStdGen)
-import TVState (startingTVState, tvStateWebSocket)
+import TVState (startingTVState)
 import Transformers (LoggerT (..), SafeIOT (..), runLoggerT)
-import UnliftIO (BufferMode (..), hSetBuffering, stderr, stdout, tryAny)
 import Util
-  ( logDuration,
-    logOnErrorIO,
-    naturalSortBy,
-    networkInterfaceWorthiness,
-    raceAll,
-    showIpV4OrV6WithPort,
+  ( logOnErrorIO,
     showT,
-    shuffle,
     unsnocNE,
-    widgetFile,
   )
 import Util.DirPath (absPathQQ, relPathQQ)
-import Util.TextWithoutSeparator (splitAtSeparatorNE, unwrap)
-import Yesod hiding (defaultLayout, replace)
-import Yesod qualified
-import Yesod.WebSockets (race_, webSockets)
-
-mkYesodDispatch "App" resourcesApp
-
-data RefreshButton
-  = NoRefreshButton
-  | RefreshButton Text Action
-
-defaultLayout :: Text -> RefreshButton -> Widget -> Handler Html
-defaultLayout title refreshButton widget = Yesod.defaultLayout $ do
-  setTitle $ toHtml $ title <> " - Pablo TV"
-
-  isTv <- isTvRequest
-  networkInterfaces <- liftIO getNetworkInterfaces
-  let mNetworkInterface =
-        listToMaybe $
-          sortWith networkInterfaceWorthiness networkInterfaces
-  port <- getsYesod appPort
-  -- currentRoute <- fromMaybe HomeR <$> getCurrentRoute
-  -- currentUrlBS <- toUrlRel currentRoute
-  -- let currentUrl :: Text
-  --     currentUrl = decodeUtf8Lenient $ BS.toStrict currentUrlBS
-  $(widgetFile "default")
-
-data NamedLink = NamedLink
-  { linkName :: Text,
-    linkImage :: Route App,
-    linkUrl :: Text
-  }
-
-data HomeSection
-  = LocalVideos Text [AggDirInfo]
-  | ExternalLinks Text [NamedLink]
-
-getHomeR :: Handler Html
-getHomeR = do
-  -- This can be a websocket request, so do that
-  tvStateTVar <- getsYesod appTVState
-  webSockets $ race_ actionsWebSocket (tvStateWebSocket tvStateTVar)
-
-  roots <- readPVar =<< getsYesod appRootDirs
-  homeData <-
-    logDuration "Calculated home dir agg data" . pure $
-      concatMap
-        ( \(rootLocation, rootData) ->
-            getSubDirAggInfo
-              (rootDirectoryPath rootLocation)
-              (rootDirectoryAsDirectory rootData)
-        )
-        (Map.toList roots.unRootDirectories)
-
-  let mkRandom =
-        -- When in dev we auto-reload the page every second or so,
-        -- so we want the same random shuffle every time, otherwise the page
-        -- keeps changing which is annoying.
-        if isDevelopment then pure (mkStdGen 2) else initStdGen
-  randomGenerator <- mkRandom
-  let isFinished d = aggDirPlayedVideoFileCount d == aggDirVideoFileCount d
-      finished = filter isFinished homeData
-      isUnstarted d = aggDirPlayedVideoFileCount d == 0
-      unstarted = filter isUnstarted homeData
-      isUnfinished d = aggDirPlayedVideoFileCount d < aggDirVideoFileCount d
-      unfinished = filter isUnfinished homeData
-      isWatching d = aggDirPlayedVideoFileCount d >= 1 && isUnfinished d
-      watching = filter isWatching homeData
-      recentlyAdded = Down . aggDirLastModified
-      recentlyWatched = Down . aggDirLastWatched
-
-  let sections =
-        [ LocalVideos "Watching" $
-            sortWith recentlyWatched watching,
-          LocalVideos "New" $
-            sortWith recentlyAdded unstarted,
-          LocalVideos "Random" $
-            shuffle unfinished randomGenerator,
-          ExternalLinks
-            "External Links"
-            [ NamedLink
-                "YouTube"
-                (StaticR static_images_youtube_png)
-                "https://www.youtube.com/feed/subscriptions",
-              NamedLink
-                "Netflix"
-                (StaticR static_images_netflix_png)
-                "https://www.netflix.com",
-              NamedLink
-                "Apple TV+"
-                (StaticR static_images_apple_tv_plus_png)
-                "https://tv.apple.com"
-            ],
-          LocalVideos "Recently Added" $
-            sortWith recentlyAdded homeData,
-          LocalVideos "Random (All)" $
-            shuffle homeData randomGenerator,
-          LocalVideos "Recently Finished" $
-            sortWith recentlyWatched finished
-        ]
-  let refreshButton = RefreshButton "Refresh library" ActionRefreshAllDirectoryData
-
-  defaultLayout "Home" refreshButton $(widgetFile "home")
-
-postHomeR :: Handler ()
-postHomeR =
-  parseCheckJsonBody >>= \case
-    Aeson.Error s -> do
-      putLog Error $ "Failed parsing action: " ++ s
-      invalidArgs [Text.pack s]
-    Aeson.Success action -> do
-      performAction action
-
-data WatchState = Unwatched | Watching | Watched
-
-watchedClass :: WatchState -> Html
-watchedClass state = case state of
-  Unwatched -> "unwatched"
-  Watching -> "watching"
-  Watched -> "watched"
-
-fileWatchedClass :: VideoFileData -> Html
-fileWatchedClass file =
-  watchedClass $
-    if isJust file.videoFileWatched
-      then Watched
-      else Unwatched
-
-fileIcon :: VideoFileData -> Html
-fileIcon file =
-  if isJust file.videoFileWatched
-    then "fa-solid fa-check"
-    else ""
-
-dirWatchedState :: AggDirInfo -> WatchState
-dirWatchedState dirInfo =
-  let total = aggDirVideoFileCount dirInfo
-      watched = aggDirPlayedVideoFileCount dirInfo
-   in if watched == 0
-        then Unwatched
-        else
-          if watched == total
-            then Watched
-            else Watching
-
-dirWatchedClass :: AggDirInfo -> Html
-dirWatchedClass = watchedClass . dirWatchedState
-
-dirIcon' :: WatchState -> Maybe Html
-dirIcon' state = case state of
-  Unwatched -> Nothing
-  Watching -> Just "fa-solid fa-play"
-  Watched -> Just "fa-solid fa-check"
-
-dirIcon :: AggDirInfo -> Html
-dirIcon = fromMaybe "" . dirIcon' . dirWatchedState
-
-dirIconHome :: AggDirInfo -> Html
-dirIconHome = fromMaybe "fa-regular fa-eye" . dirIcon' . dirWatchedState
-
-type VideoFileWithNameAndPath = (VideoFileName, VideoFilePath, VideoFileData)
-
-withDirectoryFromRaw :: (DirectoryPath -> Handler a) -> RawWebPath -> Handler a
-withDirectoryFromRaw handler = withMDirectoryFromRaw $ \case
-  Nothing -> notFound
-  Just dirPath -> handler dirPath
-
-withMDirectoryFromRaw :: (Maybe DirectoryPath -> Handler a) -> RawWebPath -> Handler a
-withMDirectoryFromRaw handler rawWebPath = do
-  roots <- readPVar =<< getsYesod appRootDirs
-  handler $ rawWebPathToDirectory roots rawWebPath
-
-getDirectoryR :: RawWebPath -> Handler Html
-getDirectoryR = withMDirectoryFromRaw $ \mDirPath -> do
-  roots <- readPVar =<< getsYesod appRootDirs
-  (dirs, files') <- case mDirPath of
-    Nothing ->
-      pure
-        ( naturalSortBy (unwrap . aggDirName) $
-            concatMap
-              ( \(rootLocation, rootData) ->
-                  getSubDirAggInfo
-                    (rootDirectoryPath rootLocation)
-                    (rootDirectoryAsDirectory rootData)
-              )
-              (Map.toList roots.unRootDirectories),
-          naturalSortBy (unwrap . fst3) $
-            concatMap
-              ( \(rootLocation, rootData) -> do
-                  (videoName, videoData) <- Map.toList rootData.rootDirectoryVideoFiles
-                  pure
-                    ( videoName,
-                      VideoFilePath rootLocation [] videoName,
-                      videoData
-                    )
-              )
-              (Map.toList roots.unRootDirectories)
-        )
-    Just dirPath -> do
-      let mDir = getDirectoryAtPath roots dirPath
-      dir <- case mDir of
-        Nothing -> redirect $ DirectoryR $ RawWebPath []
-        Just d -> pure d
-      pure
-        ( naturalSortBy (unwrap . aggDirName) $ getSubDirAggInfo dirPath dir,
-          naturalSortBy (unwrap . fst3) $
-            map
-              ( \(videoName, videoData) ->
-                  ( videoName,
-                    VideoFilePath
-                      dirPath.directoryPathRoot
-                      dirPath.directoryPathNames
-                      videoName,
-                    videoData
-                  )
-              )
-              (Map.toList dir.directoryVideoFiles)
-        )
-
-  let mDirPathRaw = rawWebPathFromDirectory <$> mDirPath
-  let imagePath :: Maybe DirectoryPath
-      imagePath = findDirWithImageFor roots =<< mDirPath
-  let playAllAction = ActionPlayPath <$> mDirPathRaw
-  let markAllWatchedAction = ActionMarkAsWatched <$> mDirPathRaw
-  let markAllUnwatchedAction = ActionMarkAsUnwatched <$> mDirPathRaw
-  let refreshButton =
-        case mDirPathRaw of
-          Nothing ->
-            RefreshButton
-              "Refresh library"
-              ActionRefreshAllDirectoryData
-          Just dirPathRaw ->
-            RefreshButton "Refresh directory" $
-              ActionRefreshDirectoryData dirPathRaw
-  let niceNames = niceFileNames $ fst3 <$> files'
-  let fileNamePrefix = niceNames.commonPrefix
-  let fileNameSuffix = niceNames.commonSuffix
-  let files :: [(Text, VideoFilePath, VideoFileData)]
-      files = flip map (zip niceNames.uniqueMiddles files') $
-        \(middle, (_originalFileName, filePath, fileData)) ->
-          (middle, filePath, fileData)
-  let (title, subTitle) = case NE.nonEmpty . directoryPathNames <$> mDirPath of
-        Nothing -> ("Videos", "")
-        Just Nothing -> ("Videos", "")
-        Just (Just ne) -> splitTitleFromDir $ NE.last ne
-  defaultLayout title refreshButton $(widgetFile "directory")
-
-getImageR :: RawWebPath -> Handler TypedContent
-getImageR = withDirectoryFromRaw $ \dirPath -> do
-  roots <- readPVar =<< getsYesod appRootDirs
-  -- We find the directory with the image for a path in the directory endpoint,
-  -- so here we just have to check the directory itself, not its parents.
-  -- This makes sure that the browser gets a consistent path and can do better caching.
-  let mImg = getDirectoryAtPath roots dirPath >>= directoryImage
-  let sendImage :: CachedImageFileName -> Handler TypedContent
-      sendImage imageName = do
-        imagesDirPath <- getImagesDir
-        let imagePath = imagesDirPath </> T.unpack (unwrap imageName)
-        sendFile (cachedImageContentType imageName) imagePath
-  case mImg of
-    Nothing -> notFound
-    Just img -> do
-      addHeader "Cache-Control" "max-age=604800, public" -- Cache 1 week
-      case img of
-        ImageOnDisk _ i -> sendImage i
-        ImageFromWeb i -> sendImage i
-
-getRemoteR :: Handler Html
-getRemoteR = do
-  defaultLayout "Remote" NoRefreshButton $(widgetFile "remote")
-
-getInputR :: Handler Html
-getInputR = do
-  defaultLayout "Input" NoRefreshButton $(widgetFile "input")
-
-getAllIPsR :: Handler Html
-getAllIPsR = do
-  networkInterfaces' <- liftIO getNetworkInterfaces
-  let networkInterfaces = sortWith networkInterfaceWorthiness networkInterfaces'
-  port <- getsYesod appPort
-  defaultLayout "IPs" NoRefreshButton $(widgetFile "ips")
-  where
-    hideZero :: (Show a, Eq a, Bounded a) => a -> String
-    hideZero a =
-      if a == minBound
-        then ""
-        else show a
-
-getDebugR :: Handler Html
-getDebugR = do
-  app <- getYesod
-  rootDirPVarState' <- readPVarState app.appRootDirs
-  let rootDirPVarState = case rootDirPVarState' of
-        PVarReady -> "Ready" :: Text
-        PVarUpdating desc -> "Updating: " <> desc
-
-  runtimeStats <- liftIO $ tryAny getRTSStats
-
-  logMsgs <- readLogSlidingWindow app.appLogSlidingWindow
-  let logClass :: LogMsg -> String
-      logClass msg = case msg.logMsgLevel of
-        Debug -> "debug"
-        Info -> "info"
-        Warning -> "warning"
-        Error -> "error"
-  let prettyLogTime :: LogMsg -> String
-      prettyLogTime msg = formatTime defaultTimeLocale "%H:%M:%S" msg.logMsgTime
-
-  defaultLayout "Debug" NoRefreshButton $(widgetFile "debug")
+import Util.TextWithoutSeparator (splitAtSeparatorNE)
 
 mountAllSambaShares :: (SafeIO m, Logger m) => RootDirectories -> m ()
 mountAllSambaShares roots = do
@@ -495,8 +130,7 @@ main = do
     putLog Info $ "Min log level: " ++ show minLogLevel
 
     let port = 8080
-    let (homePath, _params) = renderRoute HomeR
-    let url = "http://localhost:" ++ show port ++ "/" ++ unpack (Text.intercalate "/" homePath)
+    let url = "http://localhost:" ++ show port
     putLog Info $ "Running on port " ++ show port ++ " - " ++ url
     putLog Info $ "Development mode: " ++ show isDevelopment
 
@@ -542,17 +176,15 @@ main = do
 
     -- The thread for the app
     let app =
-          App
-            { appPort = port,
-              appLogFunc = logFunc,
-              appLogSlidingWindow = logWindow,
-              appInputDevice = inputDevice,
-              appTVState = tvState,
-              appGetStatic = embeddedStatic,
-              appLastActivePlayer = lastActivePlayerTVar,
-              appRootDirs = rootDirsPVar
+          ServerEnv
+            { envPort = port,
+              envLogFunc = logFunc,
+              envLogSlidingWindow = logWindow,
+              envInputDevice = inputDevice,
+              envTVState = tvState,
+              envLastActivePlayer = lastActivePlayerTVar,
+              envRootDirs = rootDirsPVar
             }
-    let appThread = toWaiAppPlain app >>= run port . defaultMiddlewaresNoLogging
     let servantAppThread = Servant.main app
 
     -- The thread that'll be listening for files being played, and marking them as watched
@@ -569,10 +201,6 @@ main = do
       callProcess "xdg-open" [url]
 
     putLog Info "Starting server..."
-    liftIO $
-      raceAll
-        [ appThread,
-          servantAppThread
-        ]
+    liftIO servantAppThread
 
     putLog Debug "Server quit."
