@@ -89,7 +89,7 @@ instance IsElmDefinition Files.Image where
 
 main :: IO ()
 main = do
-  BS.hPut stdout "Generating elm..."
+  BS.hPut stdout "Generating elm...\n"
   generateElmModuleWith
     ( defElmOptions
         { urlPrefix = Static "",
@@ -105,7 +105,7 @@ main = do
     "./frontend/src"
     myTypeDefs
     (Proxy :: Proxy (ToServantApi Server.APIRoutes))
-  BS.hPut stdout "Done!"
+  BS.hPut stdout "Done!\n"
 
 myTypeDefs :: [DefineElm]
 myTypeDefs =
