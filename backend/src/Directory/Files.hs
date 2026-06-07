@@ -1,6 +1,9 @@
+{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE OverloadedLists #-}
 {-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TypeFamilies #-}
 
 module Directory.Files where
 
@@ -10,9 +13,6 @@ import Data.Aeson
     FromJSONKey,
     ToJSON (..),
     ToJSONKey (..),
-    genericParseJSON,
-    genericToEncoding,
-    genericToJSON,
   )
 import Data.Aeson qualified as Aeson
 import Data.ByteString.Char8 qualified as BS8
@@ -26,11 +26,11 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Time (UTCTime)
 import GHC.Exts (sortWith)
-import GHC.Generics (Generic)
+import JSON (HasJSONPrefix (..), deriveJSONPrefixed)
 import Orphanage ()
 import SafeIO (SafeIO, randomFileNameSuffix)
 import System.FilePath (takeBaseName, takeExtension)
-import Util (ourAesonOptionsPrefix, safeMinimumOn)
+import Util (safeMinimumOn)
 import Util.Regex
 import Util.TextWithoutSeparator
 import Yesod (ContentType, typeJpeg)
@@ -44,14 +44,12 @@ data VideoFileData = VideoFileData
   { videoFileAdded :: UTCTime,
     videoFileWatched :: Maybe UTCTime
   }
-  deriving (Generic, Eq, Show)
+  deriving (Eq, Show)
 
-instance ToJSON VideoFileData where
-  toJSON = genericToJSON $ ourAesonOptionsPrefix "videoFile"
-  toEncoding = genericToEncoding $ ourAesonOptionsPrefix "videoFile"
+instance HasJSONPrefix VideoFileData where
+  type JSONPrefix VideoFileData = "videoFile"
 
-instance FromJSON VideoFileData where
-  parseJSON = genericParseJSON $ ourAesonOptionsPrefix "videoFile"
+deriveJSONPrefixed ''VideoFileData
 
 -- Images
 

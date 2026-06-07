@@ -10,11 +10,12 @@ import Data.ByteString qualified as BS
 import Data.Maybe (catMaybes)
 import Data.Text (Text)
 import Data.Text qualified as T
-import Debug.Trace qualified as Debug
 import Directory.Directories qualified as Directories
 import Directory.Files qualified as Files
+import Elm.Derive (SumEncoding (..))
 import Elm.Module (recAlterType)
-import Elm.TyRep (EAlias (..), EPrimAlias (..), ETCon (..), ETypeDef (..), ETypeName (..), IsElmDefinition (..))
+import Elm.TyRep (EAlias (..), EPrimAlias (..), ESum (..), ETCon (..), ETypeDef (..), ETypeName (..), IsElmDefinition (..), SumEncoding' (..), SumTypeConstructor (..), SumTypeFields (..))
+import ElmHelpers (deriveElmPrefixed, eTypeDefStringAlias, eTypeDict)
 import Mpris qualified
 import Network.HTTP.Types.Method (Method)
 import Servant
@@ -22,59 +23,64 @@ import Servant.Elm
 import Servant.Foreign (GenerateList (..), Req)
 import Server qualified
 import System.IO (stdout)
-import Util (ourAesonOptionsPrefix)
 
 -- | This seems to be needed for Raw endpoints, so provide a dummy implementation as we don't actually need to use them in Elm
 instance GenerateList EType (Method -> Req EType) where
   generateList :: (Method -> Req EType) -> [Req EType]
   generateList _ = []
 
-deriveElmDef (ourAesonOptionsPrefix "MouseButton") ''Actions.MouseButton
-deriveElmDef (ourAesonOptionsPrefix "Keyboard") ''Actions.KeyboardButton
-deriveElmDef (ourAesonOptionsPrefix "Action") ''Actions.Action
-deriveElmDef (ourAesonOptionsPrefix "Mpris") ''Mpris.MprisAction
-deriveElmDef (ourAesonOptionsPrefix "") ''Directories.RootDirectories
-deriveElmDef (ourAesonOptionsPrefix "rootDirectory") ''Directories.RootDirectoryData
-deriveElmDef (ourAesonOptionsPrefix "directory") ''Directories.DirectoryData
-deriveElmDef (ourAesonOptionsPrefix "videoFile") ''Files.VideoFileData
-deriveElmDef (ourAesonOptionsPrefix "image") ''Files.Image
-
-compileElmDefStringAlias :: String -> ETypeDef
-compileElmDefStringAlias name =
-  ETypePrimAlias $
-    EPrimAlias
-      (ETypeName name [])
-      (toElmType (Proxy :: Proxy String))
+deriveElmPrefixed ''Actions.MouseButton
+deriveElmPrefixed ''Actions.KeyboardButton
+deriveElmPrefixed ''Actions.Action
+deriveElmPrefixed ''Mpris.MprisAction
+deriveElmPrefixed ''Directories.RootDirectoryData
+deriveElmPrefixed ''Directories.DirectoryData
+deriveElmPrefixed ''Files.VideoFileData
 
 instance IsElmDefinition Directories.RootDirectoryLocation where
-  compileElmDef _ = compileElmDefStringAlias "RootDirectoryLocation"
+  compileElmDef _ = eTypeDefStringAlias "RootDirectoryLocation"
 
 instance IsElmDefinition Directories.DirectoryName where
-  compileElmDef _ = compileElmDefStringAlias "DirectoryName"
+  compileElmDef _ = eTypeDefStringAlias "DirectoryName"
 
 instance IsElmDefinition Files.VideoFileName where
-  compileElmDef _ = compileElmDefStringAlias "VideoFileName"
+  compileElmDef _ = eTypeDefStringAlias "VideoFileName"
 
 instance IsElmDefinition Files.ImageFileName where
-  compileElmDef _ = compileElmDefStringAlias "ImageFileName"
+  compileElmDef _ = eTypeDefStringAlias "ImageFileName"
 
 instance IsElmDefinition Files.CachedImageFileName where
-  compileElmDef _ = compileElmDefStringAlias "CachedImageFileName"
+  compileElmDef _ = eTypeDefStringAlias "CachedImageFileName"
 
 instance IsElmDefinition Directories.DirectorySubDirs where
   compileElmDef _ =
+    ETypeSum $
+      ESum
+        { es_name = ETypeName "DirectorySubDirs" [],
+          es_constructors =
+            [ STC "DirectorySubDirs" "DirectorySubDirs" $
+                Anonymous [eTypeDict "DirectoryName" "DirectoryData"]
+            ],
+          es_type = SumEncoding' UntaggedValue,
+          es_omit_null = True,
+          es_unary_strings = True
+        }
+
+instance IsElmDefinition Directories.RootDirectories where
+  compileElmDef _ =
+    ETypePrimAlias $
+      EPrimAlias
+        (ETypeName "RootDirectories" [])
+        (eTypeDict "RootDirectoryLocation" "RootDirectoryData")
+
+instance IsElmDefinition Files.Image where
+  compileElmDef _ =
     ETypeAlias $
       EAlias
-        { ea_name = ETypeName "DirectorySubDirs" [],
+        { ea_name = ETypeName "Image" [],
           ea_fields =
-            [ ( "subDirs",
-                ETyApp
-                  ( ETyApp
-                      (ETyCon $ ETCon "Dict")
-                      (ETyCon $ ETCon "DirectoryName")
-                  )
-                  (ETyCon $ ETCon "DirectoryData")
-              )
+            [ ("name", toElmType (Proxy :: Proxy (Maybe String))),
+              ("cached", toElmType (Proxy :: Proxy String))
             ],
           ea_omit_null = True,
           ea_newtype = True,
@@ -122,7 +128,7 @@ myTypeDefs =
 
 myAlterations :: ETypeDef -> ETypeDef
 myAlterations = \case
-  other -> recAlterType myTypeAlterations $ Debug.traceShowId other
+  other -> recAlterType myTypeAlterations other
 
 myTypeAlterations :: EType -> EType
 myTypeAlterations = \case

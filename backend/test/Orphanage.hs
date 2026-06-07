@@ -48,6 +48,8 @@ instance Arbitrary (DirPath Rel) where
   arbitrary = arbitrary `suchThatMap` relPath
   shrink a = mapMaybe relPath $ shrink $ unDirPath a
 
+deriving instance Generic RootDirectoryLocation
+
 instance Arbitrary RootDirectoryLocation where
   arbitrary = genericArbitrary uniform
   shrink = genericShrink
@@ -91,13 +93,19 @@ instance Arbitrary Action where
   arbitrary = genericArbitrary uniform
   shrink = genericShrink
 
+deriving instance Generic MouseButton
+
 instance Arbitrary MouseButton where
   arbitrary = genericArbitrary uniform
   shrink = genericShrink
 
+deriving instance Generic KeyboardButton
+
 instance Arbitrary KeyboardButton where
   arbitrary = genericArbitrary uniform
   shrink = genericShrink
+
+deriving instance Generic Mpris.MprisAction
 
 instance Arbitrary Mpris.MprisAction where
   arbitrary = genericArbitrary uniform

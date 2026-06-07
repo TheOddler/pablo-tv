@@ -1,10 +1,14 @@
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TypeFamilies #-}
 
 module Actions where
 
 import Control.Exception (Exception (..))
 import Control.Monad (forever)
-import Data.Aeson (FromJSON (..), ToJSON (toJSON), eitherDecode, encode, genericParseJSON, genericToJSON)
+import Data.Aeson (ToJSON (..), eitherDecode, encode)
 import Data.Char (isSpace)
 import Data.Int (Int32)
 import Data.List (dropWhileEnd, nub)
@@ -26,8 +30,8 @@ import Evdev.Codes
 import Evdev.Uinput
 import Foundation (App (..), Handler)
 import GHC.Conc (atomically, readTVar, readTVarIO, writeTVar)
-import GHC.Generics (Generic)
 import ImageScraper (ImageScraper)
+import JSON (HasJSONPrefix (..), deriveJSONPrefixed)
 import Logging (LogLevel (..), Logger, putLog)
 import Mpris qualified
 import Network.WebSockets qualified as WS
@@ -39,7 +43,7 @@ import TVState (TVState (..))
 import Text.Blaze qualified as Blaze
 import Text.Julius (ToJavascript (..))
 import UnliftIO.Exception (catch)
-import Util (ourAesonOptionsPrefix, showT)
+import Util (showT)
 import Yesod (MonadIO, getYesod, lift, liftIO)
 import Yesod.WebSockets (WebSocketsT, receiveData)
 
@@ -64,28 +68,16 @@ data Action
   | ActionRefreshAllDirectoryData
   | ActionRefreshDirectoryData RawWebPath
   | ActionMedia Mpris.MprisAction
-  deriving (Generic, Show, Eq)
+  deriving (Show, Eq)
 
-instance ToJSON Action where
-  toJSON = genericToJSON $ ourAesonOptionsPrefix "Action"
-
-instance FromJSON Action where
-  parseJSON = genericParseJSON $ ourAesonOptionsPrefix "Action"
-
-instance ToJavascript Action where
-  toJavascript = toJavascript . toJSON
-
-instance Blaze.ToMarkup Action where
-  toMarkup = Blaze.lazyText . T.decodeUtf8 . encode
+instance HasJSONPrefix Action where
+  type JSONPrefix Action = "Action"
 
 data MouseButton = MouseButtonLeft | MouseButtonRight
-  deriving (Show, Eq, Bounded, Enum, Generic)
+  deriving (Show, Eq, Bounded, Enum)
 
-instance ToJSON MouseButton where
-  toJSON = genericToJSON $ ourAesonOptionsPrefix "MouseButton"
-
-instance FromJSON MouseButton where
-  parseJSON = genericParseJSON $ ourAesonOptionsPrefix "MouseButton"
+instance HasJSONPrefix MouseButton where
+  type JSONPrefix MouseButton = "MouseButton"
 
 data KeyboardButton
   = KeyboardBackspace
@@ -97,13 +89,24 @@ data KeyboardButton
   | KeyboardDownArrow
   | KeyboardVolumeUp
   | KeyboardVolumeDown
-  deriving (Show, Eq, Bounded, Enum, Generic)
+  deriving (Show, Eq, Bounded, Enum)
 
-instance ToJSON KeyboardButton where
-  toJSON = genericToJSON $ ourAesonOptionsPrefix "Keyboard"
+instance HasJSONPrefix KeyboardButton where
+  type JSONPrefix KeyboardButton = "Keyboard"
 
-instance FromJSON KeyboardButton where
-  parseJSON = genericParseJSON $ ourAesonOptionsPrefix "Keyboard"
+-- JSON Instances
+
+deriveJSONPrefixed ''MouseButton
+deriveJSONPrefixed ''KeyboardButton
+deriveJSONPrefixed ''Action
+
+-- Instances that use the JSON instances
+
+instance ToJavascript Action where
+  toJavascript = toJavascript . toJSON
+
+instance Blaze.ToMarkup Action where
+  toMarkup = Blaze.lazyText . T.decodeUtf8 . encode
 
 mouseButtonToEvdevKey :: MouseButton -> Key
 mouseButtonToEvdevKey = \case

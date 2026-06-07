@@ -50,6 +50,7 @@ library
     Foundation
     ImageScraper
     IsDevelopment
+    JSON
     LibMain
     Logging
     Mpris
@@ -129,6 +130,9 @@ executable elm-gen
   hs-source-dirs:
     elm-gen
 
+  other-modules:
+    ElmHelpers
+
   build-depends:
     bytestring,
     containers,
@@ -138,6 +142,7 @@ executable elm-gen
     servant-elm,
     servant-foreign,
     servant-server,
+    template-haskell,
     text,
 
 test-suite pablo-tv-test

@@ -1,3 +1,7 @@
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TypeFamilies #-}
+
 module Mpris where
 
 import Control.Monad.Catch (MonadThrow)
@@ -16,17 +20,16 @@ import DBus
     methodCall,
   )
 import DBus.Client (Client, MatchRule (..), SignalHandler, addMatch, call, connectSession, matchAny)
-import Data.Aeson (FromJSON (..), ToJSON (..), genericParseJSON, genericToEncoding, genericToJSON)
 import Data.Int (Int64)
 import Data.List (isPrefixOf, stripPrefix)
 import Data.Map qualified as Map
 import Data.Maybe (listToMaybe)
 import Data.String (IsString (..))
-import GHC.Generics (Generic)
+import JSON (HasJSONPrefix (..), deriveJSONPrefixed)
 import Logging (LogLevel (..), Logger, putLog)
 import Network.URI (unEscapeString)
 import UnliftIO (MonadIO (..), MonadUnliftIO (..))
-import Util (fail500, ourAesonOptionsPrefix)
+import Util (fail500)
 
 data MprisAction
   = MprisQuit
@@ -40,14 +43,12 @@ data MprisAction
   | MprisBackwardJump
   | MprisGoFullscreen
   | MprisGoWindowed
-  deriving (Show, Eq, Bounded, Enum, Generic)
+  deriving (Show, Eq, Bounded, Enum)
 
-instance ToJSON MprisAction where
-  toJSON = genericToJSON $ ourAesonOptionsPrefix "Mpris"
-  toEncoding = genericToEncoding $ ourAesonOptionsPrefix "Mpris"
+instance HasJSONPrefix MprisAction where
+  type JSONPrefix MprisAction = "mpris"
 
-instance FromJSON MprisAction where
-  parseJSON = genericParseJSON $ ourAesonOptionsPrefix "Mpris"
+deriveJSONPrefixed ''MprisAction
 
 newtype MediaPlayer = MediaPlayer {unMediaPlayer :: BusName}
 

@@ -5,11 +5,9 @@ import Control.Concurrent (MVar, takeMVar)
 import Control.Exception (Exception, displayException)
 import Control.Monad (when)
 import Control.Monad.Catch (MonadThrow (..))
-import Data.Aeson qualified as Aeson
-import Data.Char qualified as Char
 import Data.Default (def)
 import Data.List (isPrefixOf, sortBy)
-import Data.List.Extra (dropPrefix, unsnoc)
+import Data.List.Extra (unsnoc)
 import Data.List.NonEmpty qualified as NE
 import Data.List.NonEmpty.Extra qualified as NE
 import Data.Ord (Down)
@@ -30,24 +28,6 @@ import Yesod.Default.Util (widgetFileNoReload, widgetFileReload)
 import Yesod.EmbeddedStatic (embedFileAt)
 import Yesod.EmbeddedStatic.Types (Generator)
 import Yesod.WebSockets (race_)
-
-ourAesonOptionsPrefix :: String -> Aeson.Options
-ourAesonOptionsPrefix prefix =
-  Aeson.defaultOptions
-    { -- Aeson.sumEncoding = Aeson.ObjectWithSingleField,
-      Aeson.unwrapUnaryRecords = True,
-      Aeson.omitNothingFields = True,
-      Aeson.allNullaryToStringTag = True,
-      Aeson.constructorTagModifier = dropPrefix constructorPrefix,
-      Aeson.fieldLabelModifier =
-        mapFirstLetter Char.toLower . dropPrefix fieldPrefix
-    }
-  where
-    mapFirstLetter mapper str = case str of
-      "" -> ""
-      (firstLetter : rest) -> mapper firstLetter : rest
-    constructorPrefix = mapFirstLetter Char.toUpper prefix
-    fieldPrefix = mapFirstLetter Char.toLower prefix
 
 -- | Load a widget file, automatically reloading it in development.
 widgetFile :: String -> Q Exp

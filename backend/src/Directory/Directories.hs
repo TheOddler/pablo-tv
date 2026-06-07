@@ -1,4 +1,7 @@
+{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TypeFamilies #-}
 
 module Directory.Directories where
 
@@ -9,11 +12,7 @@ import Data.Aeson
     FromJSONKeyFunction (..),
     ToJSON (..),
     ToJSONKey (..),
-    genericParseJSON,
-    genericToEncoding,
-    genericToJSON,
   )
-import Data.Aeson qualified as Aeson
 import Data.Aeson.Types qualified as Aeson
 import Data.Map.Strict qualified as Map
 import Data.Maybe (isJust)
@@ -21,14 +20,13 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Directory.Files
 import GHC.Data.Maybe (firstJusts, orElse)
-import GHC.Generics (Generic)
+import JSON (HasJSONPrefix (..), deriveJSONPrefixed)
 import Orphanage ()
 import SafeIO (SafeIO (..))
 import Samba (SmbServer (..), SmbShare (..), mkMountPath)
 import System.FilePath
 import Text.Blaze (ToMarkup)
 import Text.Read (Read (..))
-import Util (ourAesonOptionsPrefix)
 import Util.DirPath (Abs, DirPath (..), Rel, absPath, relPath, unDirPath)
 import Util.Regex (expect1Int, tryRegex)
 import Util.TextWithoutSeparator
@@ -39,13 +37,12 @@ import Yesod (PathPiece (..))
 newtype RootDirectories = RootDirectories
   { unRootDirectories :: Map.Map RootDirectoryLocation RootDirectoryData
   }
-  deriving (ToJSON, FromJSON)
 
 data RootDirectoryLocation
   = RootSamba Samba.SmbServer Samba.SmbShare
   | RootRelToHome (DirPath Rel)
   | RootAbsPath (DirPath Abs)
-  deriving (Show, Eq, Ord, Generic)
+  deriving (Show, Eq, Ord)
 
 rootDirectoryLocationToAbsPath :: (SafeIO m) => RootDirectoryLocation -> m FilePath
 rootDirectoryLocationToAbsPath = \case
@@ -110,14 +107,10 @@ data RootDirectoryData = RootDirectoryData
   { rootDirectorySubDirs :: Map.Map DirectoryName DirectoryData,
     rootDirectoryVideoFiles :: Map.Map VideoFileName VideoFileData
   }
-  deriving (Generic, Show, Eq)
+  deriving (Show, Eq)
 
-instance ToJSON RootDirectoryData where
-  toJSON = genericToJSON $ ourAesonOptionsPrefix "rootDirectory"
-  toEncoding = genericToEncoding $ ourAesonOptionsPrefix "rootDirectory"
-
-instance FromJSON RootDirectoryData where
-  parseJSON = genericParseJSON $ ourAesonOptionsPrefix "rootDirectory"
+instance HasJSONPrefix RootDirectoryData where
+  type JSONPrefix RootDirectoryData = "rootDirectory"
 
 rootDirectoryAsDirectory :: RootDirectoryData -> DirectoryData
 rootDirectoryAsDirectory root =
@@ -139,34 +132,15 @@ data DirectoryData = DirectoryData
     directorySubDirs :: DirectorySubDirs,
     directoryVideoFiles :: Map.Map VideoFileName VideoFileData
   }
-  deriving (Generic, Show, Eq)
+  deriving (Show, Eq)
 
-instance ToJSON DirectoryData where
-  toJSON = genericToJSON $ ourAesonOptionsPrefix "directory"
-  toEncoding = genericToEncoding $ ourAesonOptionsPrefix "directory"
-
-instance FromJSON DirectoryData where
-  parseJSON = Aeson.withObject "DirectoryData" $ \o -> do
-    (imgRaw :: Maybe Aeson.Value) <- o Aeson..:? "image"
-    img <- case imgRaw of
-      Nothing -> pure Nothing
-      Just v ->
-        case Aeson.parseMaybe parseJSON v of
-          Nothing -> pure Nothing -- on parse failure, treat as Nothing, this is an old image that we just discard.
-          Just parsed -> pure $ Just parsed
-    subDirs <- o Aeson..: "subDirs"
-    videos <- o Aeson..: "videoFiles"
-    pure
-      DirectoryData
-        { directoryImage = img,
-          directorySubDirs = subDirs,
-          directoryVideoFiles = videos
-        }
+instance HasJSONPrefix DirectoryData where
+  type JSONPrefix DirectoryData = "directory"
 
 newtype DirectorySubDirs = DirectorySubDirs
   { unDirectorySubDirs :: Map.Map DirectoryName DirectoryData
   }
-  deriving newtype (Show, Eq, ToJSON, FromJSON)
+  deriving newtype (Show, Eq)
 
 data DirectoryKindGuess
   = DirectoryKindMovie Text -- Best guess for the movie title
@@ -214,3 +188,17 @@ seasonFromDir dir =
 
 isSeasonDir :: DirectoryName -> Bool
 isSeasonDir = isJust . seasonFromDir
+
+-- JSON instances
+
+deriveJSONPrefixed ''DirectoryData
+
+deriving instance ToJSON DirectorySubDirs
+
+deriving instance FromJSON DirectorySubDirs
+
+deriveJSONPrefixed ''RootDirectoryData
+
+deriving instance ToJSON RootDirectories
+
+deriving instance FromJSON RootDirectories
