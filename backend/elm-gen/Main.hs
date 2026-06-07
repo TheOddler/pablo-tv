@@ -136,6 +136,9 @@ myTypeAlterations = \case
   ETyCon (ETCon "Scientific") -> toElmType (Proxy :: Proxy Float)
   ETyCon (ETCon "RawWebPath") -> toElmType (Proxy :: Proxy [String])
   ETyCon (ETCon "NoContent") -> toElmType (Proxy :: Proxy ())
+  ETyCon (ETCon "VideoFileName") -> toElmType (Proxy :: Proxy String)
+  ETyCon (ETCon "DirectoryName") -> toElmType (Proxy :: Proxy String)
+  ETyCon (ETCon "RootDirectoryLocation") -> toElmType (Proxy :: Proxy String)
   ETyApp (ETyApp (ETyCon (ETCon "Map")) k) v
     | k `elem` stringAliases ->
         ETyApp
