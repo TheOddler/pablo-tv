@@ -46,9 +46,14 @@ update msg model =
             )
 
         DirsUpdate (Err err) ->
-            ( { model | errors = err :: model.errors }
-            , Cmd.none
-            )
+            registerError err model
+
+
+registerError : Http.Error -> Model -> ( Model, Cmd Msg )
+registerError err model =
+    ( { model | errors = err :: model.errors }
+    , Cmd.none
+    )
 
 
 view : Model -> Document Msg
