@@ -6,8 +6,9 @@
 module Main where
 
 import Actions qualified
+import Control.Applicative (asum)
 import Data.ByteString qualified as BS
-import Data.Maybe (catMaybes)
+import Data.Maybe (catMaybes, fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Directory.Directories qualified as Directories
@@ -63,20 +64,6 @@ instance IsElmDefinition Files.CachedImageFileName where
 instance IsElmDefinition Paths.RawWebPath where
   compileElmDef _ = eTypeDefStringAlias "RawWebPath"
 
-instance IsElmDefinition Directories.DirectorySubDirs where
-  compileElmDef _ =
-    ETypeSum $
-      ESum
-        { es_name = ETypeName "DirectorySubDirs" [],
-          es_constructors =
-            [ STC "DirectorySubDirs" "DirectorySubDirs" $
-                Anonymous [eTypeDict "DirectoryName" "DirectoryData"]
-            ],
-          es_type = SumEncoding' UntaggedValue,
-          es_omit_null = True,
-          es_unary_strings = True
-        }
-
 instance IsElmDefinition Directories.RootDirectories where
   compileElmDef _ =
     ETypePrimAlias $
@@ -98,14 +85,45 @@ instance IsElmDefinition Files.Image where
           ea_unwrap_unary = False
         }
 
+-- In Haskell Directories.DirectoryData is a recursive type, as it has sub-dirs of the same type.
+-- However, in Elm Directories.DirectoryData is a type alias, and those cannot be recursive.
+-- So we need a bit of a hack to allow for it, the "Less obvious, but nicer" here: https://github.com/elm/compiler/blob/master/hints/recursive-alias.md#less-obvious-but-nicer
+data DirectorySubDirs
+
+instance IsElmDefinition DirectorySubDirs where
+  compileElmDef _ =
+    ETypeSum $
+      ESum
+        { es_name = ETypeName "DirectorySubDirs" [],
+          es_constructors =
+            [ STC "DirectorySubDirs" "DirectorySubDirs" $
+                Anonymous [eTypeDict "DirectoryName" "DirectoryData"]
+            ],
+          es_type = SumEncoding' UntaggedValue,
+          es_omit_null = True,
+          es_unary_strings = True
+        }
+
+recursiveDirectoryDataAlterations :: EType -> Maybe EType
+recursiveDirectoryDataAlterations = \case
+  -- The Haskell type is a `Map DirectoryName DirectoryData`, so we replace that with `DirectorySubDirs` in Elm
+  ETyApp
+    ( ETyApp
+        (ETyCon (ETCon "Map"))
+        (ETyCon (ETCon "DirectoryName"))
+      )
+    (ETyCon (ETCon "DirectoryData")) ->
+      Just (ETyCon (ETCon "DirectorySubDirs"))
+  _ -> Nothing
+
 main :: IO ()
 main = do
   BS.hPut stdout "Generating elm...\n"
   generateElmModuleWith
     ( defElmOptions
         { urlPrefix = Static "",
-          elmAlterations = myAlterations,
-          elmTypeAlterations = myTypeAlterations,
+          elmAlterations = recAlterType allTypeAlterations,
+          elmTypeAlterations = allTypeAlterations,
           elmToString = myElmToString
         }
     )
@@ -128,7 +146,7 @@ myTypeDefs =
     DefineElm (Proxy :: Proxy Directories.RootDirectoryData),
     DefineElm (Proxy :: Proxy Directories.RootDirectoryLocation),
     DefineElm (Proxy :: Proxy Directories.DirectoryData),
-    DefineElm (Proxy :: Proxy Directories.DirectorySubDirs),
+    DefineElm (Proxy :: Proxy DirectorySubDirs),
     DefineElm (Proxy :: Proxy Directories.DirectoryName),
     DefineElm (Proxy :: Proxy Files.VideoFileName),
     DefineElm (Proxy :: Proxy Files.VideoFileData),
@@ -138,24 +156,29 @@ myTypeDefs =
     DefineElm (Proxy :: Proxy Paths.RawWebPath)
   ]
 
-myAlterations :: ETypeDef -> ETypeDef
-myAlterations = \case
-  other -> recAlterType myTypeAlterations other
+allTypeAlterations :: EType -> EType
+allTypeAlterations et =
+  fromMaybe (defaultTypeAlterations et) $
+    asum
+      [ recursiveDirectoryDataAlterations et,
+        myTypeAlterations et
+      ]
 
-myTypeAlterations :: EType -> EType
+myTypeAlterations :: EType -> Maybe EType
 myTypeAlterations = \case
-  ETyCon (ETCon "Int32") -> toElmType (Proxy :: Proxy Int)
-  ETyCon (ETCon "Scientific") -> toElmType (Proxy :: Proxy Float)
-  ETyCon (ETCon "NoContent") -> toElmType (Proxy :: Proxy ())
+  ETyCon (ETCon "Int32") -> Just $ toElmType (Proxy :: Proxy Int)
+  ETyCon (ETCon "Scientific") -> Just $ toElmType (Proxy :: Proxy Float)
+  ETyCon (ETCon "NoContent") -> Just $ toElmType (Proxy :: Proxy ())
   ETyApp (ETyApp (ETyCon (ETCon "Map")) k) v
     | k `elem` stringAliases ->
-        ETyApp
-          ( ETyApp
-              (ETyCon $ ETCon "Dict")
-              k
-          )
-          v
-  other -> defaultTypeAlterations other
+        Just $
+          ETyApp
+            ( ETyApp
+                (ETyCon $ ETCon "Dict")
+                k
+            )
+            v
+  _ -> Nothing
   where
     stringAliases :: [EType]
     stringAliases =

@@ -36,6 +36,7 @@ import Util.TextWithoutSeparator
 newtype RootDirectories = RootDirectories
   { unRootDirectories :: Map.Map RootDirectoryLocation RootDirectoryData
   }
+  deriving (Eq, Show)
 
 data RootDirectoryLocation
   = RootSamba Samba.SmbServer Samba.SmbShare
@@ -115,7 +116,7 @@ rootDirectoryAsDirectory :: RootDirectoryData -> DirectoryData
 rootDirectoryAsDirectory root =
   DirectoryData
     { directoryImage = Nothing,
-      directorySubDirs = DirectorySubDirs root.rootDirectorySubDirs,
+      directorySubDirs = root.rootDirectorySubDirs,
       directoryVideoFiles = root.rootDirectoryVideoFiles
     }
 
@@ -128,18 +129,13 @@ newtype DirectoryName = DirectoryName {unDirectoryName :: TextWithoutSeparator}
 
 data DirectoryData = DirectoryData
   { directoryImage :: Maybe Image,
-    directorySubDirs :: DirectorySubDirs,
+    directorySubDirs :: Map.Map DirectoryName DirectoryData,
     directoryVideoFiles :: Map.Map VideoFileName VideoFileData
   }
   deriving (Show, Eq)
 
 instance HasJSONPrefix DirectoryData where
   type JSONPrefix DirectoryData = "directory"
-
-newtype DirectorySubDirs = DirectorySubDirs
-  { unDirectorySubDirs :: Map.Map DirectoryName DirectoryData
-  }
-  deriving newtype (Show, Eq)
 
 data DirectoryKindGuess
   = DirectoryKindMovie Text -- Best guess for the movie title
@@ -152,8 +148,8 @@ guessDirectoryKind dirName dirData =
   let (title, _rest) = splitTitleFromDir dirName
       dirSeasonIndicator = isJust $ seasonFromDir dirName
       subDirsSeasonIndicators =
-        any (isJust . seasonFromDir) $ Map.keys dirData.directorySubDirs.unDirectorySubDirs
-      hasSubDirs = not $ null dirData.directorySubDirs.unDirectorySubDirs
+        any (isJust . seasonFromDir) $ Map.keys dirData.directorySubDirs
+      hasSubDirs = not $ null dirData.directorySubDirs
       filesSeasonIndicator = isJust $ seasonFromFiles $ Map.keys dirData.directoryVideoFiles
       hasMovieFiles = not $ null dirData.directoryVideoFiles
    in firstJusts
@@ -191,10 +187,6 @@ isSeasonDir = isJust . seasonFromDir
 -- JSON instances
 
 deriveJSONPrefixed ''DirectoryData
-
-deriving instance ToJSON DirectorySubDirs
-
-deriving instance FromJSON DirectorySubDirs
 
 deriveJSONPrefixed ''RootDirectoryData
 
