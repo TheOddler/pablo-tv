@@ -34,6 +34,7 @@
           elmPackages.elm
           elmPackages.elm-format
           elmPackages.elm-json
+          elmPackages.elm-review
           elmPackages.nodejs
         ];
         runtimeInputs = with pkgs; [
