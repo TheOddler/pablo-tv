@@ -1,0 +1,10 @@
+{
+  "targets": {
+    "Frontend": {
+      "inputs": [
+        "src/Main.elm"
+      ],
+      "output": "static/main.js"
+    }
+  }
+}

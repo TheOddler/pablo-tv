@@ -34,7 +34,7 @@
           elmPackages.elm
           elmPackages.elm-format
           elmPackages.elm-json
-          elmPackages.elm-live
+          elmPackages.nodejs
         ];
         runtimeInputs = with pkgs; [
           libevdev
