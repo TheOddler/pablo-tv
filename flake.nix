@@ -98,6 +98,12 @@
             pkgs.haskell.lib.dontCheck (
               packages.pablo-tv-base.overrideAttrs (oldAttrs: {
                 configureFlags = oldAttrs.configureFlags ++ [ "--ghc-option=-O2" ];
+                postInstall =
+                  (oldAttrs.postInstall or "")
+                  + ''
+                    wrapProgram $out/bin/pablo-tv \
+                      --add-flags "--frontend=${packages.frontend}"
+                  '';
               })
             )
           );
@@ -111,8 +117,17 @@
             ];
             buildPhase =
               ''
+                # run the backend's generator executable (adjust name/path to match your exe)
+                ${packages.pablo-tv-base}/bin/elm-gen --out=src
+                ls -al
+
+                # Build Elm
                 elm make src/Main.elm --output=main.js --optimize
+                # Optimise it further
                 terser main.js --compress 'pure_funcs=[F2,F3,F4,F5,F6,F7,F8,F9,A2,A3,A4,A5,A6,A7,A8,A9],pure_getters,keep_fargs=false,unsafe_comps,unsafe' | terser --mangle --output main.js
+
+                # Build CSS
+                # TODO
               '';
             installPhase =
               ''
