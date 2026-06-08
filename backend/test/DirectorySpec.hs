@@ -228,24 +228,26 @@ rootSpec = do
         ]
   forM_ rootsInfo $ \(name, loc, expected) -> do
     it ("can read example " ++ name) $ runTestIO $ do
-      rootsPVar <- newPVar [(loc, RootDirectoryData Map.empty Map.empty)]
+      rootsPVar <- newPVar $ RootDirectories [(loc, RootDirectoryData Map.empty Map.empty)]
       let examplePath = DirectoryPath loc []
       recursiveUpdateDirectoryNoSave rootsPVar examplePath
       updated <- readPVar rootsPVar
-      liftIO $ updated `shouldBe` [(loc, expected)]
+      liftIO $ updated `shouldBe` RootDirectories [(loc, expected)]
 
   it "can read all roots together" $ runTestIO $ do
     rootsPVar <-
-      newPVar
-        [ (root1Location, RootDirectoryData Map.empty Map.empty),
-          (root2Location, RootDirectoryData Map.empty Map.empty)
-        ]
+      newPVar $
+        RootDirectories
+          [ (root1Location, RootDirectoryData Map.empty Map.empty),
+            (root2Location, RootDirectoryData Map.empty Map.empty)
+          ]
     recursivelyUpdateAllDirectoriesNoSave rootsPVar
     updated <- readPVar rootsPVar
     let expected =
-          [ (root1Location, expectedRoot1),
-            (root2Location, expectedRoot2)
-          ]
+          RootDirectories
+            [ (root1Location, expectedRoot1),
+              (root2Location, expectedRoot2)
+            ]
     liftIO $ updated `shouldBe` expected
 
 brokenFileSpec :: Spec
@@ -266,9 +268,10 @@ brokenFileSpec = do
       runTestIO $ do
         rootLocation <- liftIO $ RootAbsPath <$> absPath (T.pack tempDirPath)
         rootsPVar <-
-          newPVar
-            [ (rootLocation, RootDirectoryData Map.empty Map.empty)
-            ]
+          newPVar $
+            RootDirectories
+              [ (rootLocation, RootDirectoryData Map.empty Map.empty)
+              ]
         recursivelyUpdateAllDirectoriesNoSave rootsPVar
         updated <- readPVar rootsPVar
         let expectedRoot =
@@ -293,6 +296,7 @@ brokenFileSpec = do
                   rootDirectoryVideoFiles = []
                 }
         let expected =
-              [ (rootLocation, expectedRoot)
-              ]
+              RootDirectories
+                [ (rootLocation, expectedRoot)
+                ]
         liftIO $ updated `shouldBe` expected

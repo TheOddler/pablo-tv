@@ -8,39 +8,39 @@
         "tag": "ClickMouse"
     },
     {
-        "button": "Backspace",
+        "key": "Backspace",
         "tag": "PressKeyboard"
     },
     {
-        "button": "Delete",
+        "key": "Delete",
         "tag": "PressKeyboard"
     },
     {
-        "button": "Enter",
+        "key": "Enter",
         "tag": "PressKeyboard"
     },
     {
-        "button": "LeftArrow",
+        "key": "LeftArrow",
         "tag": "PressKeyboard"
     },
     {
-        "button": "RightArrow",
+        "key": "RightArrow",
         "tag": "PressKeyboard"
     },
     {
-        "button": "UpArrow",
+        "key": "UpArrow",
         "tag": "PressKeyboard"
     },
     {
-        "button": "DownArrow",
+        "key": "DownArrow",
         "tag": "PressKeyboard"
     },
     {
-        "button": "VolumeUp",
+        "key": "VolumeUp",
         "tag": "PressKeyboard"
     },
     {
-        "button": "VolumeDown",
+        "key": "VolumeDown",
         "tag": "PressKeyboard"
     },
     {
@@ -54,7 +54,7 @@
         "upDown": 2
     },
     {
-        "amount": 3,
+        "scroll": 3,
         "tag": "MouseScroll"
     },
     {
@@ -85,47 +85,47 @@
         "tag": "RefreshDirectoryData"
     },
     {
-        "action": "Quit",
+        "media": "Quit",
         "tag": "Media"
     },
     {
-        "action": "PlayPause",
+        "media": "PlayPause",
         "tag": "Media"
     },
     {
-        "action": "Stop",
+        "media": "Stop",
         "tag": "Media"
     },
     {
-        "action": "Next",
+        "media": "Next",
         "tag": "Media"
     },
     {
-        "action": "Previous",
+        "media": "Previous",
         "tag": "Media"
     },
     {
-        "action": "ForwardStep",
+        "media": "ForwardStep",
         "tag": "Media"
     },
     {
-        "action": "BackwardStep",
+        "media": "BackwardStep",
         "tag": "Media"
     },
     {
-        "action": "ForwardJump",
+        "media": "ForwardJump",
         "tag": "Media"
     },
     {
-        "action": "BackwardJump",
+        "media": "BackwardJump",
         "tag": "Media"
     },
     {
-        "action": "GoFullscreen",
+        "media": "GoFullscreen",
         "tag": "Media"
     },
     {
-        "action": "GoWindowed",
+        "media": "GoWindowed",
         "tag": "Media"
     }
 ]

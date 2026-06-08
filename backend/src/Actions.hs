@@ -44,9 +44,9 @@ import Text.Julius (ToJavascript (..))
 import Util (showT)
 
 data Action
-  = ActionClickMouse MouseButton
-  | ActionPressKeyboard KeyboardButton
-  | ActionMoveMouse Int32 Int32 -- x,y
+  = ActionClickMouse {button :: MouseButton}
+  | ActionPressKeyboard {key :: KeyboardButton}
+  | ActionMoveMouse {x :: Int32, y :: Int32}
   | -- | Point the mouse relative to the center of the screen
     -- So (0,0) is the center of the screen
     -- Then, assuming the screen is wider then high, (0, 1) means middle top
@@ -54,16 +54,16 @@ data Action
     -- so something like (1.6, 0) would be center outer right
     -- Does that make sense?
     -- It's meant to be used with the mouse pointer tool
-    ActionPointMouse Scientific Scientific -- leftRight, upDown
-  | ActionMouseScroll Int32
+    ActionPointMouse {leftRight :: Scientific, upDown :: Scientific}
+  | ActionMouseScroll {scroll :: Int32}
   | ActionWrite {text :: String}
-  | ActionPlayPath RawWebPath
-  | ActionMarkAsWatched RawWebPath
-  | ActionMarkAsUnwatched RawWebPath
-  | ActionOpenUrlOnTV Text
+  | ActionPlayPath {path :: RawWebPath}
+  | ActionMarkAsWatched {path :: RawWebPath}
+  | ActionMarkAsUnwatched {path :: RawWebPath}
+  | ActionOpenUrlOnTV {url :: Text}
   | ActionRefreshAllDirectoryData
-  | ActionRefreshDirectoryData RawWebPath
-  | ActionMedia Mpris.MprisAction
+  | ActionRefreshDirectoryData {path :: RawWebPath}
+  | ActionMedia {media :: Mpris.MprisAction}
   deriving (Show, Eq)
 
 instance HasJSONPrefix Action where

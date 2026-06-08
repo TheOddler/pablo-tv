@@ -43,3 +43,17 @@ Add something like this to your system flake:
 
 There's a few scripts in the `scripts` folder.
 See there.
+
+You probably want:
+
+```
+dev.sh
+```
+
+## Testing
+
+You probably want
+
+```
+test-dev.sh
+```

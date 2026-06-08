@@ -50,5 +50,5 @@ $golden_start && opts+=" --golden-start"
 [[ -n $match ]] && opts+=" --match \"$match\""
 opts="${opts# }"
 
-echo "Running: cabal test --test-options=\"$opts\""
-cabal test --test-options="$opts"
+test_cmd="cabal test all --test-options=\"$opts\""
+watchexec -e hs --restart "$test_cmd"

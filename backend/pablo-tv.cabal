@@ -155,7 +155,6 @@ test-suite pablo-tv-test
     Orphanage
     PVarSpec
     TestUtils
-    WebSpec
 
   build-depends:
     QuickCheck,
