@@ -9,6 +9,8 @@ import Actions
     markDirOrFileAsWatched,
     mkInputDevice,
   )
+import Control.Applicative (asum)
+import Control.Exception (throwIO)
 import Control.Monad (when)
 import Control.Monad.IO.Class (MonadIO (..))
 import Control.Monad.Trans.Reader (ask)
@@ -38,6 +40,7 @@ import Directory.Paths
 import Env (ServerEnv (..))
 import GHC.Conc (TVar, atomically, newTVarIO, writeTVar)
 import GHC.Data.Maybe (firstJustsM)
+import GHC.Exception (errorCallException)
 import IsDevelopment (isDevelopment)
 import Logging (LogLevel (..), Logger, mkLogSlidingWindow, putLog)
 import Mpris (MediaPlayer, getFirstMediaPlayer, mediaListener)
@@ -45,7 +48,7 @@ import PVar (PVar, modifyPVar_, newPVar)
 import SafeIO (SafeIO, catchAny, unsafePinkyPromiseThisIsSafe)
 import Samba (MountResult, SmbServer (..), SmbShare (..), mount)
 import Server qualified as Servant
-import System.Directory (XdgDirectory (..), createDirectoryIfMissing, getXdgDirectory, renameFile)
+import System.Directory (XdgDirectory (..), createDirectoryIfMissing, doesDirectoryExist, getCurrentDirectory, getXdgDirectory, renameFile)
 import System.Environment (getArgs)
 import System.FilePath (pathSeparator, (</>))
 import System.IO (BufferMode (..), hSetBuffering, stderr, stdout)
@@ -119,6 +122,20 @@ main = do
         if "--log-block-buffering" `elem` args
           then BlockBuffering Nothing
           else LineBuffering
+
+  -- Read the static folder path
+  let staticArg = "--frontend="
+  frontendDir <- case asum (stripPrefix staticArg <$> args) of
+    Nothing -> throwIO . errorCallException $ "Missing " ++ staticArg ++ " argument"
+    Just "" -> throwIO . errorCallException $ "Empty " ++ staticArg ++ " argument"
+    Just path -> do
+      exists <- doesDirectoryExist path
+      when (not exists) $ do
+        curDir <- getCurrentDirectory
+        throwIO . errorCallException $
+          "Given static folder (" ++ path ++ ") does not exist. Server was started in: " ++ curDir
+      pure path
+
   logWindow <- mkLogSlidingWindow 1000
   runLoggerT logWindow minLogLevel . runSafeIOT $ do
     logOnErrorIO Error ("setting log buffering stdout to " ++ show logBuffering) $
@@ -129,6 +146,7 @@ main = do
     putLog Info $ "Terminal arguments: " ++ show args
     putLog Info $ "Min log level: " ++ show minLogLevel
 
+    -- Log some info
     let port = 8080
     let url = "http://localhost:" ++ show port
     putLog Info $ "Running on port " ++ show port ++ " - " ++ url
@@ -183,7 +201,8 @@ main = do
               envInputDevice = inputDevice,
               envTVState = tvState,
               envLastActivePlayer = lastActivePlayerTVar,
-              envRootDirs = rootDirsPVar
+              envRootDirs = rootDirsPVar,
+              envFrontend = frontendDir
             }
     let servantAppThread = Servant.main app
 

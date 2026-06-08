@@ -7,7 +7,9 @@ module Main where
 
 import Actions qualified
 import Control.Applicative (asum)
+import Control.Exception (throwIO)
 import Data.ByteString qualified as BS
+import Data.List (stripPrefix)
 import Data.Maybe (catMaybes, fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -18,6 +20,7 @@ import Elm.Derive (SumEncoding (..))
 import Elm.Module (recAlterType)
 import Elm.TyRep (EAlias (..), EPrimAlias (..), ESum (..), ETCon (..), ETypeDef (..), ETypeName (..), IsElmDefinition (..), SumEncoding' (..), SumTypeConstructor (..), SumTypeFields (..))
 import ElmHelpers (deriveElmPrefixed, eTypeDefStringAlias, eTypeDict)
+import GHC.Exception (errorCallException)
 import Mpris qualified
 import Network.HTTP.Types qualified as HTTP
 import Network.HTTP.Types.Method (Method)
@@ -26,6 +29,7 @@ import Servant.Elm
 import Servant.Elm.Internal.Foreign (LangElm)
 import Servant.Foreign (GenerateList (..), HasForeign (..), Req)
 import Server qualified
+import System.Environment (getArgs)
 import System.IO (stdout)
 
 -- | This seems to be needed for Raw endpoints, so provide a dummy implementation as we don't actually need to use them in Elm
@@ -118,6 +122,13 @@ recursiveDirectoryDataAlterations = \case
 
 main :: IO ()
 main = do
+  args <- getArgs
+  let staticArg = "--out="
+  outDir <- case asum (stripPrefix staticArg <$> args) of
+    Nothing -> throwIO . errorCallException $ "Missing " ++ staticArg ++ " argument"
+    Just "" -> throwIO . errorCallException $ "Empty " ++ staticArg ++ " argument"
+    Just path -> pure path
+
   BS.hPut stdout "Generating elm...\n"
   generateElmModuleWith
     ( defElmOptions
@@ -131,7 +142,7 @@ main = do
       "Backend"
     ]
     elmImports
-    "./frontend/src"
+    outDir
     myTypeDefs
     (Proxy :: Proxy (ToServantApi Server.APIRoutes))
   BS.hPut stdout "Done!\n"

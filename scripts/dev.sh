@@ -5,9 +5,9 @@
 
 set -euo pipefail
 
-run_elm_gen="cabal run elm-gen -f development"
+run_elm_gen="cabal run elm-gen -f development -- --out=frontend/src"
 format_elm_gen="elm-format ./frontend/src/Generated --yes"
-run_backend="cabal run pablo-tv:pablo-tv -f development"
+run_backend="cabal run pablo-tv:pablo-tv -f development -- --frontend=frontend/static"
 
 backend="watchexec -e hs --restart \"$run_elm_gen && $format_elm_gen && $run_backend\""
 frontend="(cd frontend && npx --yes elm-watch hot)"

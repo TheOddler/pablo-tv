@@ -22,7 +22,8 @@ data ServerEnv = ServerEnv
     envInputDevice :: Device,
     envLastActivePlayer :: TVar (Maybe MediaPlayer),
     envTVState :: TVar TVState,
-    envRootDirs :: PVar RootDirectories
+    envRootDirs :: PVar RootDirectories,
+    envFrontend :: FilePath
   }
 
 type ServerM = ReaderT ServerEnv Handler

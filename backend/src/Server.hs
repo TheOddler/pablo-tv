@@ -86,12 +86,13 @@ routes =
 
     getStatic :: [FilePath] -> Request -> (Response -> IO ResponseReceived) -> ServerM ResponseReceived
     getStatic pathParts _req respond = do
-      let askedPath = "static" </> joinPath pathParts
+      frontendDir <- asks envFrontend
+      let askedPath = frontendDir </> joinPath pathParts
       exists <- liftIO $ doesFileExist askedPath
       let finalPath =
             if exists
               then askedPath
-              else "static" </> "index.html"
+              else frontendDir </> "index.html"
       let contentType' :: Maybe BS.ByteString
           contentType' = case takeExtension finalPath of
             ".html" -> Just "text/html; charset=utf-8"
