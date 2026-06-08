@@ -140,9 +140,6 @@ myTypeAlterations = \case
   ETyCon (ETCon "Int32") -> toElmType (Proxy :: Proxy Int)
   ETyCon (ETCon "Scientific") -> toElmType (Proxy :: Proxy Float)
   ETyCon (ETCon "NoContent") -> toElmType (Proxy :: Proxy ())
-  ETyCon (ETCon "VideoFileName") -> toElmType (Proxy :: Proxy String)
-  ETyCon (ETCon "DirectoryName") -> toElmType (Proxy :: Proxy String)
-  ETyCon (ETCon "RootDirectoryLocation") -> toElmType (Proxy :: Proxy String)
   ETyApp (ETyApp (ETyCon (ETCon "Map")) k) v
     | k `elem` stringAliases ->
         ETyApp
@@ -168,10 +165,7 @@ myTypeAlterations = \case
         ]
 
 myElmToString :: EType -> Text
-myElmToString argType =
-  case argType of
-    ETyCon (ETCon "Impression") -> "urlPieceFromImpression"
-    _ -> defaultElmToString argType
+myElmToString = defaultElmToString
 
 elmImports :: Text
 elmImports =
@@ -183,7 +177,7 @@ elmImports =
       "import Iso8601",
       "import Json.Decode",
       "import Json.Encode exposing (Value)",
-      "import Json.Helpers exposing (..)",
+      "import Json.Helpers exposing (decodeSumTaggedObject, decodeSumUnaries, encodeMap, encodeObject, encodeSumTaggedObject, encodeValue, fnullable, maybeEncode, required)",
       "import Set",
       "import Time exposing (Posix)",
       "import Url.Builder",
@@ -196,5 +190,11 @@ elmImports =
       "",
       "jsonEncPosix : Posix -> Value",
       "jsonEncPosix =",
-      "    Iso8601.encode"
+      "    Iso8601.encode",
+      "",
+      "",
+      "{-| A hack where I replace Json.Helpers.decodeMap with my own as it errors and all my dicts have a String alias as Key anyway",
+      "-}",
+      "decodeMap : Json.Decode.Decoder String -> Json.Decode.Decoder v -> Json.Decode.Decoder (Dict String v)",
+      "decodeMap _ decVal = Json.Decode.dict decVal"
     ]
