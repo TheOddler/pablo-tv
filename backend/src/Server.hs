@@ -42,8 +42,7 @@ mkServer serverEnv = do
 main :: ServerEnv -> IO ()
 main serverEnv = do
   server <- mkServer serverEnv
-  -- run 8081 $ simpleCors $ serve apiProxy server
-  Wai.run 8081 $ serve apiProxy server
+  Wai.run 8080 $ serve apiProxy server
 
 apiProxy :: Proxy API
 apiProxy = Proxy
