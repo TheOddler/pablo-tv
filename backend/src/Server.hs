@@ -3,6 +3,7 @@
 module Server where
 
 import Actions (Action, performAction')
+import Control.Monad.IO.Class (MonadIO (..))
 import Control.Monad.Trans.Reader (ReaderT (..), ask, asks)
 import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BS8
@@ -12,23 +13,22 @@ import Directory.Directories (RootDirectories)
 import Env (ServerEnv (..), ServerM)
 import GHC.Generics (Generic)
 import Network.HTTP.Types (status200)
-import Network.Wai (responseFile)
+import Network.Wai (Request, Response, ResponseReceived, responseFile)
 import Network.Wai.Handler.Warp qualified as Wai
 import PVar (readPVar)
 import Servant hiding (respond)
 import Servant.Server.Generic (AsServerT)
 import System.Directory (doesFileExist)
 import System.FilePath (joinPath, takeExtension, (</>))
-import Transformers (SafeIOT (..))
 
 type API = NamedRoutes APIRoutes
 
 data APIRoutes mode = APIRoutes
   { apiPostAction :: mode :- "api" :> "action" :> ReqBody '[JSON] Action :> PostNoContent,
     apiGetData :: mode :- "api" :> "data" :> Get '[JSON] RootDirectories,
-    apiGetImage :: mode :- "image" :> Capture "imageName" String :> Raw,
+    apiGetImage :: mode :- "image" :> Capture "imageName" String :> RawM,
     -- -- Must be last, as Servant matches endpoints in order and this captures everything
-    apiStatic :: mode :- CaptureAll "pathParts" FilePath :> Raw
+    apiStatic :: mode :- CaptureAll "pathParts" FilePath :> RawM
   }
   deriving (Generic)
 
@@ -52,8 +52,8 @@ routes =
   APIRoutes
     { apiPostAction = doAction,
       apiGetData = getData,
-      apiGetImage = Tagged . getImage,
-      apiStatic = Tagged . getStatic
+      apiGetImage = getImage,
+      apiStatic = getStatic
     }
   where
     doAction :: Action -> ServerM NoContent
@@ -67,14 +67,14 @@ routes =
       rootDirs <- asks envRootDirs
       readPVar rootDirs
 
-    getImage :: FilePath -> Application
+    getImage :: FilePath -> Request -> (Response -> IO ResponseReceived) -> ServerM ResponseReceived
     getImage imageName _req respond = do
-      imagesDir <- runSafeIOT getImagesDir
+      imagesDir <- getImagesDir
       let imagepath = imagesDir </> imageName
       let extension = case takeExtension imageName of
             '.' : ext -> BS8.pack $ lower ext
             _ -> "jpg"
-      respond $
+      liftIO . respond $
         -- `responseFile` automatically adds `Last-Modified` and checks it too
         responseFile
           status200
@@ -84,10 +84,10 @@ routes =
           imagepath
           Nothing
 
-    getStatic :: [FilePath] -> Application
+    getStatic :: [FilePath] -> Request -> (Response -> IO ResponseReceived) -> ServerM ResponseReceived
     getStatic pathParts _req respond = do
       let askedPath = "static" </> joinPath pathParts
-      exists <- doesFileExist askedPath
+      exists <- liftIO $ doesFileExist askedPath
       let finalPath =
             if exists
               then askedPath
@@ -99,7 +99,7 @@ routes =
             ".js" -> Just "application/javascript"
             '.' : ext -> Just $ "application/" <> BS8.pack (lower ext)
             _ -> Nothing
-      respond $
+      liftIO . respond $
         -- `responseFile` automatically adds `Last-Modified` and checks it too
         responseFile
           status200
