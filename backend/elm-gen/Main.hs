@@ -18,10 +18,12 @@ import Elm.Module (recAlterType)
 import Elm.TyRep (EAlias (..), EPrimAlias (..), ESum (..), ETCon (..), ETypeDef (..), ETypeName (..), IsElmDefinition (..), SumEncoding' (..), SumTypeConstructor (..), SumTypeFields (..))
 import ElmHelpers (deriveElmPrefixed, eTypeDefStringAlias, eTypeDict)
 import Mpris qualified
+import Network.HTTP.Types qualified as HTTP
 import Network.HTTP.Types.Method (Method)
 import Servant
 import Servant.Elm
-import Servant.Foreign (GenerateList (..), Req)
+import Servant.Elm.Internal.Foreign (LangElm)
+import Servant.Foreign (GenerateList (..), HasForeign (..), Req)
 import Server qualified
 import System.IO (stdout)
 
@@ -29,6 +31,11 @@ import System.IO (stdout)
 instance GenerateList EType (Method -> Req EType) where
   generateList :: (Method -> Req EType) -> [Req EType]
   generateList _ = []
+
+-- | This seems to be needed if I have any RawM endpoints. I essentially use the implementation for Raw
+instance HasForeign LangElm ftype RawM where
+  type Foreign ftype RawM = HTTP.Method -> Req ftype
+  foreignFor lang ftype _api = foreignFor lang ftype (Proxy :: Proxy Raw)
 
 deriveElmPrefixed ''Actions.MouseButton
 deriveElmPrefixed ''Actions.KeyboardButton
