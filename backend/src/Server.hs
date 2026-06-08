@@ -24,9 +24,9 @@ import Transformers (SafeIOT (..))
 type API = NamedRoutes APIRoutes
 
 data APIRoutes mode = APIRoutes
-  { apiActions :: mode :- "api" :> "action" :> ReqBody '[JSON] Action :> PostNoContent,
-    apiData :: mode :- "api" :> "data" :> Get '[JSON] RootDirectories,
-    apiImages :: mode :- "api" :> "image" :> Capture "imageName" String :> Raw,
+  { apiPostAction :: mode :- "api" :> "action" :> ReqBody '[JSON] Action :> PostNoContent,
+    apiGetData :: mode :- "api" :> "data" :> Get '[JSON] RootDirectories,
+    apiGetImage :: mode :- "api" :> "image" :> Capture "imageName" String :> Raw,
     -- -- Must be last, as Servant matches endpoints in order and this captures everything
     apiStatic :: mode :- CaptureAll "pathParts" FilePath :> Raw
   }
@@ -50,9 +50,9 @@ apiProxy = Proxy
 routes :: APIRoutes (AsServerT ServerM)
 routes =
   APIRoutes
-    { apiActions = doAction,
-      apiData = getData,
-      apiImages = Tagged . getImage,
+    { apiPostAction = doAction,
+      apiGetData = getData,
+      apiGetImage = Tagged . getImage,
       apiStatic = Tagged . getStatic
     }
   where
