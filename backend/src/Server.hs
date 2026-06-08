@@ -26,7 +26,7 @@ type API = NamedRoutes APIRoutes
 data APIRoutes mode = APIRoutes
   { apiPostAction :: mode :- "api" :> "action" :> ReqBody '[JSON] Action :> PostNoContent,
     apiGetData :: mode :- "api" :> "data" :> Get '[JSON] RootDirectories,
-    apiGetImage :: mode :- "api" :> "image" :> Capture "imageName" String :> Raw,
+    apiGetImage :: mode :- "image" :> Capture "imageName" String :> Raw,
     -- -- Must be last, as Servant matches endpoints in order and this captures everything
     apiStatic :: mode :- CaptureAll "pathParts" FilePath :> Raw
   }
