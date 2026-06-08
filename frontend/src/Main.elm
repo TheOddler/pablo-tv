@@ -3,11 +3,8 @@ module Main exposing (Msg(..), main, update, view)
 import Browser exposing (Document)
 import Dict
 import Generated.Backend exposing (RootDirectories, getApiData)
-import Html exposing (Html, button, div, text)
-import Html.Events exposing (onClick)
+import Html exposing (div, text)
 import Http
-import Json.Decode exposing (Value, value)
-import Url.Builder
 
 
 type alias Model =
@@ -60,8 +57,27 @@ view : Model -> Document Msg
 view model =
     { title = "Pablo TV"
     , body =
-        [ text <| Debug.toString model.data
+        [ text <| String.join ", " <| Dict.keys model.data
         , div [] <|
-            List.map (\err -> text <| Debug.toString err) model.errors
+            List.map (text << viewHttpError) model.errors
         ]
     }
+
+
+viewHttpError : Http.Error -> String
+viewHttpError err =
+    case err of
+        Http.BadUrl msg ->
+            "BadUrl " ++ msg
+
+        Http.Timeout ->
+            "Timeout"
+
+        Http.NetworkError ->
+            "NetworkError"
+
+        Http.BadStatus code ->
+            "BadStatus " ++ String.fromInt code
+
+        Http.BadBody msg ->
+            "BadBody " ++ msg
