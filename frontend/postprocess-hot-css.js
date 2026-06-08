@@ -11,7 +11,7 @@ const hotReloadingCode = `
       const res = await fetch(
         url,
         {
-          method: 'GET',
+          method: 'HEAD',
           headers: last.has(url) ? { 'If-Modified-Since': last.get(url) } : {},
           cache: 'no-store'
         }
