@@ -6,5 +6,9 @@
       ],
       "output": "static/main.js"
     }
-  }
+  },
+  "postprocess": [
+    "elm-watch-node",
+    "postprocess-hot-css.js"
+  ]
 }

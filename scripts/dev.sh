@@ -11,7 +11,8 @@ run_backend="cabal run pablo-tv:pablo-tv -f development"
 
 backend="watchexec -e hs --restart \"$run_elm_gen && $format_elm_gen && $run_backend\""
 frontend="(cd frontend && npx --yes elm-watch hot)"
+css="sass --watch frontend/css/main.scss frontend/static/main.css"
 
 parallel --line-buffer \
-  --tagstring "{1}" --xapply {2} ::: "🌐" "🌳" \
-  ::: "$backend" "$frontend"
+  --tagstring "{1}" --xapply {2} ::: "🌐" "🌳" "🎨" \
+  ::: "$backend" "$frontend" "$css"

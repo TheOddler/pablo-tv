@@ -5,6 +5,7 @@
 dist-newstyle/
 result
 frontend/elm-stuff/
-# elm-live builds this and serves it from this folder
+# some stuff I automatically build with dev.sh
 frontend/static/main.js
+frontend/static/main.css*
 frontend/src/Generated

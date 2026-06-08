@@ -36,6 +36,7 @@
           elmPackages.elm-json
           elmPackages.elm-review
           elmPackages.nodejs
+          dart-sass
         ];
         runtimeInputs = with pkgs; [
           libevdev
