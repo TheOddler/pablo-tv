@@ -120,6 +120,18 @@ recursiveDirectoryDataAlterations = \case
       Just (ETyCon (ETCon "DirectorySubDirs"))
   _ -> Nothing
 
+-- | Some helpers to have easier access to the subDirs Dict
+recursiveDirectoryDataHelpers :: Text
+recursiveDirectoryDataHelpers =
+  T.unlines
+    [ "unDirectorySubDirs : DirectorySubDirs -> Dict DirectoryName DirectoryData",
+      "unDirectorySubDirs (DirectorySubDirs inner) = inner",
+      "",
+      "",
+      "subDirsUnwrapped : {a | subDirs : DirectorySubDirs} -> Dict DirectoryName DirectoryData",
+      "subDirsUnwrapped data = unDirectorySubDirs data.subDirs"
+    ]
+
 main :: IO ()
 main = do
   args <- getArgs
@@ -237,5 +249,8 @@ elmImports =
       "{-| A hack where I replace Json.Helpers.decodeMap with my own as it errors and all my dicts have a String alias as Key anyway",
       "-}",
       "decodeMap : Json.Decode.Decoder String -> Json.Decode.Decoder v -> Json.Decode.Decoder (Dict String v)",
-      "decodeMap _ decVal = Json.Decode.dict decVal"
+      "decodeMap _ decVal = Json.Decode.dict decVal",
+      "",
+      "",
+      recursiveDirectoryDataHelpers
     ]
