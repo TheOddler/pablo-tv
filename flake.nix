@@ -15,30 +15,32 @@
           overlays = [ mkElmDerivation.overlays.default ];
           inherit system;
         };
-        buildInputs = with pkgs; [
-          # General
-          watchexec
-          parallel
 
-          # Nix 
-          nil
+        devPackages = with pkgs; [
+          watchexec # automatically re-run stuff on change
+          parallel # run a bunch of processes in one terminal during dev
+          nil # manages nix
 
-          # Haskell
+          # Haskell stuff
           cabal-install
           haskell-language-server
           hlint
           haskellPackages.weeder
           haskellPackages.cabal-gild
 
-          # Elm
-          elmPackages.elm
+          # Elm things
           elmPackages.elm-format
           elmPackages.elm-json
           elmPackages.elm-review
           elmPackages.nodejs
+        ];
+
+        frontendBuildPackages = with pkgs; [
+          elmPackages.elm
+          terser
           dart-sass
         ];
-        runtimeInputs = with pkgs; [
+        backendRuntimePackages = with pkgs; [
           libevdev
           xdg-utils
           gtk3
@@ -50,7 +52,8 @@
             # Use the base version because it doesn't have optimisations enabled
             packages.pablo-tv-base
           ];
-          buildInputs = buildInputs ++ runtimeInputs;
+          buildInputs =
+            devPackages ++ backendRuntimePackages ++ frontendBuildPackages;
           withHoogle = true;
           inherit (checks.pre-commit-check) shellHook;
         };
@@ -85,12 +88,13 @@
             modifier = drv:
               drv.overrideAttrs
                 (oldAttrs: {
-                  nativeBuildInputs = oldAttrs.nativeBuildInputs ++ [ pkgs.makeWrapper ] ++ runtimeInputs;
+                  nativeBuildInputs =
+                    oldAttrs.nativeBuildInputs ++ [ pkgs.makeWrapper ] ++ backendRuntimePackages;
                   postInstall =
                     (oldAttrs.postInstall or "")
                     + ''
                       wrapProgram $out/bin/pablo-tv \
-                        --suffix PATH : ${pkgs.lib.makeBinPath runtimeInputs}
+                        --suffix PATH : ${pkgs.lib.makeBinPath backendRuntimePackages}
                     '';
                 });
           };
@@ -111,10 +115,7 @@
           frontend = pkgs.mkElmDerivation {
             name = "pablo-tv-frontend";
             src = ./frontend;
-            nativeBuildInputs = [
-              pkgs.elmPackages.elm
-              pkgs.terser
-            ];
+            nativeBuildInputs = frontendBuildPackages;
             buildPhase =
               ''
                 # Generate Elm code from backend
