@@ -117,9 +117,8 @@
             ];
             buildPhase =
               ''
-                # run the backend's generator executable (adjust name/path to match your exe)
+                # Generate Elm code from backend
                 ${packages.pablo-tv-base}/bin/elm-gen --out=src
-                ls -al
 
                 # Build Elm
                 elm make src/Main.elm --output=main.js --optimize
