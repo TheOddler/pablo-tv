@@ -48,10 +48,7 @@
       in
       rec {
         devShells.default = pkgs.haskellPackages.shellFor {
-          packages = p: [
-            # Use the base version because it doesn't have optimisations enabled
-            packages.pablo-tv-base
-          ];
+          packages = p: [ packages.backend ];
           buildInputs =
             devPackages ++ backendRuntimePackages ++ frontendBuildPackages;
           withHoogle = true;
@@ -79,38 +76,24 @@
               };
             };
           };
-          app = packages.default;
+          backend = packages.backend-checked;
+          frontend = packages.frontend;
         };
 
         packages = {
-          pablo-tv-base = pkgs.haskellPackages.developPackage {
+          backend-checked = pkgs.haskellPackages.developPackage {
+            name = "pablo-tv-backend";
             root = ./backend;
             modifier = drv:
               drv.overrideAttrs
                 (oldAttrs: {
+                  configureFlags = oldAttrs.configureFlags ++ [ "--ghc-option=-O2" ];
                   nativeBuildInputs =
                     oldAttrs.nativeBuildInputs ++ [ pkgs.makeWrapper ] ++ backendRuntimePackages;
-                  postInstall =
-                    (oldAttrs.postInstall or "")
-                    + ''
-                      wrapProgram $out/bin/pablo-tv \
-                        --suffix PATH : ${pkgs.lib.makeBinPath backendRuntimePackages}
-                    '';
                 });
           };
-          pablo-tv = pkgs.haskell.lib.justStaticExecutables (
-            pkgs.haskell.lib.dontCheck (
-              packages.pablo-tv-base.overrideAttrs (oldAttrs: {
-                configureFlags = oldAttrs.configureFlags ++ [ "--ghc-option=-O2" ];
-                postInstall =
-                  (oldAttrs.postInstall or "")
-                  + ''
-                    wrapProgram $out/bin/pablo-tv \
-                      --add-flags "--frontend=${packages.frontend}"
-                  '';
-              })
-            )
-          );
+          backend-dont-check = pkgs.haskell.lib.dontCheck packages.backend-checked;
+          backend = pkgs.haskell.lib.justStaticExecutables packages.backend-dont-check;
 
           frontend = pkgs.mkElmDerivation {
             name = "pablo-tv-frontend";
@@ -119,7 +102,7 @@
             buildPhase =
               ''
                 # Generate Elm code from backend
-                ${packages.pablo-tv-base}/bin/elm-gen --out=src
+                ${packages.backend}/bin/elm-gen --out=src
 
                 # Build Elm
                 elm make src/Main.elm --output=main.js --optimize
@@ -135,6 +118,24 @@
                 cp main.js $out
                 cp -r static/. $out
               '';
+          };
+
+          pablo-tv = pkgs.stdenv.mkDerivation {
+            name = "pablo-tv";
+            nativeBuildInputs = [ pkgs.makeWrapper ];
+            buildInputs = [ packages.backend ];
+            # This doesn't really build anything, it just copies the output from backend, and then wraps it.
+            # This is super cheap, and doesn't cause the backend to build twice.
+            # This way we can have the frontend depend on the backend for the generated code, while adding the output of the frontend as the --frontend flag to the backend, without having a circular dependency and not needing to build the backend twice.
+            # buildPhase = "true";
+            unpackPhase = "true";
+            installPhase = ''
+              mkdir -p $out/bin
+              cp ${packages.backend}/bin/pablo-tv $out/bin/
+              wrapProgram $out/bin/pablo-tv \
+                --suffix PATH : ${pkgs.lib.makeBinPath backendRuntimePackages} \
+                --add-flags "--frontend=${packages.frontend}"
+            '';
           };
 
           default = packages.pablo-tv;
