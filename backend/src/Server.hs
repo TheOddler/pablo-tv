@@ -7,13 +7,15 @@ import Control.Monad.IO.Class (MonadIO (..))
 import Control.Monad.Trans.Reader (ReaderT (..), ask, asks)
 import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BS8
+import Data.List (stripPrefix)
 import Data.List.Extra (lower)
 import Directory (getImagesDir)
 import Directory.Directories (RootDirectories)
 import Env (ServerEnv (..), ServerM)
 import GHC.Generics (Generic)
-import Network.HTTP.Types (status200)
-import Network.Wai (Request, Response, ResponseReceived, responseFile)
+import Network.HTTP.Types (hContentType, hLastModified, status200, status304, status412)
+import Network.HTTP.Types.Header (hETag)
+import Network.Wai qualified as Wai
 import Network.Wai.Handler.Warp qualified as Wai
 import PVar (readPVar)
 import Servant hiding (respond)
@@ -42,7 +44,7 @@ mkServer serverEnv = do
 main :: ServerEnv -> IO ()
 main serverEnv = do
   server <- mkServer serverEnv
-  Wai.run 8080 $ serve apiProxy server
+  Wai.run 8080 $ etagMiddleware $ serve apiProxy server
 
 apiProxy :: Proxy API
 apiProxy = Proxy
@@ -67,7 +69,7 @@ routes =
       rootDirs <- asks envRootDirs
       readPVar rootDirs
 
-    getImage :: FilePath -> Request -> (Response -> IO ResponseReceived) -> ServerM ResponseReceived
+    getImage :: FilePath -> Wai.Request -> (Wai.Response -> IO Wai.ResponseReceived) -> ServerM Wai.ResponseReceived
     getImage imageName _req respond = do
       imagesDir <- getImagesDir
       let imagepath = imagesDir </> imageName
@@ -76,7 +78,7 @@ routes =
             _ -> "jpg"
       liftIO . respond $
         -- `responseFile` automatically adds `Last-Modified` and checks it too
-        responseFile
+        Wai.responseFile
           status200
           [ ("Content-Type", "image/" <> extension),
             ("Cache-Control", "max-age=31536000, public")
@@ -84,7 +86,7 @@ routes =
           imagepath
           Nothing
 
-    getStatic :: [FilePath] -> Request -> (Response -> IO ResponseReceived) -> ServerM ResponseReceived
+    getStatic :: [FilePath] -> Wai.Request -> (Wai.Response -> IO Wai.ResponseReceived) -> ServerM Wai.ResponseReceived
     getStatic pathParts _req respond = do
       frontendDir <- asks envFrontend
       let askedPath = frontendDir </> joinPath pathParts
@@ -93,6 +95,7 @@ routes =
             if exists
               then askedPath
               else frontendDir </> "index.html"
+
       let contentType' :: Maybe BS.ByteString
           contentType' = case takeExtension finalPath of
             ".html" -> Just "text/html; charset=utf-8"
@@ -100,13 +103,49 @@ routes =
             ".js" -> Just "application/javascript"
             '.' : ext -> Just $ "application/" <> BS8.pack (lower ext)
             _ -> Nothing
+      let contentTypeHeader = case contentType' of
+            Nothing -> []
+            Just ct -> [(hContentType, ct)]
+
+      -- When we're in the Nix store the mod time is set to posix+1s, so if that's the case we should set the ETag as the Last-Modified header is useless.
+      let nixStorePath = stripPrefix "/nix/store/" finalPath
+      let nixStoreEtag = case nixStorePath of
+            Nothing -> Nothing
+            Just nsp -> Just ("\"" <> BS8.pack nsp <> "\"")
+      let eTagHeader = case nixStoreEtag of
+            Nothing -> []
+            -- `responseFile` automatically adds `Last-Modified` header, so remove it if we add an etag
+            Just etag -> [(hETag, etag), (hLastModified, "")]
       liftIO . respond $
-        -- `responseFile` automatically adds `Last-Modified` and checks it too
-        responseFile
+        Wai.responseFile
           status200
-          ( case contentType' of
-              Just ct -> [("Content-Type", ct)]
-              Nothing -> []
-          )
+          (contentTypeHeader ++ eTagHeader)
           finalPath
           Nothing
+
+-- | If the response has an `ETag` header, and the request has `If-Match` or `If-None-Match` header, this middleware potentially sends a 304 or 412
+etagMiddleware :: Application -> Application
+etagMiddleware appl req respond = appl req $ \response -> do
+  let responseHeaders = Wai.responseHeaders response
+  let mEtag = findEtag responseHeaders
+  let respondNormal = respond response
+  let respondWithStatus st = respond $ Wai.responseLBS st responseHeaders ""
+  case mEtag of
+    -- No etag, so respond normal
+    Nothing -> respondNormal
+    Just etag -> do
+      -- There's an etag in our response, so check if the request
+      let go requestHeaders =
+            case requestHeaders of
+              [] -> respondNormal
+              ("If-Match", expectedEtag) : _ | expectedEtag /= etag -> respondWithStatus status412
+              ("If-Match", _) : _ -> respondNormal
+              ("If-None-Match", expectedEtag) : _ | expectedEtag == etag -> respondWithStatus status304
+              ("If-None-Match", _) : _ -> respondNormal
+              _ : rest -> go rest
+      go req.requestHeaders
+  where
+    findEtag = \case
+      [] -> Nothing
+      (h, v) : _ | h == hETag -> Just v
+      _ : rest -> findEtag rest
