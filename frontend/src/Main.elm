@@ -1,10 +1,13 @@
 module Main exposing (Msg(..), main, update, view)
 
-import Browser exposing (Document)
+import AggDirInfo
+import Browser
 import Dict
-import Generated.Backend exposing (RootDirectories, getApiData)
-import Html exposing (div, text)
+import Generated.Backend exposing (..)
+import Html exposing (..)
+import Html.Attributes as A
 import Http
+import List.Extra as List
 
 
 type alias Model =
@@ -53,13 +56,12 @@ registerError err model =
     )
 
 
-view : Model -> Document Msg
+view : Model -> Browser.Document Msg
 view model =
     { title = "Pablo TV"
     , body =
         [ text <| String.join ", " <| Dict.keys model.data
-        , div [] <|
-            List.map (text << viewHttpError) model.errors
+        , viewHome model.data
         ]
     }
 
@@ -81,3 +83,10 @@ viewHttpError err =
 
         Http.BadBody msg ->
             "BadBody " ++ msg
+
+
+viewHome : RootDirectories -> Html Msg
+viewHome roots =
+    div [ A.id "home-container" ]
+        [ AggDirInfo.viewRow <| AggDirInfo.calcAggInfos roots
+        ]
