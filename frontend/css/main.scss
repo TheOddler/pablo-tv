@@ -4,7 +4,7 @@ body {
 
 #home-container {
   $elHeight: 40vh;
-  $elWidth: $elHeight / 1000 * 680; // My posters are 1000 by 680
+  $elWidth: calc($elHeight / 1000 * 680); // My posters are 1000 by 680
   $elFocusScale: 1.2;
 
   display: flex;
@@ -31,7 +31,7 @@ body {
     overflow-y: hidden;
     // Add padding that is just the right size needed to accomodate a scaled
     // element, so that it'll never to clipped as we're in a scroll element here.
-    padding: (($elFocusScale - 1) / 2 * $elHeight) calc(($elFocusScale - 1) / 2 * $elWidth + 4pt);
+    padding: calc(($elFocusScale - 1) / 2 * $elHeight) calc(($elFocusScale - 1) / 2 * $elWidth + 4pt);
   }
 
   .el {
