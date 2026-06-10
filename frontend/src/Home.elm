@@ -13,13 +13,13 @@ import Tuple
 
 
 type alias AggDirInfo =
-    { aggDirName : DirectoryName
-    , aggDirPath : RawWebPath
-    , aggDirImage : Maybe Image
-    , aggDirLastAdded : Time.Posix
-    , aggDirLastWatched : Time.Posix
-    , aggDirVideoFileCount : Int
-    , aggDirPlayedVideoFileCount : Int
+    { name : DirectoryName
+    , path : RawWebPath
+    , image : Maybe Image
+    , lastAdded : Time.Posix
+    , lastWatched : Time.Posix
+    , videoFileCount : Int
+    , playedVideoFileCount : Int
     }
 
 
@@ -35,23 +35,23 @@ viewPoster dir =
         [ img
             [ A.src <|
                 "image/"
-                    ++ (case dir.aggDirImage of
+                    ++ (case dir.image of
                             Just (Image img) ->
                                 img.cached
 
                             Nothing ->
                                 "missing"
                        )
-            , A.alt dir.aggDirName
+            , A.alt dir.name
             , A.attribute "loading" "lazy"
             ]
             []
         , div [ A.class "overlay" ]
             [ i [ A.class "fa-solid fa-play" ] []
             , text <|
-                String.fromInt dir.aggDirPlayedVideoFileCount
+                String.fromInt dir.playedVideoFileCount
                     ++ "/"
-                    ++ String.fromInt dir.aggDirVideoFileCount
+                    ++ String.fromInt dir.videoFileCount
             ]
         ]
 
@@ -120,27 +120,27 @@ calcAggInfo path name info =
 
                         updated =
                             { agg
-                                | aggDirImage = Maybe.or agg.aggDirImage next.image
-                                , aggDirLastAdded =
-                                    Time.max agg.aggDirLastAdded thisLastAdded
-                                , aggDirLastWatched =
-                                    Time.max agg.aggDirLastWatched thisLastWatched
-                                , aggDirVideoFileCount =
-                                    agg.aggDirVideoFileCount + thisVideoFileCount
-                                , aggDirPlayedVideoFileCount =
-                                    agg.aggDirPlayedVideoFileCount + thisPlayedVideoFileCount
+                                | image = Maybe.or agg.image next.image
+                                , lastAdded =
+                                    Time.max agg.lastAdded thisLastAdded
+                                , lastWatched =
+                                    Time.max agg.lastWatched thisLastWatched
+                                , videoFileCount =
+                                    agg.videoFileCount + thisVideoFileCount
+                                , playedVideoFileCount =
+                                    agg.playedVideoFileCount + thisPlayedVideoFileCount
                             }
                     in
                     go updated <| rest ++ Dict.values (subDirsUnwrapped next)
     in
     go
-        { aggDirName = name
-        , aggDirPath = path
-        , aggDirImage = info.image
-        , aggDirLastAdded = calcLastAdded <| Dict.values info.videoFiles
-        , aggDirLastWatched = calcLastWatched <| Dict.values info.videoFiles
-        , aggDirVideoFileCount = Dict.size info.videoFiles
-        , aggDirPlayedVideoFileCount = countPlayed <| Dict.values info.videoFiles
+        { name = name
+        , path = path
+        , image = info.image
+        , lastAdded = calcLastAdded <| Dict.values info.videoFiles
+        , lastWatched = calcLastWatched <| Dict.values info.videoFiles
+        , videoFileCount = Dict.size info.videoFiles
+        , playedVideoFileCount = countPlayed <| Dict.values info.videoFiles
         }
         (subDirsUnwrapped info |> Dict.values)
 
@@ -166,17 +166,17 @@ filterAndSort filter sorting list =
             case filter of
                 Watching ->
                     \a ->
-                        a.aggDirPlayedVideoFileCount
+                        a.playedVideoFileCount
                             > 0
-                            && a.aggDirPlayedVideoFileCount
-                            < a.aggDirVideoFileCount
+                            && a.playedVideoFileCount
+                            < a.videoFileCount
 
                 NothingWatched ->
                     \a ->
-                        a.aggDirPlayedVideoFileCount == 0
+                        a.playedVideoFileCount == 0
 
                 FullyWatched ->
-                    \a -> a.aggDirPlayedVideoFileCount == a.aggDirVideoFileCount
+                    \a -> a.playedVideoFileCount == a.videoFileCount
 
                 Unfiltered ->
                     \_ -> True
@@ -185,10 +185,10 @@ filterAndSort filter sorting list =
         sort =
             case sorting of
                 RecentlyAdded ->
-                    List.sortBy (negate << Time.posixToMillis << .aggDirLastWatched)
+                    List.sortBy (negate << Time.posixToMillis << .lastWatched)
 
                 RecentlyWatched ->
-                    List.sortBy (negate << Time.posixToMillis << .aggDirLastWatched)
+                    List.sortBy (negate << Time.posixToMillis << .lastWatched)
 
                 Shuffled seed ->
                     \a ->
