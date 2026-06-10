@@ -7,6 +7,8 @@ import Home
 import Html exposing (..)
 import Html.Attributes as A
 import Http
+import Random
+import Random.List
 
 
 type alias Model =
@@ -67,11 +69,23 @@ view model =
 
 viewHome : RootDirectories -> Html Msg
 viewHome roots =
+    let
+        tempSeed =
+            Random.initialSeed 42
+
+        shuffle : Random.Seed -> List a -> List a
+        shuffle seed list =
+            Random.step (Random.List.shuffle list) seed
+                |> Tuple.first
+
+        aggInfos =
+            Home.calcAggInfos roots
+    in
     div [ A.id "home-container" ]
         [ h1 [] [ text "Watching" ]
-        , Home.viewRow <| Home.calcAggInfos roots
+        , Home.viewRow aggInfos
         , h1 [] [ text "New" ]
-        , Home.viewRow <| Home.calcAggInfos roots
+        , Home.viewRow aggInfos
         , h1 [] [ text "Random" ]
-        , Home.viewRow <| Home.calcAggInfos roots
+        , Home.viewRow <| shuffle tempSeed aggInfos
         ]
