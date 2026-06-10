@@ -8,7 +8,6 @@ import Html exposing (..)
 import Html.Attributes as A
 import Http
 import Random
-import Random.List
 
 
 type alias Model =
@@ -79,19 +78,30 @@ view model =
 viewHome : Model -> Html Msg
 viewHome model =
     let
-        shuffle : Random.Seed -> List a -> List a
-        shuffle seed list =
-            Random.step (Random.List.shuffle list) seed
-                |> Tuple.first
-
         aggInfos =
             Home.calcAggInfos model.data
+
+        seed1 =
+            Random.initialSeed model.startTime
+
+        seed2 =
+            Random.initialSeed <| model.startTime + 42
+
+        viewRow filter sorting =
+            Home.viewRow <|
+                Home.filterAndSort filter sorting aggInfos
     in
     div [ A.id "home-container" ]
         [ h1 [] [ text "Watching" ]
-        , Home.viewRow aggInfos
+        , viewRow Home.Watching Home.RecentlyWatched
         , h1 [] [ text "New" ]
-        , Home.viewRow aggInfos
+        , viewRow Home.NothingWatched Home.RecentlyAdded
         , h1 [] [ text "Random" ]
-        , Home.viewRow <| shuffle (Random.initialSeed model.startTime) aggInfos
+        , viewRow Home.NothingWatched (Home.Shuffled seed1)
+        , h1 [] [ text "Recently Added" ]
+        , viewRow Home.Unfiltered Home.RecentlyAdded
+        , h1 [] [ text "Random (All)" ]
+        , viewRow Home.Unfiltered (Home.Shuffled seed2)
+        , h1 [] [ text "Recently Finished" ]
+        , viewRow Home.FullyWatched Home.RecentlyWatched
         ]

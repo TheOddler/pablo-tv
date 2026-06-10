@@ -5,6 +5,8 @@ import Generated.Backend exposing (..)
 import Html exposing (..)
 import Html.Attributes as A
 import Maybe.Extra as Maybe
+import Random
+import Random.List
 import Time
 import Time.Extra as Time
 import Tuple
@@ -141,3 +143,57 @@ calcAggInfo path name info =
         , aggDirPlayedVideoFileCount = countPlayed <| Dict.values info.videoFiles
         }
         (subDirsUnwrapped info |> Dict.values)
+
+
+type Filter
+    = Watching
+    | NothingWatched
+    | FullyWatched
+    | Unfiltered
+
+
+type Sorting
+    = RecentlyAdded
+    | RecentlyWatched
+    | Shuffled Random.Seed
+
+
+filterAndSort : Filter -> Sorting -> List AggDirInfo -> List AggDirInfo
+filterAndSort filter sorting list =
+    let
+        filterFunc : AggDirInfo -> Bool
+        filterFunc =
+            case filter of
+                Watching ->
+                    \a ->
+                        a.aggDirPlayedVideoFileCount
+                            > 0
+                            && a.aggDirPlayedVideoFileCount
+                            < a.aggDirVideoFileCount
+
+                NothingWatched ->
+                    \a ->
+                        a.aggDirPlayedVideoFileCount == 0
+
+                FullyWatched ->
+                    \a -> a.aggDirPlayedVideoFileCount == a.aggDirVideoFileCount
+
+                Unfiltered ->
+                    \_ -> True
+
+        sort : List AggDirInfo -> List AggDirInfo
+        sort =
+            case sorting of
+                RecentlyAdded ->
+                    List.sortBy (negate << Time.posixToMillis << .aggDirLastWatched)
+
+                RecentlyWatched ->
+                    List.sortBy (negate << Time.posixToMillis << .aggDirLastWatched)
+
+                Shuffled seed ->
+                    \a ->
+                        Random.step (Random.List.shuffle a) seed
+                            |> Tuple.first
+    in
+    List.filter filterFunc list
+        |> sort
