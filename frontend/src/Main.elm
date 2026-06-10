@@ -12,8 +12,14 @@ import Random.List
 
 
 type alias Model =
-    { data : RootDirectories
+    { startTime : Int
+    , data : RootDirectories
     , errors : List Http.Error
+    }
+
+
+type alias Flags =
+    { startTime : Int
     }
 
 
@@ -21,7 +27,7 @@ type Msg
     = DirsUpdate (Result Http.Error RootDirectories)
 
 
-main : Program () Model Msg
+main : Program Flags Model Msg
 main =
     Browser.document
         { init = init
@@ -31,9 +37,12 @@ main =
         }
 
 
-init : () -> ( Model, Cmd Msg )
-init () =
-    ( { data = Dict.empty, errors = [] }
+init : Flags -> ( Model, Cmd Msg )
+init flags =
+    ( { startTime = flags.startTime
+      , data = Dict.empty
+      , errors = []
+      }
     , getApiData DirsUpdate
     )
 
@@ -62,24 +71,21 @@ view model =
     { title = "Pablo TV"
     , body =
         [ text <| String.join ", " <| Dict.keys model.data
-        , viewHome model.data
+        , viewHome model
         ]
     }
 
 
-viewHome : RootDirectories -> Html Msg
-viewHome roots =
+viewHome : Model -> Html Msg
+viewHome model =
     let
-        tempSeed =
-            Random.initialSeed 42
-
         shuffle : Random.Seed -> List a -> List a
         shuffle seed list =
             Random.step (Random.List.shuffle list) seed
                 |> Tuple.first
 
         aggInfos =
-            Home.calcAggInfos roots
+            Home.calcAggInfos model.data
     in
     div [ A.id "home-container" ]
         [ h1 [] [ text "Watching" ]
@@ -87,5 +93,5 @@ viewHome roots =
         , h1 [] [ text "New" ]
         , Home.viewRow aggInfos
         , h1 [] [ text "Random" ]
-        , Home.viewRow <| shuffle tempSeed aggInfos
+        , Home.viewRow <| shuffle (Random.initialSeed model.startTime) aggInfos
         ]
