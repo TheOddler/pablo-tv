@@ -11,11 +11,18 @@
 
 <body>
   <script type="text/javascript">
-    var app = Elm.Main.init({
-      flags: {
-        startTime: Date.now()
-      }
-    });
+    try {
+      var app = Elm.Main.init({
+        flags: {
+          startTime: Date.now()
+        }
+      });
+    } catch (e) {
+      const div = document.createElement('div');
+      div.textContent = `Error initialising Elm:\t${e}`;
+      document.body.appendChild(div);
+      throw e;
+    }
   </script>
 </body>
 
