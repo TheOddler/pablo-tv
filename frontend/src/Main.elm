@@ -1,9 +1,9 @@
 module Main exposing (Msg(..), main, update, view)
 
-import AggDirInfo
 import Browser
 import Dict
 import Generated.Backend exposing (..)
+import Home
 import Html exposing (..)
 import Html.Attributes as A
 import Http
@@ -65,32 +65,13 @@ view model =
     }
 
 
-viewHttpError : Http.Error -> String
-viewHttpError err =
-    case err of
-        Http.BadUrl msg ->
-            "BadUrl " ++ msg
-
-        Http.Timeout ->
-            "Timeout"
-
-        Http.NetworkError ->
-            "NetworkError"
-
-        Http.BadStatus code ->
-            "BadStatus " ++ String.fromInt code
-
-        Http.BadBody msg ->
-            "BadBody " ++ msg
-
-
 viewHome : RootDirectories -> Html Msg
 viewHome roots =
     div [ A.id "home-container" ]
         [ h1 [] [ text "Watching" ]
-        , AggDirInfo.viewRow <| AggDirInfo.calcAggInfos roots
+        , Home.viewRow <| Home.calcAggInfos roots
         , h1 [] [ text "New" ]
-        , AggDirInfo.viewRow <| AggDirInfo.calcAggInfos roots
+        , Home.viewRow <| Home.calcAggInfos roots
         , h1 [] [ text "Random" ]
-        , AggDirInfo.viewRow <| AggDirInfo.calcAggInfos roots
+        , Home.viewRow <| Home.calcAggInfos roots
         ]

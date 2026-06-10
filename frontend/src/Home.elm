@@ -1,4 +1,4 @@
-module AggDirInfo exposing (..)
+module Home exposing (..)
 
 import Dict
 import Generated.Backend exposing (..)
