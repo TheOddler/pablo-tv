@@ -161,25 +161,25 @@ type Sorting
 filterAndSort : Filter -> Sorting -> List AggDirInfo -> List AggDirInfo
 filterAndSort filter sorting list =
     let
-        filterFunc : AggDirInfo -> Bool
-        filterFunc =
+        doFilter : List AggDirInfo -> List AggDirInfo
+        doFilter =
             case filter of
                 Watching ->
-                    \a ->
-                        a.playedVideoFileCount
-                            > 0
-                            && a.playedVideoFileCount
-                            < a.videoFileCount
+                    List.filter <|
+                        \a ->
+                            (a.playedVideoFileCount > 0)
+                                && (a.playedVideoFileCount < a.videoFileCount)
 
                 NothingWatched ->
-                    \a ->
-                        a.playedVideoFileCount == 0
+                    List.filter <|
+                        \a -> a.playedVideoFileCount == 0
 
                 FullyWatched ->
-                    \a -> a.playedVideoFileCount == a.videoFileCount
+                    List.filter <|
+                        \a -> a.playedVideoFileCount == a.videoFileCount
 
                 Unfiltered ->
-                    \_ -> True
+                    \l -> l
 
         sort : List AggDirInfo -> List AggDirInfo
         sort =
@@ -195,5 +195,4 @@ filterAndSort filter sorting list =
                         Random.step (Random.List.shuffle a) seed
                             |> Tuple.first
     in
-    List.filter filterFunc list
-        |> sort
+    doFilter list |> sort
