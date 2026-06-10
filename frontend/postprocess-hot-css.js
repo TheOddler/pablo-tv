@@ -2,8 +2,6 @@
 // It's polling the server, and supports `If-Modified-Since` as my server return 304 when there are no changes.
 const hotReloadingCode = `
 (function () {
-  // This doesn't find dynamically added css, but we don't have that so that's OK.
-  const allCss = Array.from(document.querySelectorAll('link[rel="stylesheet"][href]'));
   const last = new Map(); // url -> last-modified value
   async function check(link) {
     try {
@@ -20,13 +18,27 @@ const hotReloadingCode = `
       if (!res.ok) return; // error
       // Remember the last-modified date the server sends
       last.set(url, res.headers.get('Last-Modified'));
-      link.href = url + '?_hot=' + Date.now();
+      reloadCss(link, url);
     } catch (err) {
       console.error("Error while reloading CSS", err);
     }
   };
 
+  function reloadCss(link, url) {
+    // Creating a new element like this allows the browser to pre-load the css, preventing flicker on changes
+    const replacement = link.cloneNode();
+    replacement.href = url + '?_hot=' + Date.now();
+    replacement.onload = () => {
+      link.remove();
+    };
+    replacement.onerror = (e) => {
+      replacement.remove();
+    };
+    link.parentNode.insertBefore(replacement, link.nextSibling);
+  }
+
   async function tick() {
+    const allCss = Array.from(document.querySelectorAll('link[rel="stylesheet"][href]'));
     await Promise.all(allCss.map(check));
     setTimeout(tick, 1000);
   }
