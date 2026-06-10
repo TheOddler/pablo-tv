@@ -7,7 +7,6 @@ import Generated.Backend exposing (..)
 import Html exposing (..)
 import Html.Attributes as A
 import Http
-import List.Extra as List
 
 
 type alias Model =
@@ -88,5 +87,10 @@ viewHttpError err =
 viewHome : RootDirectories -> Html Msg
 viewHome roots =
     div [ A.id "home-container" ]
-        [ AggDirInfo.viewRow <| AggDirInfo.calcAggInfos roots
+        [ h1 [] [ text "Watching" ]
+        , AggDirInfo.viewRow <| AggDirInfo.calcAggInfos roots
+        , h1 [] [ text "New" ]
+        , AggDirInfo.viewRow <| AggDirInfo.calcAggInfos roots
+        , h1 [] [ text "Random" ]
+        , AggDirInfo.viewRow <| AggDirInfo.calcAggInfos roots
         ]

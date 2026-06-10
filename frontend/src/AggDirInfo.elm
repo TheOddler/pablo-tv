@@ -44,7 +44,7 @@ viewPoster dir =
             , A.attribute "loading" "lazy"
             ]
             []
-        , div [ A.class "watched" ]
+        , div [ A.class "overlay" ]
             [ i [ A.class "fa-solid fa-play" ] []
             , text <|
                 String.fromInt dir.aggDirPlayedVideoFileCount

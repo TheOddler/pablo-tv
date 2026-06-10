@@ -1,95 +1,14 @@
+@use "_home.scss";
+
 body {
-  background-color: black;
-}
+  margin: 0;
+  padding: 0;
+  width: 100dvw;
+  height: 100dvh;
 
-#home-container {
-  $elHeight: 40vh;
-  $elWidth: calc($elHeight / 1000 * 680); // My posters are 1000 by 680
-  $elFocusScale: 1.2;
-
-  display: flex;
-  flex-direction: column;
-  padding-bottom: 5rem;
-
-  h1,
-  h2 {
-    text-align: center;
-    z-index: 100;
-    padding: 0;
-    margin: 1em 0 0 0;
-  }
-
-  .divider {
-    margin-top: 5em;
-  }
-
-  .row {
-    display: flex;
-    flex-direction: row;
-    gap: 15pt;
-    overflow-x: scroll;
-    overflow-y: hidden;
-    // Add padding that is just the right size needed to accomodate a scaled
-    // element, so that it'll never to clipped as we're in a scroll element here.
-    padding: calc(($elFocusScale - 1) / 2 * $elHeight) calc(($elFocusScale - 1) / 2 * $elWidth + 4pt);
-  }
-
-  .el {
-    flex-shrink: 0;
-    position: relative;
-    background-color: midnightblue;
-    width: $elWidth;
-    height: $elHeight;
-
-    &.logo {
-      height: $elWidth;
-      background-color: white;
-      border-radius: calc($elWidth * 0.2);
-
-      img {
-        object-fit: contain;
-        padding: calc($elWidth * 0.05);
-      }
-    }
-
-    // This removed the line under the alt-text. The rest of the styling is later
-    text-decoration: none;
-
-    img {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-
-      // Styles for the alt text
-      display: flex;
-      justify-content: space-evenly;
-      align-items: center;
-      text-align: center;
-      font-size: xx-large;
-    }
-
-    &:focus {
-      outline: none;
-      transform: scale(#{elFocusScale});
-      z-index: 10;
-    }
-
-    .watched {
-      font-size: 1.8rem;
-      position: absolute;
-      bottom: 0;
-      right: 0;
-      padding: 0.2em 0.4em 0.3em 0.5em;
-      color: white;
-      background-color: rgba(0, 0, 0, 0.5);
-      border-top-left-radius: 0.7em;
-      display: flex;
-      align-items: center;
-      gap: 0.2em;
-
-      .fa-eye {
-        font-size: 0.8em;
-      }
-    }
-  }
+  color: white;
+  background: black;
+  word-break: break-word;
+  overflow-wrap: break-word;
+  font-family: sans-serif;
 }
