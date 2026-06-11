@@ -1,21 +1,9 @@
 module Home exposing (..)
 
+import AggDir exposing (AggDirInfo)
 import Generated.Backend exposing (..)
 import Html exposing (..)
 import Html.Attributes as A
-import Time
-import Time.Extra as Time
-
-
-type alias AggDirInfo =
-    { name : DirectoryName
-    , path : RawWebPath
-    , image : Maybe Image
-    , lastAdded : Time.Posix
-    , lastWatched : Time.Posix
-    , videoFileCount : Int
-    , playedVideoFileCount : Int
-    }
 
 
 viewRow : List AggDirInfo -> Html msg
