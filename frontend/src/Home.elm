@@ -18,7 +18,7 @@ viewPoster dir =
     a [ A.class "el", A.href "todo" ]
         [ img
             [ A.src <|
-                "image/"
+                "/image/"
                     ++ (case dir.image of
                             Just (Image img) ->
                                 img.cached
