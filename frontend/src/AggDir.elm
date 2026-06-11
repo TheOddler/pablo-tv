@@ -6,6 +6,7 @@ import Html exposing (..)
 import Maybe.Extra as Maybe
 import Random
 import Random.List
+import Routes
 import Time
 import Time.Extra as Time
 import Tuple
@@ -13,7 +14,7 @@ import Tuple
 
 type alias AggDirInfo =
     { name : DirectoryName
-    , path : RawWebPath
+    , path : Routes.DirPath
     , image : Maybe Image
     , lastAdded : Time.Posix
     , lastWatched : Time.Posix
@@ -22,10 +23,8 @@ type alias AggDirInfo =
     }
 
 
-{-| If there are files in the root, those are ignored here.
--}
 calcForSubDirsOf :
-    RawWebPath
+    Routes.DirPath
     -> { a | subDirs : DirectorySubDirs }
     -> List AggDirInfo
 calcForSubDirsOf pathOfDir dirData =
@@ -45,12 +44,12 @@ calcForSubDirsOfRoots roots =
     Dict.toList roots
         |> List.concatMap
             (\( rootLoc, rootData ) ->
-                calcForSubDirsOf rootLoc rootData
+                calcForSubDirsOf (Routes.DirPath rootLoc []) rootData
             )
 
 
-calcAggInfo : RawWebPath -> DirectoryName -> DirectoryData -> AggDirInfo
-calcAggInfo parentPath name info =
+calcAggInfo : Routes.DirPath -> DirectoryName -> DirectoryData -> AggDirInfo
+calcAggInfo (Routes.DirPath root parentPath) name info =
     let
         calcLastAdded : List VideoFileData -> Time.Posix
         calcLastAdded files =
@@ -108,7 +107,7 @@ calcAggInfo parentPath name info =
     in
     go
         { name = name
-        , path = parentPath ++ "/" ++ name
+        , path = Routes.DirPath root <| parentPath ++ [ name ]
         , image = info.image
         , lastAdded = calcLastAdded <| Dict.values info.videoFiles
         , lastWatched = calcLastWatched <| Dict.values info.videoFiles

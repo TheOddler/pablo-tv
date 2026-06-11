@@ -1,10 +1,12 @@
 module Home exposing (..)
 
 import AggDir exposing (AggDirInfo)
+import Browser
 import Generated.Backend exposing (..)
 import Html exposing (..)
 import Html.Attributes as A
 import Random
+import Routes
 
 
 viewRow : List AggDirInfo -> Html msg
@@ -15,7 +17,10 @@ viewRow dirs =
 
 viewPoster : AggDirInfo -> Html msg
 viewPoster dir =
-    a [ A.class "el", A.href "todo" ]
+    a
+        [ A.class "el"
+        , A.href <| Routes.toHref <| Routes.Dir dir.path
+        ]
         [ img
             [ A.src <|
                 "/image/"
@@ -40,7 +45,7 @@ viewPoster dir =
         ]
 
 
-view : RootDirectories -> Int -> Html msg
+view : RootDirectories -> Int -> Browser.Document msg
 view roots startTime =
     let
         aggInfos =
@@ -56,17 +61,21 @@ view roots startTime =
             viewRow <|
                 AggDir.filterAndSort filter sorting aggInfos
     in
-    div [ A.id "home-container" ]
-        [ h1 [] [ text "Watching" ]
-        , row AggDir.Watching AggDir.RecentlyWatched
-        , h1 [] [ text "New" ]
-        , row AggDir.NothingWatched AggDir.RecentlyAdded
-        , h1 [] [ text "Random" ]
-        , row AggDir.NothingWatched (AggDir.Shuffled seed1)
-        , h1 [] [ text "Recently Added" ]
-        , row AggDir.Unfiltered AggDir.RecentlyAdded
-        , h1 [] [ text "Random (All)" ]
-        , row AggDir.Unfiltered (AggDir.Shuffled seed2)
-        , h1 [] [ text "Recently Finished" ]
-        , row AggDir.FullyWatched AggDir.RecentlyWatched
+    { title = "Pablo TV"
+    , body =
+        [ div [ A.id "home-container" ]
+            [ h1 [] [ text "Watching" ]
+            , row AggDir.Watching AggDir.RecentlyWatched
+            , h1 [] [ text "New" ]
+            , row AggDir.NothingWatched AggDir.RecentlyAdded
+            , h1 [] [ text "Random" ]
+            , row AggDir.NothingWatched (AggDir.Shuffled seed1)
+            , h1 [] [ text "Recently Added" ]
+            , row AggDir.Unfiltered AggDir.RecentlyAdded
+            , h1 [] [ text "Random (All)" ]
+            , row AggDir.Unfiltered (AggDir.Shuffled seed2)
+            , h1 [] [ text "Recently Finished" ]
+            , row AggDir.FullyWatched AggDir.RecentlyWatched
+            ]
         ]
+    }
