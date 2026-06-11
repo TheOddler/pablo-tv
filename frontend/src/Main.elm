@@ -1,5 +1,6 @@
 module Main exposing (Msg(..), main, update, view)
 
+import AggDir
 import Browser
 import Dict
 import Generated.Backend exposing (..)
@@ -79,7 +80,7 @@ viewHome : Model -> Html Msg
 viewHome model =
     let
         aggInfos =
-            Home.calcAggInfos model.data
+            AggDir.calcForSubDirsOfRoots model.data
 
         seed1 =
             Random.initialSeed model.startTime
@@ -89,19 +90,19 @@ viewHome model =
 
         viewRow filter sorting =
             Home.viewRow <|
-                Home.filterAndSort filter sorting aggInfos
+                AggDir.filterAndSort filter sorting aggInfos
     in
     div [ A.id "home-container" ]
         [ h1 [] [ text "Watching" ]
-        , viewRow Home.Watching Home.RecentlyWatched
+        , viewRow AggDir.Watching AggDir.RecentlyWatched
         , h1 [] [ text "New" ]
-        , viewRow Home.NothingWatched Home.RecentlyAdded
+        , viewRow AggDir.NothingWatched AggDir.RecentlyAdded
         , h1 [] [ text "Random" ]
-        , viewRow Home.NothingWatched (Home.Shuffled seed1)
+        , viewRow AggDir.NothingWatched (AggDir.Shuffled seed1)
         , h1 [] [ text "Recently Added" ]
-        , viewRow Home.Unfiltered Home.RecentlyAdded
+        , viewRow AggDir.Unfiltered AggDir.RecentlyAdded
         , h1 [] [ text "Random (All)" ]
-        , viewRow Home.Unfiltered (Home.Shuffled seed2)
+        , viewRow AggDir.Unfiltered (AggDir.Shuffled seed2)
         , h1 [] [ text "Recently Finished" ]
-        , viewRow Home.FullyWatched Home.RecentlyWatched
+        , viewRow AggDir.FullyWatched AggDir.RecentlyWatched
         ]
