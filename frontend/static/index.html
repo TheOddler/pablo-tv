@@ -14,8 +14,12 @@
     try {
       var app = Elm.Main.init({
         flags: {
-          startTime: Date.now()
+          startTime: Date.now(),
+          roots: localStorage.getItem('roots')
         }
+      });
+      app.ports.saveRootsPort.subscribe(function (roots) {
+        localStorage.setItem('roots', roots);
       });
     } catch (e) {
       const div = document.createElement('div');

@@ -4,10 +4,13 @@ import Browser
 import Browser.Navigation as Nav
 import Dict
 import Dir
+import Error
 import Generated.Backend exposing (..)
 import Home
 import Html exposing (..)
 import Http
+import Json.Decode as D
+import Ports
 import Routes
 import Url
 
@@ -17,12 +20,13 @@ type alias Model =
     , roots : RootDirectories
     , navKey : Nav.Key
     , route : Routes.Route
-    , errors : List Http.Error
+    , errors : List String
     }
 
 
 type alias Flags =
     { startTime : Int
+    , roots : Maybe String
     }
 
 
@@ -47,15 +51,24 @@ main =
 init : Flags -> Url.Url -> Nav.Key -> ( Model, Cmd Msg )
 init flags url navKey =
     let
-        roots =
-            -- TODO: Save the roots to the local storage, send through flags, and then parse here
-            Dict.empty
+        ( roots, errors ) =
+            case flags.roots of
+                Nothing ->
+                    ( Dict.empty, [] )
+
+                Just actualRoots ->
+                    case D.decodeString Generated.Backend.jsonDecRootDirectories actualRoots of
+                        Ok parsedRoots ->
+                            ( parsedRoots, [] )
+
+                        Err err ->
+                            ( Dict.empty, [ D.errorToString err ] )
     in
     ( { startTime = flags.startTime
       , roots = roots
       , navKey = navKey
       , route = Routes.parse (Dict.keys roots) url
-      , errors = []
+      , errors = errors
       }
     , getApiData DirsUpdate
     )
@@ -66,11 +79,11 @@ update msg model =
     case msg of
         DirsUpdate (Ok updated) ->
             ( { model | roots = updated }
-            , Cmd.none
+            , Ports.saveRoots updated
             )
 
         DirsUpdate (Err err) ->
-            registerError err model
+            registerHttpError err model
 
         GotUrlRequest urlRequest ->
             case urlRequest of
@@ -86,18 +99,26 @@ update msg model =
             )
 
 
-registerError : Http.Error -> Model -> ( Model, Cmd Msg )
-registerError err model =
-    ( { model | errors = err :: model.errors }
+registerHttpError : Http.Error -> Model -> ( Model, Cmd Msg )
+registerHttpError err model =
+    ( { model | errors = Error.httpErrorToString err :: model.errors }
     , Cmd.none
     )
 
 
 view : Model -> Browser.Document Msg
 view model =
-    case model.route of
-        Routes.Home ->
-            Home.view model.roots model.startTime
+    let
+        doc =
+            case model.route of
+                Routes.Home ->
+                    Home.view model.roots model.startTime
 
-        Routes.Dir path ->
-            Dir.view model.roots path
+                Routes.Dir path ->
+                    Dir.view model.roots path
+    in
+    { title = doc.title
+    , body =
+        List.map (\e -> div [] [ text e ]) model.errors
+            ++ doc.body
+    }

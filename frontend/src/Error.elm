@@ -3,8 +3,8 @@ module Error exposing (..)
 import Http exposing (Error(..))
 
 
-viewHttpError : Http.Error -> String
-viewHttpError err =
+httpErrorToString : Http.Error -> String
+httpErrorToString err =
     case err of
         Http.BadUrl msg ->
             "BadUrl " ++ msg
