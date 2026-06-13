@@ -82,7 +82,7 @@ view route networkInfo navBack doAction =
                 [ i [ A.class "fa-solid fa-gamepad" ] [] ]
             , a [ A.href <| Routes.toHref <| Routes.DirHome ]
                 [ i [ A.class "fa-solid fa-file-video" ] [] ]
-            , a [ A.href <| Routes.toHref Routes.Remote ]
+            , a [ A.href <| Routes.toHref Routes.Home ]
                 [ i [ A.class "fa-solid fa-house" ] [] ]
             ]
     in
