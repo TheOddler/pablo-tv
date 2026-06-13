@@ -61,7 +61,7 @@ view roots startTime =
             viewRow <|
                 AggDir.filterAndSort filter sorting aggInfos
     in
-    { title = "Pablo TV"
+    { title = "Home"
     , body =
         [ div [ A.id "home-container" ]
             [ h1 [] [ text "Watching" ]
