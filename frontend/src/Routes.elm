@@ -26,8 +26,12 @@ type Route
 parse : List RootDirectoryLocation -> Url.Url -> Route
 parse roots url =
     let
-        try path result =
-            if url.path == path || url.path == path ++ "/" then
+        path =
+            Url.percentDecode url.path
+                |> Maybe.withDefault url.path
+
+        try p result =
+            if path == p || path == p ++ "/" then
                 Just result
 
             else
@@ -38,8 +42,8 @@ parse roots url =
                 prefix =
                     "/dir/" ++ root ++ "/"
             in
-            if String.startsWith prefix url.path then
-                String.dropLeft (String.length prefix) url.path
+            if String.startsWith prefix path then
+                String.dropLeft (String.length prefix) path
                     |> String.split "/"
                     |> DirPath root
                     |> Dir
