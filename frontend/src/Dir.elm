@@ -7,6 +7,21 @@ import Html.Attributes as A
 import Routes
 
 
+viewHome :
+    RootDirectories
+    -> Browser.Document msg
+viewHome roots =
+    { title = "Directories - Pablo TV"
+    , body =
+        [ text "Directories - Pablo TV"
+        , a
+            [ A.href <| Routes.toHref Routes.Home
+            ]
+            [ text "Back home" ]
+        ]
+    }
+
+
 view :
     RootDirectories
     -> Routes.DirPath

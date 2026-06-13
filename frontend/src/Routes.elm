@@ -14,33 +14,32 @@ type DirPath
 
 type Route
     = Home
+    | DirHome
     | Dir DirPath
+    | Input
+    | Remote
+    | IPs
+    | Debug_
+    | NotFound
 
 
 parse : List RootDirectoryLocation -> Url.Url -> Route
 parse roots url =
     let
-        path =
-            url.path
+        try path result =
+            if url.path == path || url.path == path ++ "/" then
+                Just result
 
-        tryHome =
-            case path of
-                "" ->
-                    Just Home
-
-                "/" ->
-                    Just Home
-
-                _ ->
-                    Nothing
+            else
+                Nothing
 
         tryRoot root =
             let
                 prefix =
                     "/dir/" ++ root ++ "/"
             in
-            if String.startsWith prefix path then
-                String.dropLeft (String.length prefix) path
+            if String.startsWith prefix url.path then
+                String.dropLeft (String.length prefix) url.path
                     |> String.split "/"
                     |> DirPath root
                     |> Dir
@@ -49,9 +48,15 @@ parse roots url =
             else
                 Nothing
     in
-    tryHome
+    try "" Home
+        |> Maybe.orElse (try "/dir" DirHome)
+        |> Maybe.orElse (try "/input" Input)
+        |> Maybe.orElse (try "/remote" Remote)
+        |> Maybe.orElse (try "/ips" IPs)
+        |> Maybe.orElse (try "/debug" Debug_)
+        |> Maybe.orElse (try "/404" NotFound)
         |> Maybe.orElse (List.findMap tryRoot roots)
-        |> Maybe.withDefault Home
+        |> Maybe.withDefault NotFound
 
 
 toHref : Route -> String
@@ -60,5 +65,23 @@ toHref route =
         Home ->
             "/"
 
+        DirHome ->
+            "/dir"
+
         Dir (DirPath root paths) ->
             "/dir/" ++ root ++ "/" ++ String.join "/" paths
+
+        Input ->
+            "/input"
+
+        Remote ->
+            "/remote"
+
+        IPs ->
+            "/ips"
+
+        Debug_ ->
+            "/debug"
+
+        NotFound ->
+            "/404"

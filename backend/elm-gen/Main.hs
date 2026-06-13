@@ -24,6 +24,8 @@ import GHC.Exception (errorCallException)
 import Mpris qualified
 import Network.HTTP.Types qualified as HTTP
 import Network.HTTP.Types.Method (Method)
+import NetworkInfo (SimpleNetworkInterface)
+import NetworkInfo qualified
 import Servant
 import Servant.Elm
 import Servant.Elm.Internal.Foreign (LangElm)
@@ -49,6 +51,8 @@ deriveElmPrefixed ''Mpris.MprisAction
 deriveElmPrefixed ''Directories.RootDirectoryData
 deriveElmPrefixed ''Directories.DirectoryData
 deriveElmPrefixed ''Files.VideoFileData
+deriveElmPrefixed ''NetworkInfo.SimpleNetworkInterface
+deriveElmPrefixed ''NetworkInfo.NetworkInfo
 
 instance IsElmDefinition Directories.RootDirectoryLocation where
   compileElmDef _ = eTypeDefStringAlias "RootDirectoryLocation"
@@ -176,7 +180,9 @@ myTypeDefs =
     DefineElm (Proxy :: Proxy Files.Image),
     DefineElm (Proxy :: Proxy Files.ImageFileName),
     DefineElm (Proxy :: Proxy Files.CachedImageFileName),
-    DefineElm (Proxy :: Proxy Paths.RawWebPath)
+    DefineElm (Proxy :: Proxy Paths.RawWebPath),
+    DefineElm (Proxy :: Proxy NetworkInfo.SimpleNetworkInterface),
+    DefineElm (Proxy :: Proxy NetworkInfo.NetworkInfo)
   ]
 
 allTypeAlterations :: EType -> EType

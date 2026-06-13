@@ -1,12 +1,10 @@
 port module Ports exposing (..)
 
-import Generated.Backend as BE
-import Json.Encode as E
+
+type alias LocalStorageKeyAndData =
+    { key : String
+    , data : String
+    }
 
 
-saveRoots : BE.RootDirectories -> Cmd msg
-saveRoots roots =
-    saveRootsPort <| E.encode 2 <| BE.jsonEncRootDirectories roots
-
-
-port saveRootsPort : String -> Cmd msg
+port setLocalStorage : LocalStorageKeyAndData -> Cmd msg

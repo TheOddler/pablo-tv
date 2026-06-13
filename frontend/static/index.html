@@ -15,11 +15,12 @@
       var app = Elm.Main.init({
         flags: {
           startTime: Date.now(),
-          roots: localStorage.getItem('roots')
+          roots: localStorage.getItem('roots'),
+          networkInfo: localStorage.getItem('network-info')
         }
       });
-      app.ports.saveRootsPort.subscribe(function (roots) {
-        localStorage.setItem('roots', roots);
+      app.ports.setLocalStorage.subscribe(function (keyAndData) {
+        localStorage.setItem(keyAndData.key, keyAndData.data);
       });
     } catch (e) {
       const div = document.createElement('div');

@@ -5,7 +5,7 @@
 module JSON where
 
 import Data.Aeson qualified as Aeson
-import Data.Aeson.TH (deriveJSON)
+import Data.Aeson.TH (deriveFromJSON, deriveJSON, deriveToJSON)
 import Data.Char qualified as Char
 import Data.List.Extra (dropPrefix)
 import GHC.TypeLits (Symbol)
@@ -58,3 +58,13 @@ deriveJSONPrefixed :: Name -> Q [Dec]
 deriveJSONPrefixed name = do
   prefix <- getPrefix name
   deriveJSON (ourAesonOptionsPrefix prefix) name
+
+deriveToJSONPrefixed :: Name -> Q [Dec]
+deriveToJSONPrefixed name = do
+  prefix <- getPrefix name
+  deriveToJSON (ourAesonOptionsPrefix prefix) name
+
+deriveFomJSONPrefixed :: Name -> Q [Dec]
+deriveFomJSONPrefixed name = do
+  prefix <- getPrefix name
+  deriveFromJSON (ourAesonOptionsPrefix prefix) name

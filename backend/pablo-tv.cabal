@@ -54,6 +54,7 @@ library
     LibMain
     Logging
     Mpris
+    NetworkInfo
     Orphanage
     PVar
     SafeConvert

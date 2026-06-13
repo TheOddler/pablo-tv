@@ -17,6 +17,7 @@ import Network.HTTP.Types (hContentType, hLastModified, status200, status304, st
 import Network.HTTP.Types.Header (hETag)
 import Network.Wai qualified as Wai
 import Network.Wai.Handler.Warp qualified as Wai
+import NetworkInfo (NetworkInfo, getNetworkInfo)
 import PVar (readPVar)
 import Servant hiding (respond)
 import Servant.Server.Generic (AsServerT)
@@ -28,6 +29,7 @@ type API = NamedRoutes APIRoutes
 data APIRoutes mode = APIRoutes
   { apiPostAction :: mode :- "api" :> "action" :> ReqBody '[JSON] Action :> PostNoContent,
     apiGetData :: mode :- "api" :> "data" :> Get '[JSON] RootDirectories,
+    apiGetNetworkInfo :: mode :- "api" :> "network" :> Get '[JSON] NetworkInfo,
     apiGetImage :: mode :- "image" :> Capture "imageName" String :> RawM,
     -- -- Must be last, as Servant matches endpoints in order and this captures everything
     apiStatic :: mode :- CaptureAll "pathParts" FilePath :> RawM
@@ -54,6 +56,7 @@ routes =
   APIRoutes
     { apiPostAction = doAction,
       apiGetData = getData,
+      apiGetNetworkInfo = getNetworkInfo,
       apiGetImage = getImage,
       apiStatic = getStatic
     }
