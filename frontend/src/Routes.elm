@@ -29,9 +29,16 @@ parse roots url =
         path =
             Url.percentDecode url.path
                 |> Maybe.withDefault url.path
+                |> (\p ->
+                        if String.endsWith "/" p then
+                            String.dropRight 1 p
+
+                        else
+                            p
+                   )
 
         try p result =
-            if path == p || path == p ++ "/" then
+            if path == p then
                 Just result
 
             else
