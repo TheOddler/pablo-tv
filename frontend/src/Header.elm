@@ -14,7 +14,8 @@ view route networkInfo navBack doAction =
             div [ A.class "grow" ] []
 
         back =
-            [ a [ E.onClick <| navBack 1 ]
+            [ button
+                [ A.class "like-link", E.onClick <| navBack 1 ]
                 [ i [ A.class "fa-solid fa-chevron-left" ] [] ]
             , separatorGrow
             ]
@@ -34,7 +35,8 @@ view route networkInfo navBack doAction =
 
         refreshButton : String -> BE.Action -> Html msg
         refreshButton suffix action =
-            a [ E.onClick <| doAction action ]
+            button
+                [ A.class "like-link", E.onClick <| doAction action ]
                 [ i [ A.class "fa-solid fa-arrows-rotate" ] []
                 , span [] [ text "Refresh" ]
                 , span [] [ text suffix ]

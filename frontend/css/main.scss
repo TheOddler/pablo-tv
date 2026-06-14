@@ -12,3 +12,18 @@ body {
   overflow-wrap: break-word;
   font-family: sans-serif;
 }
+
+button.like-link {
+  background: none;
+  border: none;
+  padding: 0;
+  outline: inherit;
+  color: lightblue;
+  font: inherit;
+  cursor: pointer;
+  // text-decoration: underline;
+
+  &:disabled {
+    color: grey;
+  }
+}
