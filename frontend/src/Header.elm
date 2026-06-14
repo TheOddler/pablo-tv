@@ -54,10 +54,10 @@ view route networkInfo navBack doAction =
                     , separatorGrow
                     ]
 
-                Routes.Dir path ->
+                Routes.Dir (Routes.DirPath root names) ->
                     [ refreshButton "directory" <|
                         BE.ActionRefreshDirectoryData
-                            { path = Routes.toHref (Routes.Dir path)
+                            { path = root ++ "/" ++ String.join "/" names
                             }
                     , separatorGrow
                     ]
