@@ -225,10 +225,10 @@ view model =
                     Home.view model.roots model.startTime
 
                 Routes.DirHome ->
-                    Dir.viewHome model.roots
+                    Dir.viewHome model.roots DoAction
 
                 Routes.Dir path ->
-                    Dir.view model.roots path
+                    Dir.view model.roots path DoAction
 
                 Routes.Input ->
                     todo "viewInput"

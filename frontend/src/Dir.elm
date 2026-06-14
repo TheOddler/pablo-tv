@@ -6,6 +6,9 @@ import Dict
 import Generated.Backend as BE
 import Html exposing (..)
 import Html.Attributes as A
+import Html.Events as E
+import Html.Extras exposing (..)
+import List.Extra as List
 import Maybe.Extra as Maybe
 import NaturalOrdering
 import Routes
@@ -13,8 +16,9 @@ import Routes
 
 viewHome :
     BE.RootDirectories
+    -> (BE.Action -> msg)
     -> Browser.Document msg
-viewHome roots =
+viewHome roots doAction =
     let
         allFiles =
             Dict.toList roots
@@ -34,14 +38,20 @@ viewHome roots =
         allDirs =
             AggDir.calcForSubDirsOfRoots roots
     in
-    view_ Nothing Nothing allFiles allDirs
+    view_
+        Nothing
+        Nothing
+        allFiles
+        allDirs
+        doAction
 
 
 view :
     BE.RootDirectories
     -> Routes.DirPath
+    -> (BE.Action -> msg)
     -> Browser.Document msg
-view roots dirPath =
+view roots dirPath doAction =
     let
         (Routes.DirPath root pathParts) =
             dirPath
@@ -59,6 +69,26 @@ view roots dirPath =
                     Dict.get name dict
                         |> Maybe.map .subDirs
                         |> Maybe.andThen (getDirData rest)
+
+        getNearestParentImage : List BE.DirectoryName -> Maybe BE.Image -> BE.DirectorySubDirs -> Maybe BE.Image
+        getNearestParentImage names foundImg (BE.DirectorySubDirs dict) =
+            case names of
+                [] ->
+                    foundImg
+
+                [ _ ] ->
+                    foundImg
+
+                name :: rest ->
+                    Dict.get name dict
+                        |> Maybe.andThen
+                            (\data ->
+                                let
+                                    newFoundImg =
+                                        data.image |> Maybe.or foundImg
+                                in
+                                getNearestParentImage rest newFoundImg data.subDirs
+                            )
 
         mDirData : Maybe BE.DirectoryData
         mDirData =
@@ -82,6 +112,18 @@ view roots dirPath =
 
         Just data ->
             let
+                image =
+                    Dict.get root roots
+                        |> Maybe.andThen
+                            (\rootData ->
+                                case data.image of
+                                    Just i ->
+                                        Just i
+
+                                    Nothing ->
+                                        getNearestParentImage pathParts Nothing rootData.subDirs
+                            )
+
                 videoFiles =
                     Dict.toList data.videoFiles
                         |> List.map
@@ -94,9 +136,10 @@ view roots dirPath =
             in
             view_
                 (Just dirPath)
-                data.image
+                image
                 videoFiles
                 subDirs
+                doAction
 
 
 view_ :
@@ -104,11 +147,12 @@ view_ :
     -> Maybe BE.Image
     -> List ( Routes.DirPath, BE.VideoFileName, BE.VideoFileData )
     -> List AggDir.AggDirInfo
+    -> (BE.Action -> msg)
     -> Browser.Document msg
-view_ dirPath dirImage unsortedFiles unsortedSubDirs =
+view_ mDirPath dirImage unsortedFiles unsortedSubDirs doAction =
     let
         image =
-            dirPath
+            mDirPath
                 |> Maybe.map
                     (\_ -> dirImage :: List.map .image unsortedSubDirs)
                 |> Maybe.andThen Maybe.orList
@@ -118,26 +162,211 @@ view_ dirPath dirImage unsortedFiles unsortedSubDirs =
 
         subDirs =
             NaturalOrdering.sortBy .name unsortedSubDirs
+
+        ( title, subTitle ) =
+            case mDirPath |> Maybe.andThen (\(Routes.DirPath _ p) -> List.last p) of
+                Nothing ->
+                    ( "Videos", "" )
+
+                Just dirName ->
+                    String.indexes "(" dirName
+                        |> List.head
+                        |> Maybe.map
+                            (\i ->
+                                ( String.slice 0 i dirName
+                                , String.slice i (String.length dirName) dirName
+                                )
+                            )
+                        |> Maybe.withDefault ( dirName, "" )
+
+        iff bool a =
+            if bool then
+                a
+
+            else
+                text ""
+
+        ifJust maybe f =
+            Maybe.map f maybe
+                |> Maybe.withDefault (text "")
+
+        ifAndJust bool maybe f =
+            if bool then
+                ifJust maybe f
+
+            else
+                text ""
     in
     { title =
-        case dirPath of
+        case mDirPath of
             Nothing ->
                 "Overview"
 
             Just (Routes.DirPath _ pathParts) ->
                 String.join "/" pathParts
     , body =
-        [ case image of
-            Nothing ->
-                text ""
+        [ div [ A.id "dir-container" ]
+            [ -- Image
+              case image of
+                Nothing ->
+                    text ""
 
-            Just (BE.Image i) ->
-                img [ A.src <| "/image/" ++ i.cached ] []
-        , text "files"
-        , ol [] <|
-            List.map (\( _, name, _ ) -> li [] [ text name ]) files
-        , text "dirs"
-        , ol [] <|
-            List.map (\d -> li [] [ text d.name ]) subDirs
+                Just (BE.Image i) ->
+                    img
+                        [ A.src <| "/image/" ++ i.cached
+                        , A.alt "Poster"
+                        , A.class "header"
+                        ]
+                        []
+
+            -- Title
+            , h1 []
+                [ text title
+                , if subTitle == "" then
+                    text ""
+
+                  else
+                    span [ A.class "sub-title" ] [ text subTitle ]
+                ]
+
+            -- Top buttons
+            , iff (List.length files > 1 && List.length subDirs > 0) <|
+                div [ A.class "section" ]
+                    [ div [ A.class "row white" ]
+                        [ ifJust mDirPath <|
+                            \dirPath ->
+                                button
+                                    [ A.class "like-link large name"
+                                    , E.onClick <|
+                                        doAction <|
+                                            BE.ActionPlayPath
+                                                { path = Routes.toRawWebPath dirPath }
+                                    ]
+                                    [ i [ A.class "fa-solid fa-play" ] []
+                                    , span [] [ text "Play All" ]
+                                    ]
+                        , ifAndJust (List.length files > 0) mDirPath <|
+                            \dirPath ->
+                                button
+                                    [ A.class "like-link"
+                                    , E.onClick <|
+                                        doAction <|
+                                            BE.ActionMarkAsWatched
+                                                { path = Routes.toRawWebPath dirPath }
+                                    ]
+                                    [ i [ A.class "fa-regular fa-eye" ] [] ]
+                        , ifAndJust (List.length files > 0) mDirPath <|
+                            \dirPath ->
+                                button
+                                    [ A.class "like-link"
+                                    , E.onClick <|
+                                        doAction <|
+                                            BE.ActionMarkAsUnwatched
+                                                { path = Routes.toRawWebPath dirPath }
+                                    ]
+                                    [ i [ A.class "fa-regular fa-eye-slash" ] [] ]
+                        ]
+                    ]
+
+            -- Files
+            , iff (List.length files > 0) <|
+                div [ A.class "section" ] <|
+                    List.map
+                        (\( dirPath, name, data ) ->
+                            div
+                                [ A.class "row"
+                                , A.class <|
+                                    case data.watched of
+                                        Nothing ->
+                                            "unwatched"
+
+                                        Just _ ->
+                                            "watched"
+                                ]
+                                [ button
+                                    [ A.class "name like-link"
+                                    , A.title <| "Play: " ++ name
+                                    , E.onClick <|
+                                        doAction <|
+                                            BE.ActionPlayPath
+                                                { path = Routes.toRawWebPathFile dirPath name }
+                                    ]
+                                    [ i [ A.class "fa-solid fa-play" ] []
+
+                                    -- TODO: Improve the names with prefix, unique and suffix
+                                    -- $# We have no gap in the flexbox here, rather we use nbsp to add whitespace that can shrink with the element
+                                    -- &nbsp;
+                                    -- <span class="prefix">#{fileNamePrefix}&nbsp;
+                                    -- <span class="unique">#{fileNameMiddle}
+                                    -- <span class="suffix">&nbsp;#{fileNameSuffix}
+                                    , text name
+                                    ]
+                                , case data.watched of
+                                    Nothing ->
+                                        i [] []
+
+                                    Just _ ->
+                                        i [ A.class "fa-solid fa-check" ] []
+                                , button
+                                    [ A.class "like-link"
+                                    , A.title <| "Mark as watched: " ++ name
+                                    , E.onClick <|
+                                        doAction <|
+                                            BE.ActionMarkAsWatched
+                                                { path = Routes.toRawWebPathFile dirPath name }
+                                    ]
+                                    [ i [ A.class "fa-regular fa-eye" ] [] ]
+                                , button
+                                    [ A.class "like-link"
+                                    , A.title <| "Mark as unwatched: " ++ name
+                                    , E.onClick <|
+                                        doAction <|
+                                            BE.ActionMarkAsUnwatched
+                                                { path = Routes.toRawWebPathFile dirPath name }
+                                    ]
+                                    [ i [ A.class "fa-regular fa-eye-slash" ] [] ]
+                                ]
+                        )
+                        files
+
+            -- Sub directories
+            , iff (List.length subDirs > 0) <|
+                div [ A.class "section" ] <|
+                    List.map
+                        (\aggDir ->
+                            div
+                                [ A.class "row"
+                                , A.class <|
+                                    if aggDir.videoFileCount == aggDir.playedVideoFileCount then
+                                        "watched"
+
+                                    else if aggDir.playedVideoFileCount > 0 then
+                                        "watching"
+
+                                    else
+                                        "unwatched"
+                                ]
+                                [ a
+                                    [ A.href <| Routes.toHref <| Routes.Dir aggDir.path
+                                    , A.class "name"
+                                    ]
+                                    [ i [ A.class "fa-regular fa-folder-open" ] []
+                                    , nbsp
+                                    , span [] [ text aggDir.name ]
+                                    ]
+                                , div [] [] -- Just there to make the css easier, it's in place of the watched file tick
+                                , i [ A.class "#{dirIcon dir}" ] []
+                                , span []
+                                    [ text <| String.fromInt aggDir.playedVideoFileCount
+                                    , text "/"
+                                    , text <| String.fromInt aggDir.videoFileCount
+                                    ]
+                                ]
+                        )
+                        subDirs
+
+            -- A bit of extra space at the bottom
+            , div [ A.class "bottom-spacer" ] [ nbsp ]
+            ]
         ]
     }

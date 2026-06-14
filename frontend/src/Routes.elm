@@ -2,14 +2,14 @@ module Routes exposing (..)
 
 -- I don't use Url.Parser from elm/url as it doesn't seem to support lists nor recursion
 
-import Generated.Backend exposing (DirectoryName, RootDirectoryLocation)
+import Generated.Backend as BE
 import List.Extra as List
 import Maybe.Extra as Maybe
 import Url
 
 
 type DirPath
-    = DirPath RootDirectoryLocation (List DirectoryName)
+    = DirPath BE.RootDirectoryLocation (List BE.DirectoryName)
 
 
 type Route
@@ -23,7 +23,7 @@ type Route
     | NotFound
 
 
-parse : List RootDirectoryLocation -> Url.Url -> Route
+parse : List BE.RootDirectoryLocation -> Url.Url -> Route
 parse roots url =
     let
         path =
@@ -96,3 +96,13 @@ toHref route =
 
         NotFound ->
             "/404"
+
+
+toRawWebPath : DirPath -> BE.RawWebPath
+toRawWebPath (DirPath root names) =
+    root ++ "/" ++ String.join "/" names
+
+
+toRawWebPathFile : DirPath -> BE.VideoFileName -> BE.RawWebPath
+toRawWebPathFile (DirPath root names) fileName =
+    root ++ "/" ++ String.join "/" names ++ "/" ++ fileName

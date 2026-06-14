@@ -1,5 +1,6 @@
 @use "_header.scss";
 @use "_home.scss";
+@use "_dir.scss";
 
 body {
   margin: 0;
@@ -26,4 +27,8 @@ button.like-link {
   &:disabled {
     color: grey;
   }
+}
+
+.large {
+  font-size: 1.25em;
 }
