@@ -55,7 +55,7 @@ function patch(code) {
 export default function postprocess({ code, compilationMode }) {
   switch (compilationMode) {
     case "optimize":
-      return minify(patch(code));
+      return code;
     default:
       return patch(code);
   }
