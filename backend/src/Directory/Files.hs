@@ -70,12 +70,17 @@ instance ToJSON Image where
       Aeson.pairs ("cached" Aeson..= cached)
 
 instance FromJSON Image where
-  parseJSON = Aeson.withObject "Image" $ \o -> do
+  parseJSON (Aeson.Object o) = do
     cachedName <- o Aeson..: "cached"
     mName <- o Aeson..:? "name"
     case mName of
       Just name -> pure $ ImageOnDisk name cachedName
       Nothing -> pure $ ImageFromWeb cachedName
+  parseJSON (Aeson.Array _) = do
+    -- This is just here so we can still parse old data files, should be removed once TV has been updated.
+    pure $ ImageOnDisk (ImageFileName [twsQQ|missing.jpg|]) (CachedImageFileName [twsQQ|missing.jpg|])
+  parseJSON val = do
+    fail $ "Couldn't parse Image, got: " ++ show val
 
 newtype ImageFileName = ImageFileName TextWithoutSeparator
   deriving newtype (Eq, Show, Unwrap Text, ToJSON, FromJSON)
