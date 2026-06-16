@@ -160,7 +160,10 @@ update msg model =
 
         GetActionResult result ->
             onHttpSuccess result <|
-                \() -> ( model, Cmd.none )
+                \() ->
+                    ( model
+                    , BE.getApiData DirsUpdate
+                    )
 
 
 sortNetworkInfo : BE.NetworkInfo -> BE.NetworkInfo
@@ -240,7 +243,19 @@ view model =
                     todo "viewIPs"
 
                 Routes.Debug_ ->
-                    todo "viewDebug_"
+                    { title = "Debug"
+                    , body =
+                        [ div []
+                            [ text "Errors:"
+                            ]
+                        , div [] []
+                        ]
+                            ++ List.map
+                                (\e ->
+                                    div [] [ text e ]
+                                )
+                                model.errors
+                    }
 
                 Routes.NotFound ->
                     { title = "404"
