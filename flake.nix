@@ -25,6 +25,7 @@
           cabal-install
           haskell-language-server
           hlint
+          haskellPackages.sydtest-discover
           haskellPackages.weeder
           haskellPackages.cabal-gild
 

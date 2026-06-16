@@ -14,5 +14,5 @@ spec :: Spec
 spec = do
   it "Starts in ready state" $ runTestIO $ do
     pVar <- newPVar (1 :: Int)
-    state <- readPVarState pVar
+    (state, _, _) <- readPVar' pVar
     liftIO $ state `shouldBe` PVarReady
