@@ -19,6 +19,11 @@ body {
   box-sizing: border-box;
 }
 
+*:focus {
+  // We have our own outline that moves and animates nicely through JS
+  outline: none;
+}
+
 button.like-link {
   background: none;
   border: none;
