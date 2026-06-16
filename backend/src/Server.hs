@@ -9,6 +9,7 @@ import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BS8
 import Data.List (stripPrefix)
 import Data.List.Extra (lower)
+import Data.Text qualified as T
 import Directory (getImagesDir)
 import Directory.Directories (RootDirectories)
 import Env (ServerEnv (..), ServerM)
@@ -18,7 +19,7 @@ import Network.HTTP.Types.Header (hETag)
 import Network.Wai qualified as Wai
 import Network.Wai.Handler.Warp qualified as Wai
 import NetworkInfo (NetworkInfo, getNetworkInfo)
-import PVar (readPVar)
+import PVar (readPVar')
 import Servant hiding (respond)
 import Servant.Server.Generic (AsServerT)
 import System.Directory (doesFileExist)
@@ -28,7 +29,11 @@ type API = NamedRoutes APIRoutes
 
 data APIRoutes mode = APIRoutes
   { apiPostAction :: mode :- "api" :> "action" :> ReqBody '[JSON] Action :> PostNoContent,
-    apiGetData :: mode :- "api" :> "data" :> Get '[JSON] RootDirectories,
+    apiGetData ::
+      mode
+        :- "api"
+          :> "data"
+          :> Get '[JSON] (Headers '[Header "ETag" T.Text] RootDirectories),
     apiGetNetworkInfo :: mode :- "api" :> "network" :> Get '[JSON] NetworkInfo,
     apiGetImage :: mode :- "image" :> Capture "imageName" String :> RawM,
     -- -- Must be last, as Servant matches endpoints in order and this captures everything
@@ -67,10 +72,12 @@ routes =
       performAction' env action
       pure NoContent
 
-    getData :: ServerM RootDirectories
+    -- getData :: ServerM (Headers '[Header "ETag" BS.ByteString] RootDirectories)
     getData = do
       rootDirs <- asks envRootDirs
-      readPVar rootDirs
+      (_state, generation, roots) <- readPVar' rootDirs
+      let etag = "\"" <> T.show generation <> "\""
+      pure $ addHeader' etag roots
 
     getImage :: FilePath -> Wai.Request -> (Wai.Response -> IO Wai.ResponseReceived) -> ServerM Wai.ResponseReceived
     getImage imageName _req respond = do

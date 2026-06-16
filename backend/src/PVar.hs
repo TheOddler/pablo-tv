@@ -5,7 +5,7 @@ module PVar
     PVarState (..),
     newPVar,
     readPVar,
-    readPVarState,
+    readPVar',
     modifyPVar,
     modifyPVar_,
   )
@@ -14,6 +14,7 @@ where
 import Control.Concurrent.STM (TVar, atomically, newTVarIO, readTVar, readTVarIO, retry, writeTVar)
 import Control.Monad (void, when)
 import Data.Text (Text)
+import Data.Tuple.Extra (thd3)
 import SafeIO (SafeIO (..))
 
 data PVarState
@@ -21,30 +22,32 @@ data PVarState
   | PVarUpdating Text
   deriving (Eq, Show)
 
-newtype PVar a = PVar (TVar (PVarState, a))
+type Generation = Int
+
+newtype PVar a = PVar (TVar (PVarState, Generation, a))
 
 newPVar :: (SafeIO m) => a -> m (PVar a)
-newPVar initialState = PVar <$> unsafePinkyPromiseThisIsSafe (newTVarIO (PVarReady, initialState))
+newPVar initialState = PVar <$> unsafePinkyPromiseThisIsSafe (newTVarIO (PVarReady, 0, initialState))
 
 readPVar :: (SafeIO m) => PVar a -> m a
-readPVar (PVar inner) = snd <$> unsafePinkyPromiseThisIsSafe (readTVarIO inner)
+readPVar (PVar inner) = thd3 <$> unsafePinkyPromiseThisIsSafe (readTVarIO inner)
 
-readPVarState :: (SafeIO m) => PVar a -> m PVarState
-readPVarState (PVar inner) = fst <$> unsafePinkyPromiseThisIsSafe (readTVarIO inner)
+readPVar' :: (SafeIO m) => PVar a -> m (PVarState, Generation, a)
+readPVar' (PVar inner) = unsafePinkyPromiseThisIsSafe (readTVarIO inner)
 
 -- | Modify the PVar, for the duration of the IO, any other calls to modify the PVar will wait.
 -- Reading the PVar is still possible though, and will return the original value immediately.
 modifyPVar :: forall m a. (SafeIO m) => PVar a -> Text -> (a -> m a) -> m a
 modifyPVar (PVar inner) desc update = do
-  value <- unsafePinkyPromiseThisIsSafe $ atomically $ do
-    (state, val) <- readTVar inner
+  (generation, value) <- unsafePinkyPromiseThisIsSafe $ atomically $ do
+    (state, generation, val) <- readTVar inner
     when (state /= PVarReady) retry -- Waits until ready
-    writeTVar inner (PVarUpdating desc, val) -- Mark as being updated, but the update we'll do outside atomically
-    pure val
+    writeTVar inner (PVarUpdating desc, generation, val) -- Mark as being updated, but the update we'll do outside atomically
+    pure (generation, val)
   -- Update
   newValue <- update value
   -- Mark as ready for others again
-  unsafePinkyPromiseThisIsSafe $ atomically $ writeTVar inner (PVarReady, newValue)
+  unsafePinkyPromiseThisIsSafe $ atomically $ writeTVar inner (PVarReady, generation + 1, newValue)
   pure newValue
 
 -- | Modify but I don't care about the updated value
