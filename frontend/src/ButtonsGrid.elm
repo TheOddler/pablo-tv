@@ -8,7 +8,7 @@ import Html.Events as E
 
 buttonsGrid : List (Attribute msg) -> List (Html msg) -> Html msg
 buttonsGrid extraAttrs =
-    div (A.id "buttons-grid" :: extraAttrs)
+    div (A.class "buttons-grid" :: extraAttrs)
 
 
 row : List (Html msg) -> Html msg

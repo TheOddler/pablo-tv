@@ -12,6 +12,7 @@ import Html exposing (..)
 import Html.Attributes as A
 import Http
 import IPs
+import Input
 import Json.Decode as D
 import LocalStorage
 import Platform.Cmd as Cmd
@@ -262,16 +263,6 @@ view model =
                 Routes.NotFound ->
                     "404"
 
-        todo pageName =
-            [ div []
-                [ text <| "Page TODO: " ++ pageName
-                ]
-            , a
-                [ A.href <| Routes.toHref Routes.Home
-                ]
-                [ text "Back home" ]
-            ]
-
         body =
             case model.route of
                 Routes.Home ->
@@ -284,7 +275,7 @@ view model =
                     Dir.view model.roots path DoAction
 
                 Routes.Input ->
-                    todo "viewInput"
+                    [ Input.view DoAction ]
 
                 Routes.Remote ->
                     [ Remote.view DoAction ]
