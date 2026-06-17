@@ -11,6 +11,7 @@ import Home
 import Html exposing (..)
 import Html.Attributes as A
 import Http
+import IPs
 import Json.Decode as D
 import LocalStorage
 import Platform.Cmd as Cmd
@@ -288,7 +289,7 @@ view model =
                     todo "viewRemote"
 
                 Routes.IPs ->
-                    todo "viewIPs"
+                    [ IPs.view model.networkInfo ]
 
                 Routes.Debug_ ->
                     [ div []
