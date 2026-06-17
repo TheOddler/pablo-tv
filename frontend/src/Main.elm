@@ -198,9 +198,9 @@ sortNetworkInfo info =
         networkInterfaceWorthiness : BE.SimpleNetworkInterface -> Int
         networkInterfaceWorthiness { name, ipv4 } =
             List.sum
-                [ hasIpv4 ipv4 |> countAs 2
-                , goodName name |> countAs 1
-                , isLocalHost ipv4 |> countAs -10
+                [ hasIpv4 ipv4 |> countAs -2
+                , goodName name |> countAs -1
+                , isLocalHost ipv4 |> countAs 10
                 ]
 
         countAs val bool =
