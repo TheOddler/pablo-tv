@@ -1,74 +1,59 @@
 module Remote exposing (..)
 
+import ButtonsGrid as BG
 import Generated.Backend as BE
 import Html exposing (..)
 import Html.Attributes as A
-import Html.Events as E
 
 
 view : (BE.Action -> msg) -> Html msg
 view doAction =
     let
-        row =
-            div [ A.class "row" ]
+        button =
+            BG.button doAction
 
-        spacer =
-            div [ A.class "spacer" ] []
+        buttonRed =
+            BG.buttonRed doAction
 
-        button extraAttrs action body =
-            Html.button
-                (E.onClick (doAction action) :: extraAttrs)
-                body
+        buttonLarge =
+            BG.buttonLarge doAction
 
-        mpris a =
-            BE.ActionMedia { media = a }
-
-        keyboard k =
-            BE.ActionPressKeyboard { key = k }
-
-        icon iconClass =
-            [ i [ A.class iconClass ] [] ]
-
-        emptySpace =
-            div [] []
+        buttonDouble =
+            BG.buttonDouble doAction
     in
-    div [ A.id "buttons-grid" ]
-        [ row
-            [ button [ A.class "red" ] (mpris BE.MprisQuit) (icon "fa-solid fa-power-off")
-            , emptySpace
-            , emptySpace
-            , button [] (mpris BE.MprisGoWindowed) (icon "fa-solid fa-compress")
-            , button [] (mpris BE.MprisGoFullscreen) (icon "fa-solid fa-expand")
+    BG.buttonsGrid []
+        [ BG.row
+            [ buttonRed (BG.mpris BE.MprisQuit) "fa-solid fa-power-off"
+            , BG.emptySpace
+            , BG.emptySpace
+            , button (BG.mpris BE.MprisGoWindowed) "fa-solid fa-compress"
+            , button (BG.mpris BE.MprisGoFullscreen) "fa-solid fa-expand"
             ]
-        , row
-            [ emptySpace
-            , button [] (mpris BE.MprisPrevious) (icon "fa-solid fa-angles-left")
+        , BG.row
+            [ BG.emptySpace
+            , button (BG.mpris BE.MprisPrevious) "fa-solid fa-angles-left"
             , div [ A.class "large" ] [ text "Play", wbr [] [], text "list" ]
-            , button [] (mpris BE.MprisNext) (icon "fa-solid fa-angles-right")
-            , emptySpace
+            , button (BG.mpris BE.MprisNext) "fa-solid fa-angles-right"
+            , BG.emptySpace
             ]
-        , spacer
-        , row
-            [ emptySpace
-            , button
-                [ A.class "large" ]
-                (mpris BE.MprisPlayPause)
-                [ --       $# The extra div makes the scaling look better when button is pressed
-                  div []
-                    [ i [ A.class "fa-solid fa-play" ] []
-                    , i [ A.class "fa-solid fa-pause" ] []
-                    ]
-                ]
-            , div [ A.class "double-button" ]
-                [ button [] (keyboard BE.KeyboardVolumeUp) (icon "fa-solid fa-plus")
-                , i [ A.class "fa-solid fa-volume-high" ] []
-                , button [] (keyboard BE.KeyboardVolumeDown) (icon "fa-solid fa-minus")
-                ]
+        , BG.spacer
+        , BG.row
+            [ BG.emptySpace
+            , buttonLarge
+                (BG.mpris BE.MprisPlayPause)
+                "fa-solid fa-play"
+                "fa-solid fa-pause"
+            , buttonDouble
+                (BG.keyboard BE.KeyboardVolumeUp)
+                "fa-solid fa-plus"
+                "fa-solid fa-volume-high"
+                (BG.keyboard BE.KeyboardVolumeDown)
+                "fa-solid fa-minus"
             ]
-        , row
-            [ button [] (mpris BE.MprisBackwardJump) (icon "fa-solid fa-backward-fast")
-            , button [] (mpris BE.MprisBackwardStep) (icon "fa-solid fa-backward-step")
-            , button [] (mpris BE.MprisForwardStep) (icon "fa-solid fa-forward-step")
-            , button [] (mpris BE.MprisForwardJump) (icon "fa-solid fa-forward-fast")
+        , BG.row
+            [ button (BG.mpris BE.MprisBackwardJump) "fa-solid fa-backward-fast"
+            , button (BG.mpris BE.MprisBackwardStep) "fa-solid fa-backward-step"
+            , button (BG.mpris BE.MprisForwardStep) "fa-solid fa-forward-step"
+            , button (BG.mpris BE.MprisForwardJump) "fa-solid fa-forward-fast"
             ]
         ]
