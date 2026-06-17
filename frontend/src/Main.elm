@@ -243,7 +243,7 @@ view model =
                     "Overview"
 
                 Routes.Dir (Routes.DirPath _ names) ->
-                    "Directory " ++ String.join "/" names
+                    String.join "/" names
 
                 Routes.Input ->
                     "Input"
