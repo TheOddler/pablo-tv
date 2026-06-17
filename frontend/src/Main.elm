@@ -137,7 +137,7 @@ update msg model =
             )
 
         GotDirsUpdateResult res ->
-            onHttpSuccess (Debug.log "DirsUpdate" res) <|
+            onHttpSuccess res <|
                 \updated ->
                     ( -- This check makes sure calls to lazy work properly, otherwise even when there's no change
                       if model.roots /= updated then
