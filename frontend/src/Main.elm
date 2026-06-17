@@ -62,13 +62,14 @@ main =
 subscriptions : Model -> Sub Msg
 subscriptions _ =
     let
-        oneSecond =
-            1000
+        fiveSeconds =
+            5000
 
         refreshData _ =
             GetDirsUpdate
     in
-    Time.every oneSecond refreshData
+    -- Polling for now, we should replace this with websockets
+    Time.every fiveSeconds refreshData
 
 
 init : Flags -> Url.Url -> Nav.Key -> ( Model, Cmd Msg )
