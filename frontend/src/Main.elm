@@ -15,6 +15,7 @@ import Json.Decode as D
 import LocalStorage
 import Platform.Cmd as Cmd
 import Routes
+import Time
 import Url
 
 
@@ -36,13 +37,14 @@ type alias Flags =
 
 
 type Msg
-    = DirsUpdate (Result Http.Error BE.RootDirectories)
+    = GetDirsUpdate
+    | GotDirsUpdateResult (Result Http.Error BE.RootDirectories)
     | NetworkInfoUpdate (Result Http.Error BE.NetworkInfo)
     | GotUrlRequest Browser.UrlRequest
     | UrlChanged Url.Url
     | NavBack Int
     | DoAction BE.Action
-    | GetActionResult (Result Http.Error ())
+    | GotActionResult (Result Http.Error ())
 
 
 main : Program Flags Model Msg
@@ -51,10 +53,22 @@ main =
         { init = init
         , view = view
         , update = update
-        , subscriptions = \_ -> Sub.none
+        , subscriptions = subscriptions
         , onUrlRequest = GotUrlRequest
         , onUrlChange = UrlChanged
         }
+
+
+subscriptions : Model -> Sub Msg
+subscriptions _ =
+    let
+        oneSecond =
+            1000
+
+        refreshData _ =
+            GetDirsUpdate
+    in
+    Time.every oneSecond refreshData
 
 
 init : Flags -> Url.Url -> Nav.Key -> ( Model, Cmd Msg )
@@ -97,7 +111,7 @@ init flags url navKey =
       , errors = rootsErrors ++ networkInfoErrors
       }
     , Cmd.batch
-        [ BE.getApiData DirsUpdate
+        [ BE.getApiData GotDirsUpdateResult
         , BE.getApiNetwork NetworkInfoUpdate
         ]
     )
@@ -116,10 +130,20 @@ update msg model =
                     registerHttpError err model
     in
     case msg of
-        DirsUpdate res ->
-            onHttpSuccess res <|
+        GetDirsUpdate ->
+            ( model
+            , BE.getApiData GotDirsUpdateResult
+            )
+
+        GotDirsUpdateResult res ->
+            onHttpSuccess (Debug.log "DirsUpdate" res) <|
                 \updated ->
-                    ( { model | roots = updated }
+                    ( -- This check makes sure calls to lazy work properly, otherwise even when there's no change
+                      if model.roots /= updated then
+                        { model | roots = updated }
+
+                      else
+                        model
                     , LocalStorage.saveRoots updated
                     )
 
@@ -155,14 +179,14 @@ update msg model =
 
         DoAction action ->
             ( model
-            , BE.postApiAction action GetActionResult
+            , BE.postApiAction action GotActionResult
             )
 
-        GetActionResult result ->
+        GotActionResult result ->
             onHttpSuccess result <|
                 \() ->
                     ( model
-                    , BE.getApiData DirsUpdate
+                    , BE.getApiData GotDirsUpdateResult
                     )
 
 
@@ -209,23 +233,46 @@ registerHttpError err model =
 view : Model -> Browser.Document Msg
 view model =
     let
-        todo pageName =
-            { title = pageName ++ " TODO"
-            , body =
-                [ div []
-                    [ text <| "Page TODO: " ++ pageName
-                    ]
-                , a
-                    [ A.href <| Routes.toHref Routes.Home
-                    ]
-                    [ text "Back home" ]
-                ]
-            }
-
-        { title, body } =
+        title =
             case model.route of
                 Routes.Home ->
-                    Home.view model.roots model.startTime
+                    "Home"
+
+                Routes.DirHome ->
+                    "Overview"
+
+                Routes.Dir (Routes.DirPath _ names) ->
+                    "Directory " ++ String.join "/" names
+
+                Routes.Input ->
+                    "Input"
+
+                Routes.Remote ->
+                    "Remote"
+
+                Routes.IPs ->
+                    "IPs"
+
+                Routes.Debug_ ->
+                    "Debug"
+
+                Routes.NotFound ->
+                    "404"
+
+        todo pageName =
+            [ div []
+                [ text <| "Page TODO: " ++ pageName
+                ]
+            , a
+                [ A.href <| Routes.toHref Routes.Home
+                ]
+                [ text "Back home" ]
+            ]
+
+        body =
+            case model.route of
+                Routes.Home ->
+                    [ Home.view model.roots model.startTime ]
 
                 Routes.DirHome ->
                     Dir.viewHome model.roots DoAction
@@ -243,32 +290,26 @@ view model =
                     todo "viewIPs"
 
                 Routes.Debug_ ->
-                    { title = "Debug"
-                    , body =
-                        [ div []
-                            [ text "Errors:"
-                            ]
-                        , div [] []
+                    [ div []
+                        [ text "Errors:"
                         ]
-                            ++ List.map
-                                (\e ->
-                                    div [] [ text e ]
-                                )
-                                model.errors
-                    }
+                    , div [] []
+                    ]
+                        ++ List.map
+                            (\e ->
+                                div [] [ text e ]
+                            )
+                            model.errors
 
                 Routes.NotFound ->
-                    { title = "404"
-                    , body =
-                        [ div []
-                            [ text "Page not found."
-                            ]
-                        , a
-                            [ A.href <| Routes.toHref Routes.Home
-                            ]
-                            [ text "Back home" ]
+                    [ div []
+                        [ text "Page not found."
                         ]
-                    }
+                    , a
+                        [ A.href <| Routes.toHref Routes.Home
+                        ]
+                        [ text "Back home" ]
+                    ]
     in
     { title = title ++ " - Pablo TV"
     , body =

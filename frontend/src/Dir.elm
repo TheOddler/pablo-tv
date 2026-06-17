@@ -1,7 +1,6 @@
 module Dir exposing (..)
 
 import AggDir
-import Browser
 import Dict
 import Generated.Backend as BE
 import Html exposing (..)
@@ -17,7 +16,7 @@ import Routes
 viewHome :
     BE.RootDirectories
     -> (BE.Action -> msg)
-    -> Browser.Document msg
+    -> List (Html msg)
 viewHome roots doAction =
     let
         allFiles =
@@ -50,7 +49,7 @@ view :
     BE.RootDirectories
     -> Routes.DirPath
     -> (BE.Action -> msg)
-    -> Browser.Document msg
+    -> List (Html msg)
 view roots dirPath doAction =
     let
         (Routes.DirPath root pathParts) =
@@ -100,15 +99,12 @@ view roots dirPath doAction =
     in
     case mDirData of
         Nothing ->
-            { title = String.join "/" pathParts ++ " - Pablo TV"
-            , body =
-                [ div [] [ text "Unknown directory :(" ]
-                , a
-                    [ A.href <| Routes.toHref Routes.Home
-                    ]
-                    [ text "Back home" ]
+            [ div [] [ text "Unknown directory :(" ]
+            , a
+                [ A.href <| Routes.toHref Routes.Home
                 ]
-            }
+                [ text "Back home" ]
+            ]
 
         Just data ->
             let
@@ -148,7 +144,7 @@ view_ :
     -> List ( Routes.DirPath, BE.VideoFileName, BE.VideoFileData )
     -> List AggDir.AggDirInfo
     -> (BE.Action -> msg)
-    -> Browser.Document msg
+    -> List (Html msg)
 view_ mDirPath dirImage unsortedFiles unsortedSubDirs doAction =
     let
         image =
@@ -197,176 +193,167 @@ view_ mDirPath dirImage unsortedFiles unsortedSubDirs doAction =
             else
                 text ""
     in
-    { title =
-        case mDirPath of
+    [ div [ A.id "dir-container" ]
+        [ -- Image
+          case image of
             Nothing ->
-                "Overview"
+                text ""
 
-            Just (Routes.DirPath _ pathParts) ->
-                String.join "/" pathParts
-    , body =
-        [ div [ A.id "dir-container" ]
-            [ -- Image
-              case image of
-                Nothing ->
-                    text ""
+            Just (BE.Image i) ->
+                img
+                    [ A.src <| "/image/" ++ i.cached
+                    , A.alt "Poster"
+                    , A.class "header"
+                    ]
+                    []
 
-                Just (BE.Image i) ->
-                    img
-                        [ A.src <| "/image/" ++ i.cached
-                        , A.alt "Poster"
-                        , A.class "header"
-                        ]
-                        []
+        -- Title
+        , h1 []
+            [ text title
+            , if subTitle == "" then
+                text ""
 
-            -- Title
-            , h1 []
-                [ text title
-                , if subTitle == "" then
-                    text ""
+              else
+                span [ A.class "sub-title" ] [ text subTitle ]
+            ]
 
-                  else
-                    span [ A.class "sub-title" ] [ text subTitle ]
+        -- Top buttons
+        , iff (List.length files > 1 && List.length subDirs > 0) <|
+            div [ A.class "section" ]
+                [ div [ A.class "row white" ]
+                    [ ifJust mDirPath <|
+                        \dirPath ->
+                            button
+                                [ A.class "like-link large name"
+                                , E.onClick <|
+                                    doAction <|
+                                        BE.ActionPlayPath
+                                            { path = Routes.toRawWebPath dirPath }
+                                ]
+                                [ i [ A.class "fa-solid fa-play" ] []
+                                , span [] [ text "Play All" ]
+                                ]
+                    , ifAndJust (List.length files > 0) mDirPath <|
+                        \dirPath ->
+                            button
+                                [ A.class "like-link"
+                                , E.onClick <|
+                                    doAction <|
+                                        BE.ActionMarkAsWatched
+                                            { path = Routes.toRawWebPath dirPath }
+                                ]
+                                [ i [ A.class "fa-regular fa-eye" ] [] ]
+                    , ifAndJust (List.length files > 0) mDirPath <|
+                        \dirPath ->
+                            button
+                                [ A.class "like-link"
+                                , E.onClick <|
+                                    doAction <|
+                                        BE.ActionMarkAsUnwatched
+                                            { path = Routes.toRawWebPath dirPath }
+                                ]
+                                [ i [ A.class "fa-regular fa-eye-slash" ] [] ]
+                    ]
                 ]
 
-            -- Top buttons
-            , iff (List.length files > 1 && List.length subDirs > 0) <|
-                div [ A.class "section" ]
-                    [ div [ A.class "row white" ]
-                        [ ifJust mDirPath <|
-                            \dirPath ->
-                                button
-                                    [ A.class "like-link large name"
-                                    , E.onClick <|
-                                        doAction <|
-                                            BE.ActionPlayPath
-                                                { path = Routes.toRawWebPath dirPath }
-                                    ]
-                                    [ i [ A.class "fa-solid fa-play" ] []
-                                    , span [] [ text "Play All" ]
-                                    ]
-                        , ifAndJust (List.length files > 0) mDirPath <|
-                            \dirPath ->
-                                button
-                                    [ A.class "like-link"
-                                    , E.onClick <|
-                                        doAction <|
-                                            BE.ActionMarkAsWatched
-                                                { path = Routes.toRawWebPath dirPath }
-                                    ]
-                                    [ i [ A.class "fa-regular fa-eye" ] [] ]
-                        , ifAndJust (List.length files > 0) mDirPath <|
-                            \dirPath ->
-                                button
-                                    [ A.class "like-link"
-                                    , E.onClick <|
-                                        doAction <|
-                                            BE.ActionMarkAsUnwatched
-                                                { path = Routes.toRawWebPath dirPath }
-                                    ]
-                                    [ i [ A.class "fa-regular fa-eye-slash" ] [] ]
-                        ]
-                    ]
-
-            -- Files
-            , iff (List.length files > 0) <|
-                div [ A.class "section" ] <|
-                    List.map
-                        (\( dirPath, name, data ) ->
-                            div
-                                [ A.class "row"
-                                , A.class <|
-                                    case data.watched of
-                                        Nothing ->
-                                            "unwatched"
-
-                                        Just _ ->
-                                            "watched"
-                                ]
-                                [ button
-                                    [ A.class "name like-link"
-                                    , A.title <| "Play: " ++ name
-                                    , E.onClick <|
-                                        doAction <|
-                                            BE.ActionPlayPath
-                                                { path = Routes.toRawWebPathFile dirPath name }
-                                    ]
-                                    [ i [ A.class "fa-solid fa-play" ] []
-
-                                    -- TODO: Improve the names with prefix, unique and suffix
-                                    -- $# We have no gap in the flexbox here, rather we use nbsp to add whitespace that can shrink with the element
-                                    -- &nbsp;
-                                    -- <span class="prefix">#{fileNamePrefix}&nbsp;
-                                    -- <span class="unique">#{fileNameMiddle}
-                                    -- <span class="suffix">&nbsp;#{fileNameSuffix}
-                                    , text name
-                                    ]
-                                , case data.watched of
+        -- Files
+        , iff (List.length files > 0) <|
+            div [ A.class "section" ] <|
+                List.map
+                    (\( dirPath, name, data ) ->
+                        div
+                            [ A.class "row"
+                            , A.class <|
+                                case data.watched of
                                     Nothing ->
-                                        i [] []
+                                        "unwatched"
 
                                     Just _ ->
-                                        i [ A.class "fa-solid fa-check" ] []
-                                , button
-                                    [ A.class "like-link"
-                                    , A.title <| "Mark as watched: " ++ name
-                                    , E.onClick <|
-                                        doAction <|
-                                            BE.ActionMarkAsWatched
-                                                { path = Routes.toRawWebPathFile dirPath name }
-                                    ]
-                                    [ i [ A.class "fa-regular fa-eye" ] [] ]
-                                , button
-                                    [ A.class "like-link"
-                                    , A.title <| "Mark as unwatched: " ++ name
-                                    , E.onClick <|
-                                        doAction <|
-                                            BE.ActionMarkAsUnwatched
-                                                { path = Routes.toRawWebPathFile dirPath name }
-                                    ]
-                                    [ i [ A.class "fa-regular fa-eye-slash" ] [] ]
-                                ]
-                        )
-                        files
-
-            -- Sub directories
-            , iff (List.length subDirs > 0) <|
-                div [ A.class "section" ] <|
-                    List.map
-                        (\aggDir ->
-                            div
-                                [ A.class "row"
-                                , A.class <|
-                                    if aggDir.videoFileCount == aggDir.playedVideoFileCount then
                                         "watched"
-
-                                    else if aggDir.playedVideoFileCount > 0 then
-                                        "watching"
-
-                                    else
-                                        "unwatched"
+                            ]
+                            [ button
+                                [ A.class "name like-link"
+                                , A.title <| "Play: " ++ name
+                                , E.onClick <|
+                                    doAction <|
+                                        BE.ActionPlayPath
+                                            { path = Routes.toRawWebPathFile dirPath name }
                                 ]
-                                [ a
-                                    [ A.href <| Routes.toHref <| Routes.Dir aggDir.path
-                                    , A.class "name"
-                                    ]
-                                    [ i [ A.class "fa-regular fa-folder-open" ] []
-                                    , nbsp
-                                    , span [] [ text aggDir.name ]
-                                    ]
-                                , div [] [] -- Just there to make the css easier, it's in place of the watched file tick
-                                , i [ A.class "#{dirIcon dir}" ] []
-                                , span []
-                                    [ text <| String.fromInt aggDir.playedVideoFileCount
-                                    , text "/"
-                                    , text <| String.fromInt aggDir.videoFileCount
-                                    ]
-                                ]
-                        )
-                        subDirs
+                                [ i [ A.class "fa-solid fa-play" ] []
 
-            -- A bit of extra space at the bottom
-            , div [ A.class "bottom-spacer" ] [ nbsp ]
-            ]
+                                -- TODO: Improve the names with prefix, unique and suffix
+                                -- $# We have no gap in the flexbox here, rather we use nbsp to add whitespace that can shrink with the element
+                                -- &nbsp;
+                                -- <span class="prefix">#{fileNamePrefix}&nbsp;
+                                -- <span class="unique">#{fileNameMiddle}
+                                -- <span class="suffix">&nbsp;#{fileNameSuffix}
+                                , text name
+                                ]
+                            , case data.watched of
+                                Nothing ->
+                                    i [] []
+
+                                Just _ ->
+                                    i [ A.class "fa-solid fa-check" ] []
+                            , button
+                                [ A.class "like-link"
+                                , A.title <| "Mark as watched: " ++ name
+                                , E.onClick <|
+                                    doAction <|
+                                        BE.ActionMarkAsWatched
+                                            { path = Routes.toRawWebPathFile dirPath name }
+                                ]
+                                [ i [ A.class "fa-regular fa-eye" ] [] ]
+                            , button
+                                [ A.class "like-link"
+                                , A.title <| "Mark as unwatched: " ++ name
+                                , E.onClick <|
+                                    doAction <|
+                                        BE.ActionMarkAsUnwatched
+                                            { path = Routes.toRawWebPathFile dirPath name }
+                                ]
+                                [ i [ A.class "fa-regular fa-eye-slash" ] [] ]
+                            ]
+                    )
+                    files
+
+        -- Sub directories
+        , iff (List.length subDirs > 0) <|
+            div [ A.class "section" ] <|
+                List.map
+                    (\aggDir ->
+                        div
+                            [ A.class "row"
+                            , A.class <|
+                                if aggDir.videoFileCount == aggDir.playedVideoFileCount then
+                                    "watched"
+
+                                else if aggDir.playedVideoFileCount > 0 then
+                                    "watching"
+
+                                else
+                                    "unwatched"
+                            ]
+                            [ a
+                                [ A.href <| Routes.toHref <| Routes.Dir aggDir.path
+                                , A.class "name"
+                                ]
+                                [ i [ A.class "fa-regular fa-folder-open" ] []
+                                , nbsp
+                                , span [] [ text aggDir.name ]
+                                ]
+                            , div [] [] -- Just there to make the css easier, it's in place of the watched file tick
+                            , i [ A.class "#{dirIcon dir}" ] []
+                            , span []
+                                [ text <| String.fromInt aggDir.playedVideoFileCount
+                                , text "/"
+                                , text <| String.fromInt aggDir.videoFileCount
+                                ]
+                            ]
+                    )
+                    subDirs
+
+        -- A bit of extra space at the bottom
+        , div [ A.class "bottom-spacer" ] [ nbsp ]
         ]
-    }
+    ]

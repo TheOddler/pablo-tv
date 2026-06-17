@@ -1,10 +1,10 @@
 module Home exposing (..)
 
 import AggDir exposing (AggDirInfo)
-import Browser
 import Generated.Backend exposing (..)
 import Html exposing (..)
 import Html.Attributes as A
+import Html.Lazy
 import Random
 import Routes
 
@@ -45,37 +45,35 @@ viewPoster dir =
         ]
 
 
-view : RootDirectories -> Int -> Browser.Document msg
-view roots startTime =
-    let
-        aggInfos =
-            AggDir.calcForSubDirsOfRoots roots
+view : RootDirectories -> Int -> Html msg
+view =
+    Html.Lazy.lazy2 <|
+        \roots startTime ->
+            let
+                aggInfos =
+                    AggDir.calcForSubDirsOfRoots roots
 
-        seed1 =
-            Random.initialSeed startTime
+                seed1 =
+                    Random.initialSeed startTime
 
-        seed2 =
-            Random.initialSeed <| startTime + 42
+                seed2 =
+                    Random.initialSeed <| startTime + 42
 
-        row filter sorting =
-            viewRow <|
-                AggDir.filterAndSort filter sorting aggInfos
-    in
-    { title = "Home"
-    , body =
-        [ div [ A.id "home-container" ]
-            [ h1 [] [ text "Watching" ]
-            , row AggDir.Watching AggDir.RecentlyWatched
-            , h1 [] [ text "New" ]
-            , row AggDir.NothingWatched AggDir.RecentlyAdded
-            , h1 [] [ text "Random" ]
-            , row AggDir.NothingWatched (AggDir.Shuffled seed1)
-            , h1 [] [ text "Recently Added" ]
-            , row AggDir.Unfiltered AggDir.RecentlyAdded
-            , h1 [] [ text "Random (All)" ]
-            , row AggDir.Unfiltered (AggDir.Shuffled seed2)
-            , h1 [] [ text "Recently Finished" ]
-            , row AggDir.FullyWatched AggDir.RecentlyWatched
-            ]
-        ]
-    }
+                row filter sorting =
+                    viewRow <|
+                        AggDir.filterAndSort filter sorting aggInfos
+            in
+            div [ A.id "home-container" ]
+                [ h1 [] [ text "Watching" ]
+                , row AggDir.Watching AggDir.RecentlyWatched
+                , h1 [] [ text "New" ]
+                , row AggDir.NothingWatched AggDir.RecentlyAdded
+                , h1 [] [ text "Random" ]
+                , row AggDir.NothingWatched (AggDir.Shuffled seed1)
+                , h1 [] [ text "Recently Added" ]
+                , row AggDir.Unfiltered AggDir.RecentlyAdded
+                , h1 [] [ text "Random (All)" ]
+                , row AggDir.Unfiltered (AggDir.Shuffled seed2)
+                , h1 [] [ text "Recently Finished" ]
+                , row AggDir.FullyWatched AggDir.RecentlyWatched
+                ]
