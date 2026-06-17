@@ -2,6 +2,9 @@
   display: flex;
   flex-direction: column;
   align-items: center;
+  // Need to set the height so the poster shrinks if it's too big, otherwise this container just grows
+  height: 100%;
+  width: 100%;
 
   >* {
     flex-shrink: 0;
