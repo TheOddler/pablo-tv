@@ -15,6 +15,7 @@ import IPs
 import Json.Decode as D
 import LocalStorage
 import Platform.Cmd as Cmd
+import Remote
 import Routes
 import Time
 import Url
@@ -286,7 +287,7 @@ view model =
                     todo "viewInput"
 
                 Routes.Remote ->
-                    todo "viewRemote"
+                    [ Remote.view DoAction ]
 
                 Routes.IPs ->
                     [ IPs.view model.networkInfo ]

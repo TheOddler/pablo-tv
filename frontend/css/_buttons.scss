@@ -1,0 +1,149 @@
+#buttons-grid {
+  $red: rgb(210, 30, 45);
+  $button-shadow: inset 1pt -2pt 2pt 1pt rgba(0, 0, 0, 0.3),
+    inset -1pt 2pt 2pt 2pt rgba(255, 255, 255, 0.6),
+    1pt -1pt 2pt 3pt rgba(0, 0, 0, 1),
+    -1pt 2pt 2pt 3pt rgba(255, 255, 255, 0.3),
+    0 0 50pt 5pt rgba(255, 255, 255, 0.2);
+  $button-pressed-shadow: inset 0 0 2pt 2pt black;
+  $button-pressed-scale: scale(0.90);
+  $header-height: 3em;
+
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  height: 100%;
+
+  .spacer {
+    flex: 1;
+  }
+
+  .row {
+    display: flex;
+    flex-direction: row;
+    justify-content: space-evenly;
+    align-items: center;
+    gap: 10pt;
+    width: 100%;
+    max-width: 70vh;
+    padding: 15pt;
+
+    >* {
+      flex: 1;
+      text-align: center;
+
+      &.large {
+        flex: 1.5;
+      }
+    }
+
+
+    i {
+      font-size: 5svh;
+    }
+
+    svg {
+      height: 7svh;
+      width: 7svh;
+    }
+
+    >button,
+    >.button,
+    >.double-button {
+      cursor: pointer;
+      border-radius: 999lvh;
+      color: black;
+      padding: 0;
+
+      background: lightgrey;
+      background: radial-gradient(circle,
+          rgb(230, 230, 230) 0%,
+          rgb(230, 230, 230) 40%,
+          rgb(180, 180, 180) 80%,
+          rgb(180, 180, 180) 100%);
+      box-shadow: $button-shadow;
+      border: none;
+
+      &.red {
+        background: $red;
+        color: white;
+      }
+    }
+
+    >button,
+    >.button {
+      aspect-ratio: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+
+      &:visited {
+        color: black;
+      }
+
+      &:active {
+        box-shadow:
+          $button-pressed-shadow,
+          $button-shadow;
+
+        >* {
+          transform: $button-pressed-scale;
+        }
+      }
+
+      &.flat {
+        aspect-ratio: 2;
+      }
+
+      &.double-width {
+        aspect-ratio: 2;
+        flex: 2;
+      }
+    }
+
+    >.double-button {
+      display: flex;
+      flex-direction: column;
+      align-self: stretch;
+
+      >button,
+      .button {
+        cursor: pointer;
+        flex: 1;
+        border: none;
+        background: none;
+
+        &:active {
+          box-shadow: $button-pressed-shadow;
+
+          >* {
+            transform: $button-pressed-scale;
+          }
+        }
+
+        &:first-child {
+          border-top-left-radius: 999lvh;
+          border-top-right-radius: 999lvh;
+        }
+
+        &:last-child {
+          border-bottom-left-radius: 999lvh;
+          border-bottom-right-radius: 999lvh;
+        }
+      }
+
+      /* This is an optional in-between icon for the double button
+        For example the sound icon in the volume control
+      */
+      >i {
+        height: 0;
+        width: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: rgba(0, 0, 0, 0.3);
+      }
+    }
+  }
+}
