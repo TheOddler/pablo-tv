@@ -28,6 +28,7 @@ type alias Model =
     , networkInfo : BE.NetworkInfo
     , navKey : Nav.Key
     , route : Routes.Route
+    , inputModel : Input.Model
     , errors : List String
     }
 
@@ -48,6 +49,7 @@ type Msg
     | NavBack Int
     | DoAction BE.Action
     | GotActionResult (Result Http.Error ())
+    | InputMsg Input.Msg
 
 
 main : Program Flags Model Msg
@@ -112,6 +114,7 @@ init flags url navKey =
       , networkInfo = networkInfo -- Network info is sorted when I save it to the local storage, so no need to sort again here
       , navKey = navKey
       , route = Routes.parse (Dict.keys roots) url
+      , inputModel = Input.init
       , errors = rootsErrors ++ networkInfoErrors
       }
     , Cmd.batch
@@ -131,7 +134,9 @@ update msg model =
                     onSucc ok
 
                 Err err ->
-                    registerHttpError err model
+                    ( registerHttpError err model
+                    , Cmd.none
+                    )
     in
     case msg of
         GetDirsUpdate ->
@@ -193,6 +198,23 @@ update msg model =
                     , BE.getApiData GotDirsUpdateResult
                     )
 
+        InputMsg inputMsg ->
+            let
+                ( newInputModel, cmd, mError ) =
+                    Input.update inputMsg model.inputModel
+
+                newModel =
+                    { model | inputModel = newInputModel }
+            in
+            ( case mError of
+                Nothing ->
+                    newModel
+
+                Just err ->
+                    registerHttpError err newModel
+            , Cmd.map InputMsg cmd
+            )
+
 
 sortNetworkInfo : BE.NetworkInfo -> BE.NetworkInfo
 sortNetworkInfo info =
@@ -227,11 +249,9 @@ sortNetworkInfo info =
     }
 
 
-registerHttpError : Http.Error -> Model -> ( Model, Cmd Msg )
+registerHttpError : Http.Error -> Model -> Model
 registerHttpError err model =
-    ( { model | errors = Error.httpErrorToString err :: model.errors }
-    , Cmd.none
-    )
+    { model | errors = Error.httpErrorToString err :: model.errors }
 
 
 view : Model -> Browser.Document Msg
@@ -275,7 +295,7 @@ view model =
                     Dir.view model.roots path DoAction
 
                 Routes.Input ->
-                    [ Input.view DoAction ]
+                    [ map InputMsg Input.view ]
 
                 Routes.Remote ->
                     [ Remote.view DoAction ]

@@ -4,12 +4,55 @@ import ButtonsGrid as BG
 import Generated.Backend as BE
 import Html exposing (..)
 import Html.Attributes as A
+import Http
 import Svg exposing (..)
 import Svg.Attributes as SvgAttr
 
 
-view : (BE.Action -> msg) -> Html msg
-view doAction =
+type alias Model =
+    { fingerX : Float
+    , fingerY : Float
+    }
+
+
+init : Model
+init =
+    { fingerX = 0
+    , fingerY = 0
+    }
+
+
+type Msg
+    = DoAction BE.Action
+    | GotActionResult (Result Http.Error ())
+
+
+update : Msg -> Model -> ( Model, Cmd Msg, Maybe Http.Error )
+update msg model =
+    case msg of
+        DoAction action ->
+            ( model
+            , BE.postApiAction action GotActionResult
+            , Nothing
+            )
+
+        GotActionResult (Ok ()) ->
+            ( model
+            , -- Contrary to actions in the rest of the app, we do not want to request a data update here as we know the actions here are very unlikely to change the data.
+              -- The only way really they might change the data is when you use the mouse to make changed on the tv interface, but then we'll get the update of the data soon enough through polling or websockets or something
+              Cmd.none
+            , Nothing
+            )
+
+        GotActionResult (Err err) ->
+            ( model
+            , Cmd.none
+            , Just err
+            )
+
+
+view : Html Msg
+view =
     let
         -- SVG converted using https://html-to-elm.com/
         leftMouseSvg =
