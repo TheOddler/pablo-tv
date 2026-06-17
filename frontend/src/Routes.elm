@@ -105,4 +105,4 @@ toRawWebPath (DirPath root names) =
 
 toRawWebPathFile : DirPath -> BE.VideoFileName -> BE.RawWebPath
 toRawWebPathFile (DirPath root names) fileName =
-    root ++ "/" ++ String.join "/" names ++ "/" ++ fileName
+    root ++ "/" ++ String.join "/" (names ++ [ fileName ])
