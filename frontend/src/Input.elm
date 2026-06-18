@@ -214,14 +214,13 @@ view =
                 (BG.icon "fa-solid fa-arrows-to-dot")
             ]
         , div
-            [ A.class "row grow"
+            [ A.class "row grow trackpad"
             , Touch.onStart TrackpadTouchStart
             , Touch.onMove TrackpadTouchMove
             , Touch.onEnd TrackpadTouchEndOrCancel
             , Touch.onCancel TrackpadTouchEndOrCancel
             ]
-            [ div [ A.id "trackpad" ] []
-            ]
+            []
 
         -- , BG.row
         --     [ div [ A.id "left", A.class "button flat" ] [ leftMouseSvg ]
