@@ -12,20 +12,22 @@ import Svg.Attributes as SvgAttr
 
 type alias Model =
     { -- So we don't DDOS our own server, allow just one request at a time
-      currentlySendingData : Bool
+      currentlySendingTrackpadData : Bool
     , lastRelevantTouch : Maybe Touch.Touch
     }
 
 
 init : Model
 init =
-    { currentlySendingData = False
+    { currentlySendingTrackpadData = False
     , lastRelevantTouch = Nothing
     }
 
 
 type Msg
-    = GotActionResult (Result Http.Error ())
+    = DoAction BE.Action
+    | GotActionResult (Result Http.Error ())
+    | GotTrackpadActionResult (Result Http.Error ())
     | TrackpadTouchStart Touch.Event
     | TrackpadTouchMove Touch.Event
     | TrackpadTouchEndOrCancel Touch.Event
@@ -52,14 +54,31 @@ update msg model =
                     Just <|
                         BE.postApiAction
                             (BE.ActionMoveMouse <| posDiff curTouch lastTouch)
-                            GotActionResult
+                            GotTrackpadActionResult
 
                 _ ->
                     Nothing
     in
     case msg of
+        DoAction action ->
+            ( model
+            , BE.postApiAction action GotActionResult
+            , Nothing
+            )
+
         GotActionResult result ->
-            ( { model | currentlySendingData = False }
+            ( model
+            , Cmd.none
+            , case result of
+                Ok () ->
+                    Nothing
+
+                Err err ->
+                    Just err
+            )
+
+        GotTrackpadActionResult result ->
+            ( { model | currentlySendingTrackpadData = False }
             , -- Contrary to actions in the rest of the app, we do not want to request a data update here as we know the actions here are very unlikely to change the data.
               -- The only way really they might change the data is when you use the mouse to make changed on the tv interface, but then we'll get the update of the data soon enough through polling or websockets or something
               Cmd.none
@@ -83,7 +102,7 @@ update msg model =
             )
 
         TrackpadTouchMove event ->
-            if model.currentlySendingData then
+            if model.currentlySendingTrackpadData then
                 ( model, Cmd.none, Nothing )
 
             else
@@ -92,13 +111,13 @@ update msg model =
                         ( model, Cmd.none, Nothing )
 
                     Just cmd ->
-                        ( { model | lastRelevantTouch = List.head event.changedTouches, currentlySendingData = True }
+                        ( { model | lastRelevantTouch = List.head event.changedTouches, currentlySendingTrackpadData = True }
                         , cmd
                         , Nothing
                         )
 
         TrackpadTouchEndOrCancel event ->
-            if model.currentlySendingData then
+            if model.currentlySendingTrackpadData then
                 ( { model | lastRelevantTouch = Nothing }, Cmd.none, Nothing )
 
             else
@@ -107,7 +126,7 @@ update msg model =
                         ( { model | lastRelevantTouch = Nothing }, Cmd.none, Nothing )
 
                     Just cmd ->
-                        ( { model | lastRelevantTouch = Nothing, currentlySendingData = True }
+                        ( { model | lastRelevantTouch = Nothing, currentlySendingTrackpadData = True }
                         , cmd
                         , Nothing
                         )
@@ -199,17 +218,17 @@ view =
                     ]
                     []
                 ]
+
+        button =
+            BG.button DoAction
     in
     BG.buttonsGrid [ A.id "input-container" ]
         [ BG.row
             [ div [ A.id "keyboard", A.class "button double-width" ]
                 (BG.icon "fa-solid fa-keyboard")
-            , div [ A.id "move-cursor-left", A.class "button" ]
-                (BG.icon "fa-solid fa-chevron-left")
-            , div [ A.id "move-cursor-right", A.class "button" ]
-                (BG.icon "fa-solid fa-chevron-right")
-            , div [ A.id "backspace", A.class "button" ]
-                (BG.icon "fa-solid fa-delete-left")
+            , button (BG.keyboard BE.KeyboardLeftArrow) "fa-solid fa-chevron-left"
+            , button (BG.keyboard BE.KeyboardRightArrow) "fa-solid fa-chevron-right"
+            , button (BG.keyboard BE.KeyboardBackspace) "fa-solid fa-delete-left"
             , div [ A.id "recenter", A.class "button" ]
                 (BG.icon "fa-solid fa-arrows-to-dot")
             ]
