@@ -4,51 +4,113 @@ import ButtonsGrid as BG
 import Generated.Backend as BE
 import Html exposing (..)
 import Html.Attributes as A
+import Html.Events.Extra.Touch as Touch
 import Http
 import Svg exposing (..)
 import Svg.Attributes as SvgAttr
 
 
 type alias Model =
-    { fingerX : Float
-    , fingerY : Float
+    { -- So we don't DDOS our own server, allow just one request at a time
+      currentlySendingData : Bool
+    , lastRelevantTouch : Maybe Touch.Touch
     }
 
 
 init : Model
 init =
-    { fingerX = 0
-    , fingerY = 0
+    { currentlySendingData = False
+    , lastRelevantTouch = Nothing
     }
 
 
 type Msg
-    = DoAction BE.Action
-    | GotActionResult (Result Http.Error ())
+    = GotActionResult (Result Http.Error ())
+    | TrackpadTouchStart Touch.Event
+    | TrackpadTouchMove Touch.Event
+    | TrackpadTouchEndOrCancel Touch.Event
 
 
 update : Msg -> Model -> ( Model, Cmd Msg, Maybe Http.Error )
 update msg model =
-    case msg of
-        DoAction action ->
-            ( model
-            , BE.postApiAction action GotActionResult
-            , Nothing
-            )
+    let
+        posDiff t1 t2 =
+            let
+                ( x1, y1 ) =
+                    t1.clientPos
 
-        GotActionResult (Ok ()) ->
-            ( model
+                ( x2, y2 ) =
+                    t2.clientPos
+            in
+            { x = round <| x1 - x2
+            , y = round <| y1 - y2
+            }
+
+        mkDoMouseMove event =
+            case ( model.lastRelevantTouch, List.head event.changedTouches ) of
+                ( Just lastTouch, Just curTouch ) ->
+                    Just <|
+                        BE.postApiAction
+                            (BE.ActionMoveMouse <| posDiff curTouch lastTouch)
+                            GotActionResult
+
+                _ ->
+                    Nothing
+    in
+    case msg of
+        GotActionResult result ->
+            ( { model | currentlySendingData = False }
             , -- Contrary to actions in the rest of the app, we do not want to request a data update here as we know the actions here are very unlikely to change the data.
               -- The only way really they might change the data is when you use the mouse to make changed on the tv interface, but then we'll get the update of the data soon enough through polling or websockets or something
               Cmd.none
+            , case result of
+                Ok () ->
+                    Nothing
+
+                Err err ->
+                    Just err
+            )
+
+        TrackpadTouchStart event ->
+            ( case model.lastRelevantTouch of
+                Just _ ->
+                    model
+
+                Nothing ->
+                    { model | lastRelevantTouch = List.head event.changedTouches }
+            , Cmd.none
             , Nothing
             )
 
-        GotActionResult (Err err) ->
-            ( model
-            , Cmd.none
-            , Just err
-            )
+        TrackpadTouchMove event ->
+            if model.currentlySendingData then
+                ( model, Cmd.none, Nothing )
+
+            else
+                case mkDoMouseMove event of
+                    Nothing ->
+                        ( model, Cmd.none, Nothing )
+
+                    Just cmd ->
+                        ( { model | lastRelevantTouch = List.head event.changedTouches, currentlySendingData = True }
+                        , cmd
+                        , Nothing
+                        )
+
+        TrackpadTouchEndOrCancel event ->
+            if model.currentlySendingData then
+                ( { model | lastRelevantTouch = Nothing }, Cmd.none, Nothing )
+
+            else
+                case mkDoMouseMove event of
+                    Nothing ->
+                        ( { model | lastRelevantTouch = Nothing }, Cmd.none, Nothing )
+
+                    Just cmd ->
+                        ( { model | lastRelevantTouch = Nothing, currentlySendingData = True }
+                        , cmd
+                        , Nothing
+                        )
 
 
 view : Html Msg
@@ -151,13 +213,20 @@ view =
             , div [ A.id "recenter", A.class "button" ]
                 (BG.icon "fa-solid fa-arrows-to-dot")
             ]
-        , div [ A.class "row grow" ]
+        , div
+            [ A.class "row grow"
+            , Touch.onStart TrackpadTouchStart
+            , Touch.onMove TrackpadTouchMove
+            , Touch.onEnd TrackpadTouchEndOrCancel
+            , Touch.onCancel TrackpadTouchEndOrCancel
+            ]
             [ div [ A.id "trackpad" ] []
             ]
-        , BG.row
-            [ div [ A.id "left", A.class "button flat" ] [ leftMouseSvg ]
-            , div [ A.id "pointer", A.class "button flat" ]
-                (BG.icon "fa-solid fa-wand-magic-sparkles")
-            , div [ A.id "right", A.class "button flat" ] [ rightMouseSvg ]
-            ]
+
+        -- , BG.row
+        --     [ div [ A.id "left", A.class "button flat" ] [ leftMouseSvg ]
+        --     , div [ A.id "pointer", A.class "button flat" ]
+        --         (BG.icon "fa-solid fa-wand-magic-sparkles")
+        --     , div [ A.id "right", A.class "button flat" ] [ rightMouseSvg ]
+        --     ]
         ]

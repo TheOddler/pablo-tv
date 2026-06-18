@@ -21,6 +21,7 @@
             "elm-community/maybe-extra": "5.3.0",
             "elm-community/random-extra": "3.2.0",
             "mcordova47/elm-natural-ordering": "1.1.0",
+            "mpizenberg/elm-pointer-events": "5.0.0",
             "rtfeldman/elm-iso8601-date-strings": "1.1.4"
         },
         "indirect": {
