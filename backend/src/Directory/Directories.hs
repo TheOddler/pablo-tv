@@ -19,7 +19,7 @@ import Data.Maybe (isJust)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Directory.Files
-import GHC.Data.Maybe (firstJusts, orElse)
+import GHC.Data.Maybe (firstJusts)
 import JSON (HasJSONPrefix (..), deriveJSONPrefixed)
 import Orphanage ()
 import SafeIO (SafeIO (..))
@@ -135,37 +135,6 @@ data DirectoryData = DirectoryData
 
 instance HasJSONPrefix DirectoryData where
   type JSONPrefix DirectoryData = "directory"
-
-data DirectoryKindGuess
-  = DirectoryKindMovie Text -- Best guess for the movie title
-  | DirectoryKindSeries Text -- Best guess for the series' name
-  | DirectoryKindSeriesSeason -- For now we don't need any extra info about seasons
-  | DirectoryKindUnknown
-
-guessDirectoryKind :: DirectoryName -> DirectoryData -> DirectoryKindGuess
-guessDirectoryKind dirName dirData =
-  let (title, _rest) = splitTitleFromDir dirName
-      dirSeasonIndicator = isJust $ seasonFromDir dirName
-      subDirsSeasonIndicators =
-        any (isJust . seasonFromDir) $ Map.keys dirData.directorySubDirs
-      hasSubDirs = not $ null dirData.directorySubDirs
-      filesSeasonIndicator = isJust $ seasonFromFiles $ Map.keys dirData.directoryVideoFiles
-      hasMovieFiles = not $ null dirData.directoryVideoFiles
-   in firstJusts
-        [ if dirSeasonIndicator
-            then Just DirectoryKindSeriesSeason
-            else Nothing,
-          if subDirsSeasonIndicators && not hasMovieFiles
-            then Just $ DirectoryKindSeries title
-            else Nothing,
-          if filesSeasonIndicator && not hasSubDirs
-            then Just $ DirectoryKindSeries title
-            else Nothing,
-          if not filesSeasonIndicator && not hasSubDirs
-            then Just $ DirectoryKindMovie title
-            else Nothing
-        ]
-        `orElse` DirectoryKindUnknown
 
 -- Other helpers
 
