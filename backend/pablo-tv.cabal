@@ -100,7 +100,6 @@ library
     scalpel,
     scientific,
     servant-server,
-    shakespeare,
     stm,
     template-haskell,
     text,

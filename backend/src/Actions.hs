@@ -8,7 +8,7 @@ module Actions where
 
 import Control.Monad.IO.Class (MonadIO (..))
 import Control.Monad.Trans.Reader (ask)
-import Data.Aeson (ToJSON (..), encode)
+import Data.Aeson (encode)
 import Data.Char (isSpace)
 import Data.Int (Int32)
 import Data.List (dropWhileEnd, nub)
@@ -40,7 +40,6 @@ import SafeIO (SafeIO, getCurrentTime)
 import System.Process (callProcess, readProcess)
 import TVState (TVState (..))
 import Text.Blaze qualified as Blaze
-import Text.Julius (ToJavascript (..))
 import Util (showT)
 
 data Action
@@ -97,9 +96,6 @@ deriveJSONPrefixed ''KeyboardButton
 deriveJSONPrefixed ''Action
 
 -- Instances that use the JSON instances
-
-instance ToJavascript Action where
-  toJavascript = toJavascript . toJSON
 
 instance Blaze.ToMarkup Action where
   toMarkup = Blaze.lazyText . T.decodeUtf8 . encode
