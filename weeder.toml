@@ -14,6 +14,7 @@ type-class-roots = false
 
 root-instances = [
   { class = "\\.Eq$" },
+  { class = "\\.Arbitrary$" },
   { class = "\\.IsString$" },
   { class = "\\.IsList$" },
   { class = "\\.HasJSONPrefix$" },
