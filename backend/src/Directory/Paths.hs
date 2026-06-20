@@ -18,7 +18,7 @@ import Util.TextWithoutSeparator (TextWithoutSeparator (..), Unwrap (..), splitA
 -- Raw Web Path
 
 newtype RawWebPath = RawWebPath {unRawWebPath :: [TextWithoutSeparator]}
-  deriving (Eq, Show, Read, Semigroup)
+  deriving (Eq, Show, Semigroup)
 
 instance ToJSON RawWebPath where
   toJSON = toJSON . unsplitSeparatedText . unRawWebPath
@@ -57,17 +57,6 @@ rawWebPathFromDirectory dirPath =
 rawWebPathToDirectory :: RootDirectories -> RawWebPath -> Maybe DirectoryPath
 rawWebPathToDirectory roots raw = case rawWebPathToVideoFileOrDirectory roots raw of
   Just (Left d) -> Just d
-  _ -> Nothing
-
-rawWebPathFromVideoFile :: VideoFilePath -> RawWebPath
-rawWebPathFromVideoFile video =
-  rawWebPathFromRoot video.videoFilePathRoot
-    <> rawWebPathFromDirectoryNames video.videoFilePathNames
-    <> RawWebPath [unVideoFileName video.videoFilePathName]
-
-rawWebPathToVideoFile :: RootDirectories -> RawWebPath -> Maybe VideoFilePath
-rawWebPathToVideoFile roots raw = case rawWebPathToVideoFileOrDirectory roots raw of
-  Just (Right v) -> Just v
   _ -> Nothing
 
 rawWebPathToVideoFileOrDirectory :: RootDirectories -> RawWebPath -> Maybe (Either DirectoryPath VideoFilePath)
@@ -122,11 +111,6 @@ data VideoFilePath = VideoFilePath
     videoFilePathName :: VideoFileName
   }
   deriving (Show, Eq)
-
-videoFilePathToAbsPath :: (SafeIO m) => VideoFilePath -> m FilePath
-videoFilePathToAbsPath (VideoFilePath root dirNames fileName) = do
-  dirAbsPath <- directoryPathToAbsPath $ DirectoryPath root dirNames
-  pure $ dirAbsPath ++ "/" ++ T.unpack (unwrap fileName)
 
 -- Guessing path types
 

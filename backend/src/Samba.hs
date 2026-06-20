@@ -7,10 +7,10 @@ import System.Posix (getEffectiveUserID)
 import System.Process (readProcessWithExitCode)
 
 newtype SmbServer = SmbServer {unSmbServer :: String}
-  deriving (Eq, Ord, Show, Read)
+  deriving (Eq, Ord, Show)
 
 newtype SmbShare = SmbShare {unSmbShare :: String}
-  deriving (Eq, Ord, Show, Read)
+  deriving (Eq, Ord, Show)
 
 data MountResult
   = MountedSuccessfully

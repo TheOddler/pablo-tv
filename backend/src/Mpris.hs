@@ -239,6 +239,3 @@ expectSingleValue = \case
     failed msg = do
       putLog Error msg
       throwM $ errorCallException msg
-
-fromVariant2 :: (IsVariant a) => Variant -> Maybe a
-fromVariant2 v = fromVariant v >>= fromVariant

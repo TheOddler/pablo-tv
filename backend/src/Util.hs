@@ -1,24 +1,17 @@
 module Util where
 
-import Algorithms.NaturalSort qualified as Natural
-import Control.Concurrent (MVar, takeMVar)
 import Control.Concurrent.Async (race_)
 import Control.Exception (displayException)
 import Control.Monad (when)
 import Control.Monad.IO.Class (MonadIO (..))
-import Data.List (isPrefixOf, sortBy)
 import Data.List.Extra (unsnoc)
 import Data.List.NonEmpty qualified as NE
 import Data.List.NonEmpty.Extra qualified as NE
-import Data.Ord (Down)
 import Data.Text qualified as T
 import Data.Time (NominalDiffTime, diffUTCTime)
 import GHC.Conc (TVar, atomically, readTVar, readTVarIO, retry)
 import Logging (LogLevel (..), Logger, putLog)
-import Network.Info (IPv4 (..), NetworkInterface (..))
 import SafeIO (SafeIO (..), getCurrentTime)
-import System.Random (RandomGen)
-import System.Random.Shuffle (shuffle')
 
 -- | Run an action whenever the value of the 'TVar' changes.
 onChanges :: (Eq a, MonadIO m) => TVar a -> (a -> a -> m ()) -> m b
@@ -40,64 +33,13 @@ raceAll [] = pure ()
 raceAll [a] = a
 raceAll (a : rest) = foldl' race_ a rest
 
--- | Return how likely this is the network interface people will want to connect to with their phones.
--- Mean to be used with `sortWith` so returning Down as sortWith sorts lowest first.
-networkInterfaceWorthiness :: NetworkInterface -> Down Int
-networkInterfaceWorthiness NetworkInterface {name, ipv4, ipv6} =
-  sum
-    [ hasIpv4 `as` 2,
-      goodName `as` 1,
-      hasIpv6 `as` 1,
-      isLocalHost `as` (-10)
-    ]
-  where
-    bool `as` val = if bool then val else 0
-    goodName = any (`isPrefixOf` name) ["en", "eth", "wl"]
-    hasIpv4 = ipv4 /= minBound
-    hasIpv6 = ipv6 /= minBound
-    isLocalHost = ipv4 == IPv4 16777343 -- Used rawShowIPv4 to find this
-
--- | Used to find what the internal representation of localhost is
-rawShowIPv4 :: IPv4 -> String
-rawShowIPv4 (IPv4 raw) = show raw
-
-showIpV4OrV6WithPort :: Int -> NetworkInterface -> [Char]
-showIpV4OrV6WithPort port i =
-  ( if ipv4 i == IPv4 0
-      then show $ ipv6 i
-      else show $ ipv4 i
-  )
-    ++ ":"
-    ++ show port
-
 showT :: (Show a) => a -> T.Text
 showT = T.pack . show
-
-mapLeft :: (t -> a) -> Either t b -> Either a b
-mapLeft f (Left x) = Left $ f x
-mapLeft _ (Right x) = Right x
 
 unsnocNE :: NE.NonEmpty a -> ([a], a)
 unsnocNE (first NE.:| rest) = case unsnoc rest of
   Nothing -> ([], first)
   Just (inits, last') -> (first : inits, last')
-
--- | This will loop and take the `()` from the trigger, and rerun the action
--- every time the trigger is set.
--- If the trigger is set while the action is already running, it will wait until
--- it is done and then run the action.
-asyncOnTrigger :: MVar () -> IO () -> IO ()
-asyncOnTrigger trigger action = loop
-  where
-    loop :: IO ()
-    loop = do
-      takeMVar trigger
-      action
-      loop
-
-shuffle :: (RandomGen gen) => [a] -> gen -> [a]
-shuffle [] _ = []
-shuffle list gen = shuffle' list (length list) gen
 
 -- | Returns the first right, and all lefts that came before it
 firstRightM :: forall m a b. (Monad m) => [m (Either a b)] -> m ([a], Maybe b)
@@ -110,14 +52,6 @@ firstRightM = go []
       case result of
         Right success -> pure (failures, Just success)
         Left failed -> go (failures ++ [failed]) nextAttempts
-
--- | Compares taking into account numbers properly
-naturalCompareBy :: (a -> T.Text) -> a -> a -> Ordering
-naturalCompareBy f a b = Natural.compare (T.toLower $ f a) (T.toLower $ f b)
-
--- | Sorts taking into account numbers properly
-naturalSortBy :: (a -> T.Text) -> [a] -> [a]
-naturalSortBy f = sortBy $ naturalCompareBy f
 
 withDuration :: (SafeIO m) => m a -> m (a, NominalDiffTime)
 withDuration f = do

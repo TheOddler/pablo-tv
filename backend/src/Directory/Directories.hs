@@ -25,7 +25,6 @@ import Orphanage ()
 import SafeIO (SafeIO (..))
 import Samba (SmbServer (..), SmbShare (..), mkMountPath)
 import System.FilePath
-import Text.Read (Read (..))
 import Util.DirPath (Abs, DirPath (..), Rel, absPath, relPath, unDirPath)
 import Util.Regex (expect1Int, tryRegex)
 import Util.TextWithoutSeparator
@@ -89,9 +88,6 @@ parseRootDirectoryLocationFromText t = do
         Nothing -> fail $ "Couldn't parse root directory from " ++ show t
         Just root -> pure root
 
-instance Read RootDirectoryLocation where
-  readPrec = readPrec >>= parseRootDirectoryLocationFromText
-
 instance FromJSON RootDirectoryLocation where
   parseJSON v = do
     (asText :: Text) <- parseJSON v
@@ -122,7 +118,7 @@ rootDirectoryAsDirectory root =
 -- (Sub)Directories
 
 newtype DirectoryName = DirectoryName {unDirectoryName :: TextWithoutSeparator}
-  deriving newtype (Show, Eq, Ord, Read, Unwrap Text, ToJSON, FromJSON, ToJSONKey, FromJSONKey)
+  deriving newtype (Show, Eq, Ord, Unwrap Text, ToJSON, FromJSON, ToJSONKey, FromJSONKey)
 
 -- (Sub)Directories Data
 

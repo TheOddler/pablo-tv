@@ -1,0 +1,24 @@
+roots = [
+  "Main.main",
+  "ElmHelpers.deriveElmPrefixed",
+  "JSON.deriveFomJSONPrefixed",
+  "JSON.deriveJSONPrefixed",
+  "JSON.deriveToJSONPrefixed",
+  "Util.DirPath.absPathQQ",
+  "Util.DirPath.relPathQQ",
+  "Util.TextWithoutSeparator.twsQQ",
+  "^Paths_.*",
+]
+
+type-class-roots = false
+
+root-instances = [
+  { class = "\\.Eq$" },
+  { class = "\\.IsString$" },
+  { class = "\\.IsList$" },
+  { class = "\\.HasJSONPrefix$" },
+]
+
+unused-types = true
+
+root-modules = []

@@ -7,7 +7,6 @@
 
 module Directory.Files where
 
-import Control.Applicative ((<|>))
 import Data.Aeson
   ( FromJSON (..),
     FromJSONKey,
@@ -15,23 +14,19 @@ import Data.Aeson
     ToJSONKey (..),
   )
 import Data.Aeson qualified as Aeson
-import Data.ByteString.Char8 qualified as BS8
 import Data.ByteString.UTF8 qualified as BS
 import Data.HashSet qualified as Set
 import Data.List.Extra (dropPrefix, dropSuffix, lower, stripPrefix, uncons)
-import Data.List.NonEmpty qualified as NE
-import Data.Maybe (isJust, listToMaybe, mapMaybe, maybeToList)
+import Data.Maybe (maybeToList)
 import Data.Set (Set)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Time (UTCTime)
-import GHC.Exts (sortWith)
 import JSON (HasJSONPrefix (..), deriveJSONPrefixed)
 import Orphanage ()
 import SafeIO (SafeIO, randomFileNameSuffix)
-import System.FilePath (takeBaseName, takeExtension)
+import System.FilePath (takeBaseName)
 import Util (safeMinimumOn)
-import Util.Regex
 import Util.TextWithoutSeparator
 
 -- Videos
@@ -113,17 +108,6 @@ mkCachedImageFileName path originalNameOrContentType = do
       fullName = intercalate [twsQQ|-|] $ path ++ maybeToList name ++ [removeSeparatorsFromText $ T.pack suffix]
   pure . CachedImageFileName $ fullName <> ext
 
-cachedImageContentType :: CachedImageFileName -> BS.ByteString
-cachedImageContentType (CachedImageFileName imgName) =
-  case takeExtension $ T.unpack $ unwrap imgName of
-    "" -> "image/jpg"
-    ext ->
-      let cleanedExt = lower $
-            case ext of
-              '.' : e -> e
-              e -> e
-       in "image/" <> BS8.pack cleanedExt
-
 -- Nicely collapsing file names
 
 data NiceVideoFileNames = NiceVideoFileNames
@@ -188,46 +172,6 @@ niceFileNames =
     findCommonSuffix = reverse . findCommonPrefix . map reverse
 
 -- Other helpers
-
-seasonFromFiles :: [VideoFileName] -> Maybe Int
-seasonFromFiles fileNames =
-  case mSeason of
-    Just season -> Just season
-    Nothing -> if looseEpisodesFound then Just 1 else Nothing
-  where
-    mSeason = NE.head <$> listToMaybe (sortWith NE.length $ NE.group (mapMaybe seasonFromFile fileNames))
-    looseEpisodesFound = any (isJust . snd . episodeInfoFromFile) fileNames
-
-    seasonFromFile :: VideoFileName -> Maybe Int
-    seasonFromFile file =
-      tryRegex (unwrap file) expect1Int "[Ss]eason ([0-9]+)"
-        <|> tryRegex (unwrap file) expect1Int "[Ss]eries ([0-9]+)"
-        <|> tryRegex (unwrap file) expect1Int "[Ss]eizoen ([0-9]+)"
-        <|> tryRegex (unwrap file) expect1Int "[Ss]([0-9]+)[Ee][0-9]+"
-        <|> tryRegex (unwrap file) expect1Int "([0-9]+)[Xx][0-9]+"
-
-episodeInfoFromFile :: VideoFileName -> (Maybe Int, Maybe (Either Int (Int, Int)))
-episodeInfoFromFile file =
-  let double :: Maybe (Int, Int, Int)
-      double =
-        tryRegex (unwrap file) expect3Ints "[Ss]([0-9]+)[Ee]([0-9]+)-[Ee]([0-9]+)"
-
-      seasonAndEp :: Maybe (Int, Int)
-      seasonAndEp =
-        tryRegex (unwrap file) expect2Ints "[Ss]([0-9]+)[Ee]([0-9]+)"
-          <|> tryRegex (unwrap file) expect2Ints "([0-9]+)[Xx]([0-9]+)"
-
-      epOnly :: Maybe Int
-      epOnly =
-        tryRegex (unwrap file) expect1Int "[Ee]pisode ([0-9]+)"
-          <|> tryRegex (unwrap file) expect1Int "[Aa]flevering ([0-9]+)"
-   in case double of
-        Just (s, a, b) -> (Just s, Just $ Right (a, b))
-        Nothing -> case seasonAndEp of
-          Just (s, a) -> (Just s, Just $ Left a)
-          Nothing -> case epOnly of
-            Just a -> (Nothing, Just $ Left a)
-            Nothing -> (Nothing, Nothing)
 
 hasVideoFileExt :: TextWithoutSeparator -> Bool
 hasVideoFileExt t = videoFileExts `anyIsSuffixOf` t
