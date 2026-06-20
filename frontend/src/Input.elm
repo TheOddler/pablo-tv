@@ -4,6 +4,7 @@ import ButtonsGrid as BG
 import Generated.Backend as BE
 import Html exposing (..)
 import Html.Attributes as A
+import Html.Events as E
 import Html.Events.Extra.Touch as Touch
 import Http
 import Svg exposing (..)
@@ -252,11 +253,22 @@ view =
             , Touch.onCancel TrackpadTouchEndOrCancel
             ]
             []
+        , BG.row
+            [ div
+                [ A.id "left"
+                , A.class "button flat"
+                , E.onClick <| DoAction <| BE.ActionClickMouse { button = BE.MouseButtonLeft }
+                ]
+                [ leftMouseSvg ]
+            , div [] []
 
-        -- , BG.row
-        --     [ div [ A.id "left", A.class "button flat" ] [ leftMouseSvg ]
-        --     , div [ A.id "pointer", A.class "button flat" ]
-        --         (BG.icon "fa-solid fa-wand-magic-sparkles")
-        --     , div [ A.id "right", A.class "button flat" ] [ rightMouseSvg ]
-        --     ]
+            -- , div [ A.id "pointer", A.class "button flat" ]
+            --     (BG.icon "fa-solid fa-wand-magic-sparkles")
+            , div
+                [ A.id "right"
+                , A.class "button flat"
+                , E.onClick <| DoAction <| BE.ActionClickMouse { button = BE.MouseButtonRight }
+                ]
+                [ rightMouseSvg ]
+            ]
         ]
