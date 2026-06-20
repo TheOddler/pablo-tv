@@ -37,7 +37,6 @@ import SafeConvert (splitTextNE)
 import SafeIO (SafeIO (..))
 import System.Directory (listDirectory)
 import System.FilePath qualified as FP
-import Text.Blaze (ToMarkup)
 import Text.Read (Read (..))
 
 -- | A class to unwrap nested newtypes to their inner type
@@ -50,7 +49,7 @@ separator :: Char
 separator = '/'
 
 newtype TextWithoutSeparator = UnsafeTextWithoutSeparator {unTextWithoutSeparator :: T.Text}
-  deriving newtype (Eq, Ord, Show, ToJSON, ToJSONKey, ToMarkup, Semigroup, Monoid, Hashable)
+  deriving newtype (Eq, Ord, Show, ToJSON, ToJSONKey, Semigroup, Monoid, Hashable)
 
 instance Read TextWithoutSeparator where
   readPrec = readPrec >>= textWithoutSeparator

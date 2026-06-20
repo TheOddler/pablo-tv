@@ -25,7 +25,6 @@ import Orphanage ()
 import SafeIO (SafeIO (..))
 import Samba (SmbServer (..), SmbShare (..), mkMountPath)
 import System.FilePath
-import Text.Blaze (ToMarkup)
 import Text.Read (Read (..))
 import Util.DirPath (Abs, DirPath (..), Rel, absPath, relPath, unDirPath)
 import Util.Regex (expect1Int, tryRegex)
@@ -123,7 +122,7 @@ rootDirectoryAsDirectory root =
 -- (Sub)Directories
 
 newtype DirectoryName = DirectoryName {unDirectoryName :: TextWithoutSeparator}
-  deriving newtype (Show, Eq, Ord, Read, Unwrap Text, ToJSON, FromJSON, ToJSONKey, FromJSONKey, ToMarkup)
+  deriving newtype (Show, Eq, Ord, Read, Unwrap Text, ToJSON, FromJSON, ToJSONKey, FromJSONKey)
 
 -- (Sub)Directories Data
 

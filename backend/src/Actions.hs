@@ -8,7 +8,6 @@ module Actions where
 
 import Control.Monad.IO.Class (MonadIO (..))
 import Control.Monad.Trans.Reader (ask)
-import Data.Aeson (encode)
 import Data.Char (isSpace)
 import Data.Int (Int32)
 import Data.List (dropWhileEnd, nub)
@@ -16,7 +15,6 @@ import Data.Map.Strict qualified as Map
 import Data.Maybe (isNothing)
 import Data.Scientific (Scientific, scientific)
 import Data.Text (Text)
-import Data.Text.Lazy.Encoding qualified as T
 import Directory
   ( recursiveUpdateDirectory,
     recursivelyUpdateAllDirectories,
@@ -39,7 +37,6 @@ import SafeConvert (int32ToInteger)
 import SafeIO (SafeIO, getCurrentTime)
 import System.Process (callProcess, readProcess)
 import TVState (TVState (..))
-import Text.Blaze qualified as Blaze
 import Util (showT)
 
 data Action
@@ -94,11 +91,6 @@ instance HasJSONPrefix KeyboardButton where
 deriveJSONPrefixed ''MouseButton
 deriveJSONPrefixed ''KeyboardButton
 deriveJSONPrefixed ''Action
-
--- Instances that use the JSON instances
-
-instance Blaze.ToMarkup Action where
-  toMarkup = Blaze.lazyText . T.decodeUtf8 . encode
 
 mouseButtonToEvdevKey :: MouseButton -> Key
 mouseButtonToEvdevKey = \case

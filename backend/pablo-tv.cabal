@@ -74,7 +74,6 @@ library
     -- Later versions of random have a shuffle function, but for now we need this package
     aeson,
     async,
-    blaze-markup,
     bounded-queue,
     bytestring,
     containers,
