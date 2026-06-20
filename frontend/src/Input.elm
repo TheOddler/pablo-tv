@@ -237,13 +237,15 @@ view =
     in
     BG.buttonsGrid [ A.id "input-container" ]
         [ BG.row
-            [ div [ A.id "keyboard", A.class "button double-width" ]
-                (BG.icon "fa-solid fa-keyboard")
-            , button (BG.keyboard BE.KeyboardLeftArrow) "fa-solid fa-chevron-left"
+            [ -- div [ A.id "keyboard", A.class "button double-width" ] (BG.icon "fa-solid fa-keyboard")
+              button (BG.keyboard BE.KeyboardLeftArrow) "fa-solid fa-chevron-left"
             , button (BG.keyboard BE.KeyboardRightArrow) "fa-solid fa-chevron-right"
+            , div [] []
+            , div [] []
+            , div [] []
             , button (BG.keyboard BE.KeyboardBackspace) "fa-solid fa-delete-left"
-            , div [ A.id "recenter", A.class "button" ]
-                (BG.icon "fa-solid fa-arrows-to-dot")
+
+            -- , div [ A.id "recenter", A.class "button" ] (BG.icon "fa-solid fa-arrows-to-dot")
             ]
         , div
             [ A.class "row grow trackpad"
