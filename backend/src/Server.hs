@@ -51,7 +51,7 @@ mkServer serverEnv = do
 main :: ServerEnv -> IO ()
 main serverEnv = do
   server <- mkServer serverEnv
-  Wai.run 8080 $ etagMiddleware $ serve apiProxy server
+  Wai.run serverEnv.envPort $ etagMiddleware $ serve apiProxy server
 
 apiProxy :: Proxy API
 apiProxy = Proxy
