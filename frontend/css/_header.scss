@@ -42,9 +42,31 @@ header {
       color: black;
       fill: white;
     }
+
+    flex-shrink: 0;
+
+    &.shrinking {
+      flex-shrink: 1;
+    }
   }
 
-  .grow {
+  .url-qr {
+    flex-shrink: 0;
+    background: white;
+    padding: 0.15rem;
+    margin: 0.15rem;
+    border-radius: 0.15rem;
+
+    transform-origin: top left;
+    transition: scale 0.2s;
+
+    &:hover {
+      scale: 500%;
+    }
+  }
+
+  .separator {
     flex-grow: 1;
+    padding: 0;
   }
 }

@@ -4,21 +4,75 @@ import Generated.Backend as BE
 import Html exposing (..)
 import Html.Attributes as A
 import Html.Events as E
+import QRCode
 import Routes
+import Svg.Attributes as SvgA
 
 
 view : Routes.Route -> BE.NetworkInfo -> (Int -> msg) -> (BE.Action -> msg) -> Html msg
 view route networkInfo navBack doAction =
     let
-        separatorGrow =
-            div [ A.class "grow" ] []
+        separator =
+            div [ A.class "separator" ] []
 
         back =
             [ button
                 [ A.class "like-link", E.onClick <| navBack 1 ]
                 [ i [ A.class "fa-solid fa-chevron-left" ] [] ]
-            , separatorGrow
+            , separator
             ]
+
+        qrCode =
+            case List.head networkInfo.interfaces of
+                Nothing ->
+                    []
+
+                Just interface ->
+                    let
+                        url =
+                            "http://"
+                                ++ interface.ipv4
+                                ++ ":"
+                                ++ String.fromInt networkInfo.port_
+                    in
+                    [ mkQrCode url
+                    , separator
+                    ]
+
+        mkQrCode : String -> Html msg
+        mkQrCode message =
+            case QRCode.fromStringWith QRCode.Low message of
+                Ok qr ->
+                    QRCode.toSvgWithoutQuietZone
+                        [ SvgA.class "url-qr" ]
+                        qr
+
+                Err e ->
+                    Html.text <|
+                        case e of
+                            QRCode.AlignmentPatternNotFound ->
+                                "AlignmentPatternNotFound"
+
+                            QRCode.InvalidNumericChar ->
+                                "InvalidNumericChar"
+
+                            QRCode.InvalidAlphanumericChar ->
+                                "InvalidAlphanumericChar"
+
+                            QRCode.InvalidUTF8Char ->
+                                "InvalidUTF8Char"
+
+                            QRCode.LogTableException i ->
+                                "LogTableException " ++ String.fromInt i
+
+                            QRCode.PolynomialMultiplyException ->
+                                "PolynomialMultiplyException"
+
+                            QRCode.PolynomialModException ->
+                                "PolynomialModException"
+
+                            QRCode.InputLengthOverflow ->
+                                "InputLengthOverflow"
 
         networkInterface =
             case List.head networkInfo.interfaces of
@@ -26,17 +80,24 @@ view route networkInfo navBack doAction =
                     []
 
                 Just interface ->
-                    [ a [ A.href <| Routes.toHref Routes.IPs ]
-                        [ i [ A.class "fa-solid fa-mobile-screen-button" ] []
-                        , text <| interface.ipv4 ++ ":" ++ String.fromInt networkInfo.port_
+                    let
+                        url =
+                            interface.ipv4 ++ ":" ++ String.fromInt networkInfo.port_
+                    in
+                    [ a
+                        [ A.class "shrinking"
+                        , A.href <| Routes.toHref Routes.IPs
                         ]
-                    , separatorGrow
+                        [ i [ A.class "fa-solid fa-mobile-screen-button" ] []
+                        , text url
+                        ]
+                    , separator
                     ]
 
         refreshButton : String -> BE.Action -> Html msg
         refreshButton suffix action =
             button
-                [ A.class "like-link", E.onClick <| doAction action ]
+                [ A.class "like-link shrinking", E.onClick <| doAction action ]
                 [ i [ A.class "fa-solid fa-arrows-rotate" ] []
                 , span [] [ text "Refresh" ]
                 , span [] [ text suffix ]
@@ -46,19 +107,19 @@ view route networkInfo navBack doAction =
             case route of
                 Routes.Home ->
                     [ refreshButton "library" BE.ActionRefreshAllDirectoryData
-                    , separatorGrow
+                    , separator
                     ]
 
                 Routes.DirHome ->
                     [ refreshButton "library" BE.ActionRefreshAllDirectoryData
-                    , separatorGrow
+                    , separator
                     ]
 
                 Routes.Dir dirPath ->
                     [ refreshButton "directory" <|
                         BE.ActionRefreshDirectoryData
                             { path = Routes.toRawWebPath dirPath }
-                    , separatorGrow
+                    , separator
                     ]
 
                 Routes.Input ->
@@ -89,6 +150,7 @@ view route networkInfo navBack doAction =
     in
     header [] <|
         back
+            ++ qrCode
             ++ networkInterface
             ++ dirRefresh
             ++ otherButtons
