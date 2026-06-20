@@ -78,7 +78,6 @@ library
     bounded-queue,
     bytestring,
     containers,
-    data-default,
     dbus,
     directory,
     evdev,
@@ -134,7 +133,6 @@ executable elm-gen
 
   build-depends:
     bytestring,
-    containers,
     elm-bridge,
     http-types,
     pablo-tv,
