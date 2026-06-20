@@ -48,13 +48,37 @@ update msg model =
             , y = round <| y1 - y2
             }
 
+        scrollDiff t1 t2 =
+            let
+                ( _, y1 ) =
+                    t1.clientPos
+
+                ( _, y2 ) =
+                    t2.clientPos
+            in
+            { scroll = round <| (y2 - y1) / 10 }
+
         mkDoMouseMove event =
-            case ( model.lastRelevantTouch, List.head event.changedTouches ) of
-                ( Just lastTouch, Just curTouch ) ->
-                    Just <|
-                        BE.postApiAction
-                            (BE.ActionMoveMouse <| posDiff curTouch lastTouch)
-                            GotTrackpadActionResult
+            case ( model.lastRelevantTouch, List.head event.changedTouches, List.length event.touches ) of
+                ( Just lastTouch, Just curTouch, 1 ) ->
+                    if lastTouch.identifier == curTouch.identifier then
+                        Just <|
+                            BE.postApiAction
+                                (BE.ActionMoveMouse <| posDiff curTouch lastTouch)
+                                GotTrackpadActionResult
+
+                    else
+                        Nothing
+
+                ( Just lastTouch, Just curTouch, 2 ) ->
+                    if lastTouch.identifier == curTouch.identifier then
+                        Just <|
+                            BE.postApiAction
+                                (BE.ActionMouseScroll <| scrollDiff curTouch lastTouch)
+                                GotTrackpadActionResult
+
+                    else
+                        Nothing
 
                 _ ->
                     Nothing
@@ -116,20 +140,8 @@ update msg model =
                         , Nothing
                         )
 
-        TrackpadTouchEndOrCancel event ->
-            if model.currentlySendingTrackpadData then
-                ( { model | lastRelevantTouch = Nothing }, Cmd.none, Nothing )
-
-            else
-                case mkDoMouseMove event of
-                    Nothing ->
-                        ( { model | lastRelevantTouch = Nothing }, Cmd.none, Nothing )
-
-                    Just cmd ->
-                        ( { model | lastRelevantTouch = Nothing, currentlySendingTrackpadData = True }
-                        , cmd
-                        , Nothing
-                        )
+        TrackpadTouchEndOrCancel _ ->
+            ( { model | lastRelevantTouch = Nothing }, Cmd.none, Nothing )
 
 
 view : Html Msg
