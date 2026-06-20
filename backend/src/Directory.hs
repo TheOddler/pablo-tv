@@ -10,8 +10,6 @@ import Data.List.NonEmpty qualified as NE
 import Data.Map.Strict qualified as Map
 import Data.Maybe (isJust, maybeToList)
 import Data.Text qualified as T
-import Data.Time (UTCTime)
-import Data.Time.Clock.POSIX (posixSecondsToUTCTime)
 import Directory.Directories
 import Directory.Files
 import Directory.Paths
@@ -415,54 +413,3 @@ recursivelyUpdateAllDirectories :: (SafeIO m, Logger m, ImageScraper m) => PVar 
 recursivelyUpdateAllDirectories rootsPVar = do
   recursivelyUpdateAllDirectoriesNoSave rootsPVar
   saveRootsToDisk rootsPVar
-
--- Agg data
-data AggDirInfo = AggDirInfo
-  { aggDirName :: DirectoryName,
-    aggDirPath :: DirectoryPath,
-    aggDirLastModified :: UTCTime,
-    aggDirLastWatched :: UTCTime,
-    aggDirVideoFileCount :: Int,
-    aggDirPlayedVideoFileCount :: Int
-  }
-  deriving (Show)
-
-foldFilesDataRecur :: forall a. (VideoFileData -> a -> a) -> a -> DirectoryData -> a
-foldFilesDataRecur updateAgg agg dir = loop agg [dir]
-  where
-    loop :: a -> [DirectoryData] -> a
-    loop a [] = a
-    loop a (dirTodo : restDirs) = do
-      let newA = foldr updateAgg a dirTodo.directoryVideoFiles
-          subDirs = Map.elems dirTodo.directorySubDirs
-      loop newA $ restDirs ++ subDirs
-
-getSubDirAggInfo :: DirectoryPath -> DirectoryData -> [AggDirInfo]
-getSubDirAggInfo dirPath dir = do
-  let epoch = posixSecondsToUTCTime 0
-  flip map (Map.toList dir.directorySubDirs) $ \(subDirName, subDirData) ->
-    foldFilesDataRecur
-      ( \videoFileData agg ->
-          AggDirInfo
-            agg.aggDirName
-            agg.aggDirPath
-            (max agg.aggDirLastModified videoFileData.videoFileAdded)
-            ( case videoFileData.videoFileWatched of
-                Nothing -> agg.aggDirLastWatched
-                Just w -> max agg.aggDirLastWatched w
-            )
-            (agg.aggDirVideoFileCount + 1)
-            ( case videoFileData.videoFileWatched of
-                Nothing -> agg.aggDirPlayedVideoFileCount
-                Just _ -> agg.aggDirPlayedVideoFileCount + 1
-            )
-      )
-      ( AggDirInfo
-          subDirName
-          (addSubDir dirPath subDirName)
-          epoch
-          epoch
-          0
-          0
-      )
-      subDirData
