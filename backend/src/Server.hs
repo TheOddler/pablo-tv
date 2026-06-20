@@ -2,9 +2,9 @@
 
 module Server where
 
-import Actions (Action, performAction')
+import Actions (Action, performAction)
 import Control.Monad.IO.Class (MonadIO (..))
-import Control.Monad.Trans.Reader (ReaderT (..), ask, asks)
+import Control.Monad.Trans.Reader (ReaderT (..), asks)
 import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BS8
 import Data.List (stripPrefix)
@@ -68,8 +68,7 @@ routes =
   where
     doAction :: Action -> ServerM NoContent
     doAction action = do
-      env <- ask
-      performAction' env action
+      performAction action
       pure NoContent
 
     -- getData :: ServerM (Headers '[Header "ETag" BS.ByteString] RootDirectories)
