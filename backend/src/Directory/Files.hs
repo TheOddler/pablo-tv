@@ -32,7 +32,7 @@ import Util.TextWithoutSeparator
 -- Videos
 
 newtype VideoFileName = VideoFileName {unVideoFileName :: TextWithoutSeparator}
-  deriving newtype (Show, Eq, Ord, Unwrap Text, ToJSON, FromJSON, ToJSONKey, FromJSONKey)
+  deriving newtype (Show, Eq, Ord, Unwrap Text, ToJSONKey, FromJSONKey)
 
 data VideoFileData = VideoFileData
   { videoFileAdded :: UTCTime,

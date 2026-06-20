@@ -118,7 +118,7 @@ rootDirectoryAsDirectory root =
 -- (Sub)Directories
 
 newtype DirectoryName = DirectoryName {unDirectoryName :: TextWithoutSeparator}
-  deriving newtype (Show, Eq, Ord, Unwrap Text, ToJSON, FromJSON, ToJSONKey, FromJSONKey)
+  deriving newtype (Show, Eq, Ord, Unwrap Text, ToJSONKey, FromJSONKey)
 
 -- (Sub)Directories Data
 
