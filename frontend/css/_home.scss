@@ -60,15 +60,20 @@
 
       transition: transform 0.5s;
 
-      &:focus,
-      &:hover {
+      &:focus {
         outline: none;
         transform: scale($elFocusScale);
         z-index: 10;
       }
 
-      &:hover {
-        transition: transform 0.2s;
+      // Hover effect only for devices that actually support hovering properly, so not for touch devices.
+      @media (hover: hover) {
+        &:hover {
+          outline: none;
+          transform: scale($elFocusScale);
+          z-index: 10;
+          transition: transform 0.2s;
+        }
       }
 
 

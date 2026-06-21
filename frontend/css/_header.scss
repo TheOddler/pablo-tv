@@ -77,8 +77,12 @@ header {
     transform-origin: top left;
     transition: scale 0.2s;
 
-    &:hover {
-      scale: 500%;
+
+    // Hover effect only for devices that actually support hovering properly, so not for touch devices.
+    @media (hover: hover) {
+      &:hover {
+        scale: 500%;
+      }
     }
   }
 
