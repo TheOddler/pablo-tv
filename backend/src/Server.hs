@@ -4,12 +4,14 @@ module Server where
 
 import Actions (Action, performAction)
 import Control.Monad.IO.Class (MonadIO (..))
-import Control.Monad.Trans.Reader (ReaderT (..), asks)
+import Control.Monad.Trans.Reader (ReaderT (..), ask, asks)
 import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BS8
 import Data.List (stripPrefix)
 import Data.List.Extra (lower)
 import Data.Text qualified as T
+import Data.Time (nominalDiffTimeToSeconds)
+import Data.Time.Clock.POSIX (utcTimeToPOSIXSeconds)
 import Directory (getImagesDir)
 import Directory.Directories (RootDirectories)
 import Env (ServerEnv (..), ServerM)
@@ -73,9 +75,10 @@ routes =
 
     -- getData :: ServerM (Headers '[Header "ETag" BS.ByteString] RootDirectories)
     getData = do
-      rootDirs <- asks envRootDirs
-      (_state, generation, roots) <- readPVar' rootDirs
-      let etag = "\"" <> T.show generation <> "\""
+      env <- ask
+      (_state, generation, roots) <- readPVar' env.envRootDirs
+      -- To make sure the etag is unique even when the server restarts, we add the start time of the server to it
+      let etag = "\"" <> T.show env.envStartTime <> "-" <> T.show generation <> "\""
       pure $ addHeader' etag roots
 
     getImage :: FilePath -> Wai.Request -> (Wai.Response -> IO Wai.ResponseReceived) -> ServerM Wai.ResponseReceived

@@ -5,6 +5,7 @@ module Env where
 import Control.Concurrent.STM (TVar)
 import Control.Monad.IO.Class (MonadIO (..))
 import Control.Monad.Trans.Reader (ReaderT, asks)
+import Data.Time.Clock.POSIX (POSIXTime)
 import Directory.Directories (RootDirectories)
 import Evdev.Uinput (Device)
 import Logging (LogFunc, LogSlidingWindow, Logger (..))
@@ -21,6 +22,7 @@ data ServerEnv = ServerEnv
     envLogSlidingWindow :: LogSlidingWindow,
     envInputDevice :: Device,
     envLastActivePlayer :: TVar (Maybe MediaPlayer),
+    envStartTime :: POSIXTime,
     envTVState :: TVar TVState,
     envRootDirs :: PVar RootDirectories,
     envFrontend :: FilePath

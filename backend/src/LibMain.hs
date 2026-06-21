@@ -18,6 +18,7 @@ import Data.List.Extra (intercalate, stripPrefix)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe, mapMaybe)
 import Data.Text qualified as T
+import Data.Time.Clock.POSIX (getPOSIXTime)
 import Directory
   ( getMemoryFileDir,
     loadRootsFromDisk,
@@ -192,6 +193,9 @@ main = do
     player <- getFirstMediaPlayer
     lastActivePlayerTVar <- liftIO $ newTVarIO player
 
+    -- Get start time
+    now <- unsafePinkyPromiseThisIsSafe getPOSIXTime
+
     -- The thread for the app
     let app =
           ServerEnv
@@ -199,6 +203,7 @@ main = do
               envLogFunc = logFunc,
               envLogSlidingWindow = logWindow,
               envInputDevice = inputDevice,
+              envStartTime = now,
               envTVState = tvState,
               envLastActivePlayer = lastActivePlayerTVar,
               envRootDirs = rootDirsPVar,
