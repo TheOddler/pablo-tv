@@ -4,7 +4,7 @@ import Generated.Backend as BE
 import Html exposing (..)
 import Html.Attributes as A
 import Html.Events as E
-import QRCode
+import QR
 import Routes
 import Svg.Attributes as SvgA
 
@@ -22,41 +22,6 @@ view route networkInfo navBack doAction =
             , separator
             ]
 
-        mkQrCode : String -> Html msg
-        mkQrCode message =
-            case QRCode.fromStringWith QRCode.Low message of
-                Ok qr ->
-                    QRCode.toSvgWithoutQuietZone
-                        [ SvgA.class "url-qr always-show" ]
-                        qr
-
-                Err e ->
-                    Html.text <|
-                        case e of
-                            QRCode.AlignmentPatternNotFound ->
-                                "AlignmentPatternNotFound"
-
-                            QRCode.InvalidNumericChar ->
-                                "InvalidNumericChar"
-
-                            QRCode.InvalidAlphanumericChar ->
-                                "InvalidAlphanumericChar"
-
-                            QRCode.InvalidUTF8Char ->
-                                "InvalidUTF8Char"
-
-                            QRCode.LogTableException i ->
-                                "LogTableException " ++ String.fromInt i
-
-                            QRCode.PolynomialMultiplyException ->
-                                "PolynomialMultiplyException"
-
-                            QRCode.PolynomialModException ->
-                                "PolynomialModException"
-
-                            QRCode.InputLengthOverflow ->
-                                "InputLengthOverflow"
-
         networkInterface =
             case List.head networkInfo.interfaces of
                 Nothing ->
@@ -66,14 +31,11 @@ view route networkInfo navBack doAction =
                     let
                         baseUrl =
                             interface.ipv4 ++ ":" ++ String.fromInt networkInfo.port_
-
-                        fullUrl =
-                            "http://" ++ baseUrl
                     in
                     [ a
                         [ A.href <| Routes.toHref Routes.IPs
                         ]
-                        [ mkQrCode fullUrl
+                        [ QR.urlQrCode [ SvgA.class "url-qr" ] networkInfo
                         , span [ A.class "auto-hiding-label hides-second" ]
                             [ text baseUrl ]
                         ]

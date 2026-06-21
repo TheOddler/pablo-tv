@@ -3,6 +3,7 @@ module IPs exposing (..)
 import Generated.Backend as BE
 import Html exposing (..)
 import Html.Attributes as A
+import QR
 
 
 view : BE.NetworkInfo -> Html msg
@@ -10,7 +11,8 @@ view info =
     div
         [ A.id "ips-container"
         ]
-        [ p [ A.class "large" ]
+        [ QR.urlQrCode [] info
+        , p [ A.class "large" ]
             [ text <| "Port: " ++ String.fromInt info.port_
             ]
         , table []
