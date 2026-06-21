@@ -22,29 +22,12 @@ view route networkInfo navBack doAction =
             , separator
             ]
 
-        qrCode =
-            case List.head networkInfo.interfaces of
-                Nothing ->
-                    []
-
-                Just interface ->
-                    let
-                        url =
-                            "http://"
-                                ++ interface.ipv4
-                                ++ ":"
-                                ++ String.fromInt networkInfo.port_
-                    in
-                    [ mkQrCode url
-                    , separator
-                    ]
-
         mkQrCode : String -> Html msg
         mkQrCode message =
             case QRCode.fromStringWith QRCode.Low message of
                 Ok qr ->
                     QRCode.toSvgWithoutQuietZone
-                        [ SvgA.class "url-qr" ]
+                        [ SvgA.class "url-qr always-show" ]
                         qr
 
                 Err e ->
@@ -81,26 +64,32 @@ view route networkInfo navBack doAction =
 
                 Just interface ->
                     let
-                        url =
+                        baseUrl =
                             interface.ipv4 ++ ":" ++ String.fromInt networkInfo.port_
+
+                        fullUrl =
+                            "http://" ++ baseUrl
                     in
                     [ a
-                        [ A.class "shrinking"
-                        , A.href <| Routes.toHref Routes.IPs
+                        [ A.href <| Routes.toHref Routes.IPs
                         ]
-                        [ i [ A.class "fa-solid fa-mobile-screen-button" ] []
-                        , text url
+                        [ mkQrCode fullUrl
+                        , span [ A.class "auto-hiding-label hides-second" ]
+                            [ text baseUrl ]
                         ]
                     , separator
                     ]
 
         refreshButton : String -> BE.Action -> Html msg
-        refreshButton suffix action =
+        refreshButton dirDescr action =
             button
-                [ A.class "like-link shrinking", E.onClick <| doAction action ]
+                [ A.class "like-link"
+                , A.title <| "Refresh " ++ dirDescr
+                , E.onClick <| doAction action
+                ]
                 [ i [ A.class "fa-solid fa-arrows-rotate" ] []
-                , span [] [ text "Refresh" ]
-                , span [] [ text suffix ]
+                , span [ A.class "auto-hiding-label hides-first" ]
+                    [ text "Refresh" ]
                 ]
 
         dirRefresh =
@@ -150,7 +139,6 @@ view route networkInfo navBack doAction =
     in
     header [] <|
         back
-            ++ qrCode
             ++ networkInterface
             ++ dirRefresh
             ++ otherButtons

@@ -1,8 +1,8 @@
-$header-height: 3em;
+$header-height: 3rem;
 
 body {
   /* Reserve some space for the top menu */
-  padding-top: calc($header-height * 1.3);
+  padding-top: calc($header-height * 1.1);
 }
 
 header {
@@ -14,6 +14,7 @@ header {
   height: $header-height;
 
   display: flex;
+  // gap: 1.5rem;
   align-items: stretch;
   background-color: rgba(0, 0, 0, 0.75);
   border-bottom: 1px solid rgba(255, 255, 255, 0.2);
@@ -23,14 +24,18 @@ header {
   >div,
   >button.like-link {
     display: flex;
-    justify-content: center;
+    justify-content: left;
+    align-items: center;
     gap: 0.75rem;
     color: white;
     text-decoration: none;
-    padding: 0.5rem 1rem;
     font-size: 1.5rem;
-    flex-wrap: wrap;
-    overflow: hidden;
+    padding: 0 0.75rem;
+    white-space: nowrap;
+
+    // Technically not needed as I auto-hide labels, but as a backup as I've only really tested on my own machines
+    min-width: 0;
+    flex: 0 1 auto;
 
     >i {
       font-size: 2rem;
@@ -43,11 +48,23 @@ header {
       fill: white;
     }
 
-    flex-shrink: 0;
+    .auto-hiding-label {
+      &.hides-first {
+        @media (max-width: 50rem) {
+          display: none;
+        }
+      }
 
-    &.shrinking {
-      flex-shrink: 1;
+      &.hides-second {
+        @media (max-width: 45rem) {
+          display: none;
+        }
+      }
+
+      // Ideally this is not needed as I hide them, but I only really tested on my own machines
+      overflow: hidden;
     }
+
   }
 
   .url-qr {
