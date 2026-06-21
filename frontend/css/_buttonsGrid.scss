@@ -8,6 +8,7 @@
   $button-pressed-shadow: inset 0 0 2pt 2pt black;
   $button-pressed-scale: scale(0.90);
   $header-height: 3em;
+  $radius-infinity: 9999pt; // Just something very large for perfect round radiuses
 
   display: flex;
   flex-direction: column;
@@ -28,7 +29,7 @@
     align-items: center;
     gap: 10pt;
     width: 100%;
-    max-width: 70vh;
+    max-width: 70svh;
 
     >* {
       flex: 1;
@@ -53,7 +54,8 @@
     >.button,
     >.double-button {
       cursor: pointer;
-      border-radius: 999lvh;
+      border-radius: $radius-infinity;
+      ;
       color: black;
       padding: 0;
 
@@ -124,13 +126,17 @@
         }
 
         &:first-child {
-          border-top-left-radius: 999lvh;
-          border-top-right-radius: 999lvh;
+          border-top-left-radius: $radius-infinity;
+          ;
+          border-top-right-radius: $radius-infinity;
+          ;
         }
 
         &:last-child {
-          border-bottom-left-radius: 999lvh;
-          border-bottom-right-radius: 999lvh;
+          border-bottom-left-radius: $radius-infinity;
+          ;
+          border-bottom-right-radius: $radius-infinity;
+          ;
         }
       }
 
