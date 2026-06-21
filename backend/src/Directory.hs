@@ -8,12 +8,12 @@ import Data.ByteString qualified as BS
 import Data.List ((\\))
 import Data.List.NonEmpty qualified as NE
 import Data.Map.Strict qualified as Map
-import Data.Maybe (isJust, maybeToList)
+import Data.Maybe (isJust)
 import Data.Text qualified as T
 import Directory.Directories
 import Directory.Files
 import Directory.Paths
-import GHC.Data.Maybe (firstJust, orElse)
+import GHC.Data.Maybe (orElse)
 import GHC.IO.Exception (IOErrorType (..), IOException (..))
 import GHC.Utils.Exception (displayException)
 import ImageScraper (ContentType, ImageScraper, ImageSearchFailure (..), tryFindImage)
@@ -137,6 +137,11 @@ data ShallowDirUpdateResult
     ShallowDirUpdateChanged DirectoryData [(CachedImageFileName, BS.ByteString)]
   | ShallowDirUpdateOtherIOError IOError
 
+data ImageUpdateResult
+  = ImageUpdateNoChange
+  | ImageUpdateRemoveExisting
+  | ImageUpdateWith Image BS.ByteString
+
 -- | Does a shallow update, so updates only the directory itself, no sub-directories.
 -- If it found new folders, it'll add them as empty folder, and do no further updates to them.
 -- Can still throw if some some error happens we can't recover from and that probably indicated a bug or something I should look at at least.
@@ -164,23 +169,34 @@ shallowUpdateDirectory roots dirPath = do
             updatedImageFile <- updateImageFile imageGuesses
 
             case (updatedSubDirs, updatedVideoFiles, updatedImageFile) of
-              (Nothing, Nothing, Nothing) -> pure ShallowDirUpdateUnchanged
+              (Nothing, Nothing, ImageUpdateNoChange) -> pure ShallowDirUpdateUnchanged
               _ -> do
                 pure $
                   ShallowDirUpdateChanged
                     DirectoryData
                       { directoryImage =
-                          firstJust (fst <$> updatedImageFile) currentDirData.directoryImage,
+                          case updatedImageFile of
+                            ImageUpdateNoChange ->
+                              currentDirData.directoryImage
+                            ImageUpdateRemoveExisting ->
+                              Nothing
+                            ImageUpdateWith img _ ->
+                              Just img,
                         directoryVideoFiles =
                           updatedVideoFiles `orElse` currentDirData.directoryVideoFiles,
                         directorySubDirs =
                           updatedSubDirs `orElse` currentDirData.directorySubDirs
                       }
-                    [ case img of
-                        ImageOnDisk _ cachedName -> (cachedName, imgData)
-                        ImageFromWeb cachedName -> (cachedName, imgData)
-                    | (img, imgData) <- maybeToList updatedImageFile
-                    ]
+                    ( case updatedImageFile of
+                        ImageUpdateNoChange ->
+                          []
+                        ImageUpdateRemoveExisting ->
+                          []
+                        ImageUpdateWith (ImageOnDisk _ cachedName) imgData ->
+                          [(cachedName, imgData)]
+                        ImageUpdateWith (ImageFromWeb cachedName) imgData ->
+                          [(cachedName, imgData)]
+                    )
             where
               updateSubDirs :: [DirectoryName] -> Maybe (Map.Map DirectoryName DirectoryData)
               updateSubDirs subDirGuesses = do
@@ -230,7 +246,7 @@ shallowUpdateDirectory roots dirPath = do
 
               -- Updates the image if it's different from what we know about.
               -- If there's none on disk, and no known one either, it'll try to find one online.
-              updateImageFile :: [ImageFileName] -> m (Maybe (Image, BS.ByteString))
+              updateImageFile :: [ImageFileName] -> m ImageUpdateResult
               updateImageFile imageGuesses = do
                 -- We only care about the best image, other images ignore, even if there are new ones that aren't the best
                 let diskImageName = bestImageFile imageGuesses
@@ -238,7 +254,7 @@ shallowUpdateDirectory roots dirPath = do
                     isRootDir = null dirPath.directoryPathNames
                     isSeasonDirOrSubDir = any isSeasonDir dirPath.directoryPathNames
 
-                    getImageFromDisk :: ImageFileName -> m (Maybe (Image, BS.ByteString))
+                    getImageFromDisk :: ImageFileName -> m ImageUpdateResult
                     getImageFromDisk imgName = do
                       let imgPath = absDirPath </> T.unpack (unwrap imgName)
                       imgOrErr <- runIOSafely $ BS.readFile imgPath
@@ -249,10 +265,45 @@ shallowUpdateDirectory roots dirPath = do
                             mkCachedImageFileName
                               (unDirectoryName <$> dirPath.directoryPathNames)
                               (Left imgName)
-                          pure $ Just (ImageOnDisk imgName cachedImgName, imgFile)
+                          pure $ ImageUpdateWith (ImageOnDisk imgName cachedImgName) imgFile
                         Left err -> do
                           putLog Error $ "Failed reading image from disk: " ++ displayException err
-                          pure Nothing
+                          pure ImageUpdateNoChange
+
+                    getImageFromWeb :: m (Maybe (Image, BS.ByteString))
+                    getImageFromWeb = do
+                      (attemptErrors, mResult) <- getImageFromWebFor dirPath
+                      case (attemptErrors, mResult) of
+                        ([], Just _) ->
+                          putLog Info $ "Successfully downloaded image for: " ++ absDirPath
+                        (errs, Just _) ->
+                          putLog Info $
+                            unwords
+                              [ "Successfully downloaded image for:",
+                                absDirPath,
+                                "after",
+                                show $ length errs + 1,
+                                "attempts. Search terms and errors of previous attempts were:",
+                                show errs
+                              ]
+                        (errs, Nothing) ->
+                          putLog Warning $
+                            unwords
+                              [ "Failed downloaded image for:",
+                                absDirPath,
+                                "after",
+                                show $ length errs + 1,
+                                "attempts. Search terms and errors were:",
+                                show errs
+                              ]
+                      case mResult of
+                        Nothing -> pure Nothing
+                        Just (contentType, imgData) -> do
+                          cachedImgName <-
+                            mkCachedImageFileName
+                              (unDirectoryName <$> dirPath.directoryPathNames)
+                              (Right contentType)
+                          pure $ Just (ImageFromWeb cachedImgName, imgData)
 
                 case (currentDirData.directoryImage, diskImageName) of
                   (Nothing, Just diskImg) ->
@@ -267,49 +318,27 @@ shallowUpdateDirectory roots dirPath = do
                         getImageFromDisk diskImg
                   (Just (ImageOnDisk _ _), Just _diskImg) ->
                     -- The image we know about is the same as on disk, so no need to update, save some IO
-                    pure Nothing
-                  (Just _img, Nothing) ->
-                    -- We have an image already, but none on disk. Just keep it, we probably downloaded it previously, or it was a image on disk now removed.
-                    pure Nothing
+                    pure ImageUpdateNoChange
+                  (Just (ImageOnDisk _ _), Nothing) -> do
+                    -- We have an image from disk, but now there's none. I likely removed it for a reason, so try the web, and if there's nothing there, remove it.
+                    fromWeb <- getImageFromWeb
+                    pure $ case fromWeb of
+                      Just (img, imgData) -> ImageUpdateWith img imgData
+                      Nothing -> ImageUpdateRemoveExisting
+                  (Just (ImageFromWeb _), Nothing) ->
+                    -- We have an image from the web, and none on disk. Just keep it.
+                    pure ImageUpdateNoChange
                   (Nothing, Nothing)
                     | isRootDir -- Root dirs never have images
                         || isSeasonDirOrSubDir -- Season dirs or subdirs of season don't have images, otherwise we search for "Season X" a bunch. Subdirs are likely stuff like "subs"
                         || anyParentDirHasImage -> -- If the parent dir already has an image we use that image, so save some time and don't search for another image
-                        pure Nothing
+                        pure ImageUpdateNoChange
                   (Nothing, Nothing) -> do
                     -- Nothing known, nothing on disk, try and download one
-                    (attemptErrors, mResult) <- getImageFromWebFor dirPath
-                    case (attemptErrors, mResult) of
-                      ([], Just _) ->
-                        putLog Info $ "Successfully downloaded image for: " ++ absDirPath
-                      (errs, Just _) ->
-                        putLog Info $
-                          unwords
-                            [ "Successfully downloaded image for:",
-                              absDirPath,
-                              "after",
-                              show $ length errs + 1,
-                              "attempts. Search terms and errors of previous attempts were:",
-                              show errs
-                            ]
-                      (errs, Nothing) ->
-                        putLog Warning $
-                          unwords
-                            [ "Failed downloaded image for:",
-                              absDirPath,
-                              "after",
-                              show $ length errs + 1,
-                              "attempts. Search terms and errors were:",
-                              show errs
-                            ]
-                    case mResult of
-                      Nothing -> pure Nothing
-                      Just (contentType, imgData) -> do
-                        cachedImgName <-
-                          mkCachedImageFileName
-                            (unDirectoryName <$> dirPath.directoryPathNames)
-                            (Right contentType)
-                        pure $ Just (ImageFromWeb cachedImgName, imgData)
+                    fromWeb <- getImageFromWeb
+                    pure $ case fromWeb of
+                      Just (img, imgData) -> ImageUpdateWith img imgData
+                      Nothing -> ImageUpdateNoChange
 
 -- | Returns a (potentially empty) list of errors of failed attempts with the search string that was tried,
 -- and hopefully a successful result.
