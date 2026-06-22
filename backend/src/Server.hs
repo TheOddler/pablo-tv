@@ -10,8 +10,6 @@ import Data.ByteString.Char8 qualified as BS8
 import Data.List (stripPrefix)
 import Data.List.Extra (lower)
 import Data.Text qualified as T
-import Data.Time (nominalDiffTimeToSeconds)
-import Data.Time.Clock.POSIX (utcTimeToPOSIXSeconds)
 import Directory (getImagesDir)
 import Directory.Directories (RootDirectories)
 import Env (ServerEnv (..), ServerM)
