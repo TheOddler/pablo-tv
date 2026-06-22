@@ -218,7 +218,7 @@ view_ mDirPath dirImage unsortedFiles unsortedSubDirs doAction =
             ]
 
         -- Top buttons
-        , iff (List.length files > 1 && List.length subDirs > 0) <|
+        , iff (List.length files > 1 || List.length subDirs > 0) <|
             div [ A.class "section" ]
                 [ div [ A.class "row white" ]
                     [ ifJust mDirPath <|
