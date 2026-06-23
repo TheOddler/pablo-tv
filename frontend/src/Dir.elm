@@ -11,6 +11,7 @@ import List.Extra as List
 import Maybe.Extra as Maybe
 import NaturalOrdering
 import Routes
+import String.Util as String
 
 
 viewHome :
@@ -138,6 +139,13 @@ view roots dirPath doAction =
                 doAction
 
 
+type alias NiceFileName =
+    { commonPrefix : String
+    , uniqueMiddle : String
+    , commonSuffix : String
+    }
+
+
 view_ :
     Maybe Routes.DirPath
     -> Maybe BE.Image
@@ -153,8 +161,77 @@ view_ mDirPath dirImage unsortedFiles unsortedSubDirs doAction =
                     (\_ -> dirImage :: List.map .image unsortedSubDirs)
                 |> Maybe.andThen Maybe.orList
 
+        files : List ( Routes.DirPath, BE.VideoFileName, BE.VideoFileData )
         files =
             NaturalOrdering.sortBy (\( _, name, _ ) -> name) unsortedFiles
+
+        filesWithNiceName : List ( Routes.DirPath, ( BE.VideoFileName, NiceFileName ), BE.VideoFileData )
+        filesWithNiceName =
+            let
+                namesWithoutExtension : List BE.VideoFileName
+                namesWithoutExtension =
+                    List.map (\( _, name, _ ) -> name) files
+                        |> List.map (String.split ".")
+                        |> List.map (\splits -> List.take (List.length splits - 1) splits)
+                        |> List.map (String.join " ")
+
+                splitFileNames : List (List String)
+                splitFileNames =
+                    namesWithoutExtension
+                        -- We already replaced . with spaces above
+                        |> List.map (String.splitAny [ " ", "_", "/" ])
+
+                findCommonPrefix : List (List String) -> List String
+                findCommonPrefix xs =
+                    case Maybe.combine (List.map List.uncons xs) of
+                        Nothing ->
+                            []
+
+                        Just [] ->
+                            []
+
+                        Just (( head_, tail_ ) :: rest) ->
+                            if List.all ((\a -> a == head_) << Tuple.first) rest then
+                                head_ :: findCommonPrefix (tail_ :: List.map Tuple.second rest)
+
+                            else
+                                []
+
+                commonPrefix : String
+                commonPrefix =
+                    String.join " " <| findCommonPrefix splitFileNames
+
+                findCommonSuffix : List (List String) -> List String
+                findCommonSuffix =
+                    List.reverse << findCommonPrefix << List.map List.reverse
+
+                commonSuffix : String
+                commonSuffix =
+                    String.join " " <| findCommonSuffix splitFileNames
+
+                getUniqueMiddle : String -> String
+                getUniqueMiddle n =
+                    String.slice
+                        (String.length commonPrefix)
+                        (String.length n - String.length commonSuffix)
+                        n
+
+                uniqueMiddles : List String
+                uniqueMiddles =
+                    List.map getUniqueMiddle namesWithoutExtension
+
+                mkNiceName : String -> NiceFileName
+                mkNiceName middle =
+                    { commonPrefix = commonPrefix
+                    , uniqueMiddle = middle
+                    , commonSuffix = commonSuffix
+                    }
+
+                niceNames =
+                    List.map mkNiceName uniqueMiddles
+            in
+            List.zip files niceNames
+                |> List.map (\( ( path, name, data ), middle ) -> ( path, ( name, middle ), data ))
 
         subDirs =
             NaturalOrdering.sortBy .name unsortedSubDirs
@@ -260,7 +337,15 @@ view_ mDirPath dirImage unsortedFiles unsortedSubDirs doAction =
         , iff (List.length files > 0) <|
             div [ A.class "section" ] <|
                 List.map
-                    (\( dirPath, name, data ) ->
+                    (\( dirPath, ( rawName, niceName ), data ) ->
+                        let
+                            fullNiceName =
+                                niceName.commonPrefix
+                                    ++ " "
+                                    ++ niceName.uniqueMiddle
+                                    ++ " "
+                                    ++ niceName.commonSuffix
+                        in
                         div
                             [ A.class "row"
                             , A.class <|
@@ -273,21 +358,16 @@ view_ mDirPath dirImage unsortedFiles unsortedSubDirs doAction =
                             ]
                             [ button
                                 [ A.class "name like-link"
-                                , A.title <| "Play: " ++ name
+                                , A.title <| "Play: " ++ fullNiceName
                                 , E.onClick <|
                                     doAction <|
                                         BE.ActionPlayPath
-                                            { path = Routes.toRawWebPathFile dirPath name }
+                                            { path = Routes.toRawWebPathFile dirPath rawName }
                                 ]
                                 [ i [ A.class "fa-solid fa-play" ] []
-
-                                -- TODO: Improve the names with prefix, unique and suffix
-                                -- $# We have no gap in the flexbox here, rather we use nbsp to add whitespace that can shrink with the element
-                                -- &nbsp;
-                                -- <span class="prefix">#{fileNamePrefix}&nbsp;
-                                -- <span class="unique">#{fileNameMiddle}
-                                -- <span class="suffix">&nbsp;#{fileNameSuffix}
-                                , text name
+                                , span [ A.class "prefix" ] [ text niceName.commonPrefix, nbsp ]
+                                , span [ A.class "unique" ] [ text niceName.uniqueMiddle ]
+                                , span [ A.class "suffix" ] [ nbsp, text niceName.commonSuffix ]
                                 ]
                             , case data.watched of
                                 Nothing ->
@@ -297,25 +377,25 @@ view_ mDirPath dirImage unsortedFiles unsortedSubDirs doAction =
                                     i [ A.class "fa-solid fa-check" ] []
                             , button
                                 [ A.class "like-link"
-                                , A.title <| "Mark as watched: " ++ name
+                                , A.title <| "Mark as watched: " ++ fullNiceName
                                 , E.onClick <|
                                     doAction <|
                                         BE.ActionMarkAsWatched
-                                            { path = Routes.toRawWebPathFile dirPath name }
+                                            { path = Routes.toRawWebPathFile dirPath rawName }
                                 ]
                                 [ i [ A.class "fa-regular fa-eye" ] [] ]
                             , button
                                 [ A.class "like-link"
-                                , A.title <| "Mark as unwatched: " ++ name
+                                , A.title <| "Mark as unwatched: " ++ fullNiceName
                                 , E.onClick <|
                                     doAction <|
                                         BE.ActionMarkAsUnwatched
-                                            { path = Routes.toRawWebPathFile dirPath name }
+                                            { path = Routes.toRawWebPathFile dirPath rawName }
                                 ]
                                 [ i [ A.class "fa-regular fa-eye-slash" ] [] ]
                             ]
                     )
-                    files
+                    filesWithNiceName
 
         -- Sub directories
         , iff (List.length subDirs > 0) <|
