@@ -1,4 +1,4 @@
-module Html.Extras exposing (..)
+module Html.Util exposing (..)
 
 import Html exposing (..)
 

@@ -1,4 +1,4 @@
-module Time.Extra exposing (..)
+module Time.Util exposing (..)
 
 import List.Extra as List
 import Time

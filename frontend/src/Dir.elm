@@ -6,7 +6,7 @@ import Generated.Backend as BE
 import Html exposing (..)
 import Html.Attributes as A
 import Html.Events as E
-import Html.Extras exposing (..)
+import Html.Util exposing (..)
 import List.Extra as List
 import Maybe.Extra as Maybe
 import NaturalOrdering

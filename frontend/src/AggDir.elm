@@ -8,7 +8,7 @@ import Random
 import Random.List
 import Routes
 import Time
-import Time.Extra as Time
+import Time.Util as Time
 import Tuple
 
 
