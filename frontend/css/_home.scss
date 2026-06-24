@@ -71,7 +71,7 @@
         &:hover {
           outline: none;
           transform: scale($elFocusScale);
-          z-index: 10;
+          z-index: 200; // Higher than focus and arrow-nav highlight
           transition: transform 0.2s;
         }
       }
