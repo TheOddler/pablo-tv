@@ -1,6 +1,7 @@
 module Main exposing (Msg(..), main, update, view)
 
 import Browser
+import Browser.Dom as Dom
 import Browser.Navigation as Nav
 import Dict
 import Dir
@@ -18,6 +19,7 @@ import LocalStorage
 import Platform.Cmd as Cmd
 import Remote
 import Routes
+import Task
 import Time
 import Url
 
@@ -42,7 +44,8 @@ type alias Flags =
 
 
 type Msg
-    = GetDirsUpdate
+    = NoOp
+    | GetDirsUpdate
     | GotDirsUpdateResult (Result Http.Error BE.RootDirectories)
     | NetworkInfoUpdate (Result Http.Error BE.NetworkInfo)
     | GotUrlRequest Browser.UrlRequest
@@ -141,6 +144,9 @@ update msg model =
                     )
     in
     case msg of
+        NoOp ->
+            ( model, Cmd.none )
+
         GetDirsUpdate ->
             ( model
             , BE.getApiData GotDirsUpdateResult
@@ -173,15 +179,25 @@ update msg model =
         GotUrlRequest urlRequest ->
             case urlRequest of
                 Browser.Internal url ->
-                    ( model, Nav.pushUrl model.navKey (Url.toString url) )
+                    ( model
+                    , Nav.pushUrl model.navKey (Url.toString url)
+                    )
 
                 Browser.External href ->
                     ( model, Nav.load href )
 
         UrlChanged url ->
-            ( { model | route = Routes.parse (Dict.keys model.roots) url }
-            , Cmd.none
-            )
+            let
+                newRoute =
+                    Routes.parse (Dict.keys model.roots) url
+            in
+            if newRoute /= model.route then
+                ( { model | route = newRoute }
+                , Task.perform (\() -> NoOp) (Dom.setViewport 0 0)
+                )
+
+            else
+                ( model, Cmd.none )
 
         NavBack steps ->
             ( model
