@@ -9,8 +9,8 @@ import Routes
 import Svg.Attributes as SvgA
 
 
-view : Routes.Route -> BE.NetworkInfo -> (Int -> msg) -> (BE.Action -> msg) -> Html msg
-view route networkInfo navBack doAction =
+view : Routes.Route -> BE.NetworkInfo -> Bool -> (Int -> msg) -> (BE.Action -> msg) -> Html msg
+view route networkInfo isRefreshing navBack doAction =
     let
         separator =
             div [ A.class "separator" ] []
@@ -46,10 +46,20 @@ view route networkInfo navBack doAction =
         refreshButton dirDescr action =
             button
                 [ A.class "like-link"
+                , A.disabled isRefreshing
                 , A.title <| "Refresh " ++ dirDescr
                 , E.onClick <| doAction action
                 ]
-                [ i [ A.class "fa-solid fa-arrows-rotate" ] []
+                [ i
+                    [ A.class "fa-solid fa-arrows-rotate"
+                    , A.class <|
+                        if isRefreshing then
+                            "rotating"
+
+                        else
+                            ""
+                    ]
+                    []
                 , span [ A.class "auto-hiding-label hides-first" ]
                     [ text "Refresh" ]
                 ]

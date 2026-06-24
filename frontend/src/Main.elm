@@ -25,6 +25,7 @@ import Url
 type alias Model =
     { startTime : Int
     , roots : BE.RootDirectories
+    , refreshing : Bool
     , networkInfo : BE.NetworkInfo
     , navKey : Nav.Key
     , route : Routes.Route
@@ -48,7 +49,7 @@ type Msg
     | UrlChanged Url.Url
     | NavBack Int
     | DoAction BE.Action
-    | GotActionResult (Result Http.Error ())
+    | GotActionResult BE.Action (Result Http.Error ())
     | InputMsg Input.Msg
 
 
@@ -111,6 +112,7 @@ init flags url navKey =
     in
     ( { startTime = flags.startTime
       , roots = roots
+      , refreshing = False
       , networkInfo = networkInfo -- Network info is sorted when I save it to the local storage, so no need to sort again here
       , navKey = navKey
       , route = Routes.parse (Dict.keys roots) url
@@ -187,16 +189,44 @@ update msg model =
             )
 
         DoAction action ->
-            ( model
-            , BE.postApiAction action GotActionResult
-            )
-
-        GotActionResult result ->
-            onHttpSuccess result <|
-                \() ->
-                    ( model
-                    , BE.getApiData GotDirsUpdateResult
+            case action of
+                BE.ActionRefreshAllDirectoryData ->
+                    ( { model | refreshing = True }
+                    , BE.postApiAction action <| GotActionResult action
                     )
+
+                BE.ActionRefreshDirectoryData _ ->
+                    ( { model | refreshing = True }
+                    , BE.postApiAction action <| GotActionResult action
+                    )
+
+                _ ->
+                    ( model
+                    , BE.postApiAction action <| GotActionResult action
+                    )
+
+        GotActionResult action result ->
+            let
+                ( updatedModel, cmd ) =
+                    onHttpSuccess result <|
+                        \() ->
+                            ( model
+                            , BE.getApiData GotDirsUpdateResult
+                            )
+            in
+            case action of
+                BE.ActionRefreshAllDirectoryData ->
+                    ( { updatedModel | refreshing = False }
+                    , cmd
+                    )
+
+                BE.ActionRefreshDirectoryData _ ->
+                    ( { updatedModel | refreshing = False }
+                    , cmd
+                    )
+
+                _ ->
+                    ( updatedModel, cmd )
 
         InputMsg inputMsg ->
             let
@@ -327,6 +357,6 @@ view model =
     in
     { title = title ++ " - Pablo TV"
     , body =
-        Header.view model.route model.networkInfo NavBack DoAction
+        Header.view model.route model.networkInfo model.refreshing NavBack DoAction
             :: body
     }

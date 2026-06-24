@@ -39,6 +39,7 @@ button.like-link {
 
   &:disabled {
     color: grey;
+    pointer-events: none;
   }
 }
 
@@ -48,4 +49,18 @@ button.like-link {
 
 .qr {
   background: white;
+}
+
+.rotating {
+  @keyframes rotating {
+    from {
+      transform: rotate(0deg);
+    }
+
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  animation: rotating 0.75s linear infinite;
 }
