@@ -90,9 +90,7 @@ routes =
         -- `responseFile` automatically adds `Last-Modified` and checks it too
         Wai.responseFile
           status200
-          [ ("Content-Type", "image/" <> extension),
-            ("Cache-Control", "max-age=31536000, public")
-          ]
+          [("Content-Type", "image/" <> extension)]
           imagepath
           Nothing
 
