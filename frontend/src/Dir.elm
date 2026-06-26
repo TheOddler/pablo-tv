@@ -190,6 +190,9 @@ view_ mDirPath dirImage unsortedFiles unsortedSubDirs doAction =
                         Just [] ->
                             []
 
+                        Just [ _ ] ->
+                            []
+
                         Just (( head_, tail_ ) :: rest) ->
                             if List.all ((\a -> a == head_) << Tuple.first) rest then
                                 head_ :: findCommonPrefix (tail_ :: List.map Tuple.second rest)
@@ -365,9 +368,17 @@ view_ mDirPath dirImage unsortedFiles unsortedSubDirs doAction =
                                             { path = Routes.toRawWebPathFile dirPath rawName }
                                 ]
                                 [ i [ A.class "fa-solid fa-play" ] []
-                                , span [ A.class "prefix" ] [ text niceName.commonPrefix, nbsp ]
+                                , if niceName.commonPrefix == "" then
+                                    text ""
+
+                                  else
+                                    span [ A.class "prefix" ] [ text niceName.commonPrefix, nbsp ]
                                 , span [ A.class "unique" ] [ text niceName.uniqueMiddle ]
-                                , span [ A.class "suffix" ] [ nbsp, text niceName.commonSuffix ]
+                                , if niceName.commonSuffix == "" then
+                                    text ""
+
+                                  else
+                                    span [ A.class "suffix" ] [ nbsp, text niceName.commonSuffix ]
                                 ]
                             , case data.watched of
                                 Nothing ->
