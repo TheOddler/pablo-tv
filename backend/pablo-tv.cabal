@@ -107,6 +107,7 @@ library
     unordered-containers,
     utf8-string,
     wai,
+    wai-extra,
     warp,
     websockets,
 

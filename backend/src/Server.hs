@@ -10,7 +10,7 @@ import Data.ByteString.Char8 qualified as BS8
 import Data.List (stripPrefix)
 import Data.List.Extra (lower)
 import Data.Text qualified as T
-import Directory (getImagesDir)
+import Directory (getImagesDir, getMemoryFileDir)
 import Directory.Directories (RootDirectories)
 import Env (ServerEnv (..), ServerM)
 import GHC.Generics (Generic)
@@ -18,12 +18,14 @@ import Network.HTTP.Types (hContentType, hLastModified, status200, status304, st
 import Network.HTTP.Types.Header (hETag)
 import Network.Wai qualified as Wai
 import Network.Wai.Handler.Warp qualified as Wai
+import Network.Wai.Middleware.Gzip qualified as Gzip
 import NetworkInfo (NetworkInfo, getNetworkInfo)
 import PVar (readPVar')
 import Servant hiding (respond)
 import Servant.Server.Generic (AsServerT)
 import System.Directory (doesFileExist)
 import System.FilePath (joinPath, takeExtension, (</>))
+import Transformers (runSafeIOT)
 
 type API = NamedRoutes APIRoutes
 
@@ -51,7 +53,15 @@ mkServer serverEnv = do
 main :: ServerEnv -> IO ()
 main serverEnv = do
   server <- mkServer serverEnv
-  Wai.run serverEnv.envPort $ etagMiddleware $ serve apiProxy server
+  memDir <- runSafeIOT getMemoryFileDir
+  let cacheDir = memDir </> "gzipCache"
+  let gzipSettings =
+        Gzip.defaultGzipSettings
+          { Gzip.gzipFiles = Gzip.GzipCacheETag cacheDir
+          }
+  Wai.run serverEnv.envPort $
+    Gzip.gzip gzipSettings . etagMiddleware $
+      serve apiProxy server
 
 apiProxy :: Proxy API
 apiProxy = Proxy
@@ -132,6 +142,7 @@ routes =
           Nothing
 
 -- | If the response has an `ETag` header, and the request has `If-Match` or `If-None-Match` header, this middleware potentially sends a 304 or 412
+-- This does not automatically add an ETag, it just checks it
 etagMiddleware :: Application -> Application
 etagMiddleware appl req respond = appl req $ \response -> do
   let responseHeaders = Wai.responseHeaders response
