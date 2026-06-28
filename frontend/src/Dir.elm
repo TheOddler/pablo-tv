@@ -372,7 +372,7 @@ view_ mDirPath dirImage unsortedFiles unsortedSubDirs doAction =
                                     text ""
 
                                   else
-                                    span [ A.class "prefix" ] [ text niceName.commonPrefix, nbsp ]
+                                    span [ A.class "prefix" ] [ nbsp, text niceName.commonPrefix ]
                                 , span [ A.class "unique" ] [ text niceName.uniqueMiddle ]
                                 , if niceName.commonSuffix == "" then
                                     text ""
