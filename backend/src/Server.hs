@@ -25,6 +25,7 @@ import Servant hiding (respond)
 import Servant.Server.Generic (AsServerT)
 import System.Directory (doesFileExist)
 import System.FilePath (joinPath, takeExtension, (</>))
+import System.Posix (getFileStatus, modificationTimeHiRes)
 import Transformers (runSafeIOT)
 
 type API = NamedRoutes APIRoutes
@@ -127,13 +128,16 @@ routes =
 
       -- When we're in the Nix store the mod time is set to posix+1s, so if that's the case we should set the ETag as the Last-Modified header is useless.
       let nixStorePath = stripPrefix "/nix/store/" finalPath
-      let nixStoreEtag = case nixStorePath of
-            Nothing -> Nothing
-            Just nsp -> Just ("\"" <> BS8.pack nsp <> "\"")
-      let eTagHeader = case nixStoreEtag of
-            Nothing -> []
+      etag <- case nixStorePath of
+        Nothing -> do
+          -- Should be safe as we already know the file should exist
+          fs <- liftIO $ getFileStatus finalPath
+          let modTimeStr = show $ modificationTimeHiRes fs
+          pure ("\"" <> BS8.pack modTimeStr <> "\"")
+        Just nsp -> pure ("\"" <> BS8.pack nsp <> "\"")
+      let eTagHeader =
             -- `responseFile` automatically adds `Last-Modified` header, so remove it if we add an etag
-            Just etag -> [(hETag, etag), (hLastModified, "")]
+            [(hETag, etag), (hLastModified, "")]
       liftIO . respond $
         Wai.responseFile
           status200
