@@ -1,7 +1,8 @@
 module AggDir exposing (..)
 
 import Dict
-import Generated.Backend exposing (..)
+import DirData.Util as DirData
+import Generated.Backend as BE
 import Html exposing (..)
 import Maybe.Extra as Maybe
 import Random
@@ -13,9 +14,9 @@ import Tuple
 
 
 type alias AggDirInfo =
-    { name : DirectoryName
+    { name : BE.DirectoryName
     , path : Routes.DirPath
-    , image : Maybe Image
+    , image : Maybe BE.Image
     , lastAdded : Time.Posix
     , lastWatched : Time.Posix
     , videoFileCount : Int
@@ -25,10 +26,10 @@ type alias AggDirInfo =
 
 calcForSubDirsOf :
     Routes.DirPath
-    -> { a | subDirs : DirectorySubDirs }
+    -> { a | subDirs : BE.DirectorySubDirs }
     -> List AggDirInfo
 calcForSubDirsOf pathOfDir dirData =
-    subDirsUnwrapped dirData
+    BE.subDirsUnwrapped dirData
         |> Dict.toList
         |> List.map
             (\( subDirName, subDirData ) ->
@@ -39,7 +40,7 @@ calcForSubDirsOf pathOfDir dirData =
             )
 
 
-calcForSubDirsOfRoots : RootDirectories -> List AggDirInfo
+calcForSubDirsOfRoots : BE.RootDirectories -> List AggDirInfo
 calcForSubDirsOfRoots roots =
     Dict.toList roots
         |> List.concatMap
@@ -48,73 +49,57 @@ calcForSubDirsOfRoots roots =
             )
 
 
-calcAggInfo : Routes.DirPath -> DirectoryName -> DirectoryData -> AggDirInfo
+calcAggInfo : Routes.DirPath -> BE.DirectoryName -> BE.DirectoryData -> AggDirInfo
 calcAggInfo (Routes.DirPath root parentPath) name info =
     let
-        calcLastAdded : List VideoFileData -> Time.Posix
+        calcLastAdded : List BE.VideoFileData -> Time.Posix
         calcLastAdded files =
             List.map .added files
                 |> Time.maximum
                 |> Maybe.withDefault (Time.millisToPosix 0)
 
-        calcLastWatched : List VideoFileData -> Time.Posix
+        calcLastWatched : List BE.VideoFileData -> Time.Posix
         calcLastWatched files =
             List.map .watched files
                 |> Maybe.values
                 |> Time.maximum
                 |> Maybe.withDefault (Time.millisToPosix 0)
 
-        countPlayed : List VideoFileData -> Int
+        countPlayed : List BE.VideoFileData -> Int
         countPlayed files =
             List.map .watched files
                 |> Maybe.values
                 |> List.length
 
-        go : AggDirInfo -> List DirectoryData -> AggDirInfo
-        go agg toCheck =
-            case toCheck of
-                [] ->
-                    agg
+        startAggDirInfo =
+            { name = name
+            , path = Routes.DirPath root <| parentPath ++ [ name ]
+            , image = info.image
+            , lastAdded = Time.millisToPosix 0
+            , lastWatched = Time.millisToPosix 0
+            , videoFileCount = 0
+            , playedVideoFileCount = 0
+            }
 
-                next :: rest ->
-                    let
-                        thisLastAdded =
-                            calcLastAdded <| Dict.values next.videoFiles
-
-                        thisLastWatched =
-                            calcLastWatched <| Dict.values next.videoFiles
-
-                        thisVideoFileCount =
-                            Dict.size next.videoFiles
-
-                        thisPlayedVideoFileCount =
-                            countPlayed <| Dict.values next.videoFiles
-
-                        updated =
-                            { agg
-                                | image = Maybe.or agg.image next.image
-                                , lastAdded =
-                                    Time.max agg.lastAdded thisLastAdded
-                                , lastWatched =
-                                    Time.max agg.lastWatched thisLastWatched
-                                , videoFileCount =
-                                    agg.videoFileCount + thisVideoFileCount
-                                , playedVideoFileCount =
-                                    agg.playedVideoFileCount + thisPlayedVideoFileCount
-                            }
-                    in
-                    go updated <| rest ++ Dict.values (subDirsUnwrapped next)
+        addToDirInfo : BE.DirectoryData -> AggDirInfo -> AggDirInfo
+        addToDirInfo dd agg =
+            { agg
+                | image = Maybe.or agg.image dd.image
+                , lastAdded =
+                    Time.max agg.lastAdded <|
+                        calcLastAdded (Dict.values dd.videoFiles)
+                , lastWatched =
+                    Time.max agg.lastWatched <|
+                        calcLastWatched (Dict.values dd.videoFiles)
+                , videoFileCount =
+                    agg.videoFileCount
+                        + Dict.size dd.videoFiles
+                , playedVideoFileCount =
+                    agg.playedVideoFileCount
+                        + countPlayed (Dict.values dd.videoFiles)
+            }
     in
-    go
-        { name = name
-        , path = Routes.DirPath root <| parentPath ++ [ name ]
-        , image = info.image
-        , lastAdded = calcLastAdded <| Dict.values info.videoFiles
-        , lastWatched = calcLastWatched <| Dict.values info.videoFiles
-        , videoFileCount = Dict.size info.videoFiles
-        , playedVideoFileCount = countPlayed <| Dict.values info.videoFiles
-        }
-        (subDirsUnwrapped info |> Dict.values)
+    DirData.foldDepthFirst addToDirInfo info startAggDirInfo
 
 
 type Filter
