@@ -139,10 +139,11 @@ view roots dirPath doAction =
                 doAction
 
 
-type alias NiceFileName =
-    { commonPrefix : String
-    , uniqueMiddle : String
-    , commonSuffix : String
+type alias FileInfo =
+    { dir : Routes.DirPath
+    , originalFileName : BE.VideoFileName
+    , uniqueNamePart : String
+    , data : BE.VideoFileData
     }
 
 
@@ -165,76 +166,15 @@ view_ mDirPath dirImage unsortedFiles unsortedSubDirs doAction =
         files =
             NaturalOrdering.sortBy (\( _, name, _ ) -> name) unsortedFiles
 
-        filesWithNiceName : List ( Routes.DirPath, ( BE.VideoFileName, NiceFileName ), BE.VideoFileData )
-        filesWithNiceName =
-            let
-                namesWithoutExtension : List BE.VideoFileName
-                namesWithoutExtension =
-                    List.map (\( _, name, _ ) -> name) files
-                        |> List.map (String.split ".")
-                        |> List.map (\splits -> List.take (List.length splits - 1) splits)
-                        |> List.map (String.join " ")
+        namesWithoutExtension : List BE.VideoFileName
+        namesWithoutExtension =
+            List.map (\( _, name, _ ) -> name) files
+                |> List.map (String.split ".")
+                |> List.map (\splits -> List.take (List.length splits - 1) splits)
+                |> List.map (String.join " ")
 
-                splitFileNames : List (List String)
-                splitFileNames =
-                    namesWithoutExtension
-                        -- We already replaced . with spaces above
-                        |> List.map (String.splitAny [ " ", "_", "/" ])
-
-                findCommonPrefix : List (List String) -> List String
-                findCommonPrefix xs =
-                    case Maybe.combine (List.map List.uncons xs) of
-                        Nothing ->
-                            []
-
-                        Just [] ->
-                            []
-
-                        Just [ _ ] ->
-                            []
-
-                        Just (( head_, tail_ ) :: rest) ->
-                            if List.all ((\a -> a == head_) << Tuple.first) rest then
-                                head_ :: findCommonPrefix (tail_ :: List.map Tuple.second rest)
-
-                            else
-                                []
-
-                commonPrefix : String
-                commonPrefix =
-                    String.join " " <| findCommonPrefix splitFileNames
-
-                findCommonSuffix : List (List String) -> List String
-                findCommonSuffix =
-                    List.reverse << findCommonPrefix << List.map List.reverse
-
-                commonSuffix : String
-                commonSuffix =
-                    String.join " " <| findCommonSuffix splitFileNames
-
-                getUniqueMiddle : String -> String
-                getUniqueMiddle n =
-                    String.slice
-                        (String.length commonPrefix)
-                        (String.length n - String.length commonSuffix)
-                        n
-
-                uniqueMiddles : List String
-                uniqueMiddles =
-                    List.map getUniqueMiddle namesWithoutExtension
-
-                mkNiceName : String -> NiceFileName
-                mkNiceName middle =
-                    { commonPrefix = commonPrefix
-                    , uniqueMiddle = middle
-                    , commonSuffix = commonSuffix
-                    }
-
-                niceNames =
-                    List.map mkNiceName uniqueMiddles
-            in
-            List.zip files niceNames
-                |> List.map (\( ( path, name, data ), middle ) -> ( path, ( name, middle ), data ))
+        nameComponents =
+            String.findCommonPreAndSuffix namesWithoutExtension
 
         subDirs =
             NaturalOrdering.sortBy .name unsortedSubDirs
@@ -340,14 +280,14 @@ view_ mDirPath dirImage unsortedFiles unsortedSubDirs doAction =
         , iff (List.length files > 0) <|
             div [ A.class "section" ] <|
                 List.map
-                    (\( dirPath, ( rawName, niceName ), data ) ->
+                    (\( ( dirPath, rawName, data ), uniqueMiddle ) ->
                         let
                             fullNiceName =
-                                niceName.commonPrefix
+                                nameComponents.commonPrefix
                                     ++ " "
-                                    ++ niceName.uniqueMiddle
+                                    ++ uniqueMiddle
                                     ++ " "
-                                    ++ niceName.commonSuffix
+                                    ++ nameComponents.commonSuffix
                         in
                         div
                             [ A.class "row"
@@ -368,17 +308,17 @@ view_ mDirPath dirImage unsortedFiles unsortedSubDirs doAction =
                                             { path = Routes.toRawWebPathFile dirPath rawName }
                                 ]
                                 [ i [ A.class "fa-solid fa-play" ] []
-                                , if niceName.commonPrefix == "" then
+                                , if nameComponents.commonPrefix == "" then
                                     text ""
 
                                   else
-                                    span [ A.class "prefix" ] [ nbsp, text niceName.commonPrefix ]
-                                , span [ A.class "unique" ] [ text niceName.uniqueMiddle ]
-                                , if niceName.commonSuffix == "" then
+                                    span [ A.class "prefix" ] [ nbsp, text nameComponents.commonPrefix ]
+                                , span [ A.class "unique" ] [ text uniqueMiddle ]
+                                , if nameComponents.commonSuffix == "" then
                                     text ""
 
                                   else
-                                    span [ A.class "suffix" ] [ nbsp, text niceName.commonSuffix ]
+                                    span [ A.class "suffix" ] [ nbsp, text nameComponents.commonSuffix ]
                                 ]
                             , case data.watched of
                                 Nothing ->
@@ -406,7 +346,7 @@ view_ mDirPath dirImage unsortedFiles unsortedSubDirs doAction =
                                 [ i [ A.class "fa-regular fa-eye-slash" ] [] ]
                             ]
                     )
-                    filesWithNiceName
+                    (List.zip files nameComponents.uniqueMiddles)
 
         -- Sub directories
         , iff (List.length subDirs > 0) <|
