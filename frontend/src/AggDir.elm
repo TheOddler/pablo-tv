@@ -142,7 +142,7 @@ filterAndSort filter sorting list =
         sort =
             case sorting of
                 RecentlyAdded ->
-                    List.sortBy (negate << Time.posixToMillis << .lastWatched)
+                    List.sortBy (negate << Time.posixToMillis << .lastAdded)
 
                 RecentlyWatched ->
                     List.sortBy (negate << Time.posixToMillis << .lastWatched)
